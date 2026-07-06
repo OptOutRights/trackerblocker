@@ -1,0 +1,40 @@
+{
+  "name": "trackerblocker",
+  "version": "0.0.0",
+  "description": "A Firefox-first WebExtension that blocks and explains likely third-party trackers.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint:firefox": "npm run build:firefox && web-ext lint --source-dir .output/firefox-mv3",
+    "web-ext:firefox": "web-ext run --source-dir .output/firefox-mv3",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "preact": "^10.29.4",
+    "tldts": "^7.4.6"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.5",
+    "@tailwindcss/vite": "^4.3.2",
+    "tailwindcss": "^4.3.2",
+    "typescript": "^5.9.2",
+    "vite": "^8.1.3",
+    "vitest": "^4.1.10",
+    "web-ext": "^10.4.0",
+    "wxt": "^0.20.27"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "shell-quote": "^1.8.4",
+    "tmp": "^0.2.7",
+    "uuid": "^11.1.1"
+  }
+}
