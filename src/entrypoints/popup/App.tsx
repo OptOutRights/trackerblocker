@@ -6,19 +6,12 @@ import {
   HEALTH_CHECK_RESPONSE,
   type HealthCheckResponse,
 } from "../../messaging/health";
+import { formatUrlHost } from "../../shared/domains";
 
 type BackgroundStatus = "checking" | "ready" | "unavailable";
 
 function formatHostname(url?: string): string {
-  if (!url) {
-    return "Unavailable";
-  }
-
-  try {
-    return new URL(url).hostname || "Unavailable";
-  } catch {
-    return "Unavailable";
-  }
+  return formatUrlHost(url) ?? "Unavailable";
 }
 
 function isHealthCheckResponse(value: unknown): value is HealthCheckResponse {
