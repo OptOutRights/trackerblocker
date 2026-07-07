@@ -41,8 +41,8 @@ interface ComparableSite {
   site: string;
 }
 
-const WEB_SCHEMES = new Set(["http:", "https:"]);
-const EMPTY_WEB_AUTHORITY_PATTERN = /^https?:\/\/[/?#]/i;
+const WEB_SCHEMES = new Set(["http:", "https:", "ws:", "wss:"]);
+const EMPTY_WEB_AUTHORITY_PATTERN = /^(?:https?|wss?):\/\/[/?#]/i;
 const LOCALHOST = "localhost";
 
 const TLDT_OPTIONS = {

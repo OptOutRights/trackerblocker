@@ -47,6 +47,30 @@ describe("classifyRequestSiteRelationship", () => {
     });
   });
 
+  it("classifies WebSocket requests with the same site rules", () => {
+    expect(
+      classifyRequestSiteRelationship({
+        pageUrl: "https://example.com",
+        requestUrl: "wss://events.tracker.test/socket",
+      }),
+    ).toMatchObject({
+      status: "third-party",
+      pageSite: "example.com",
+      requestSite: "tracker.test",
+    });
+
+    expect(
+      classifyRequestSiteRelationship({
+        pageUrl: "https://app.example.com",
+        requestUrl: "wss://events.example.com/socket",
+      }),
+    ).toMatchObject({
+      status: "same-site",
+      pageSite: "example.com",
+      requestSite: "example.com",
+    });
+  });
+
   it("uses public suffix parsing for same-site country-code domains", () => {
     expect(
       classifyRequestSiteRelationship({
@@ -263,6 +287,9 @@ describe("classifyRequestSiteRelationship", () => {
 describe("formatUrlHost", () => {
   it("formats normalized hosts for web URLs", () => {
     expect(formatUrlHost("https://Example.COM./page")).toBe("example.com");
+    expect(formatUrlHost("wss://Socket.Example.COM./events")).toBe(
+      "socket.example.com",
+    );
   });
 
   it("returns null for missing, malformed, or non-web URLs", () => {

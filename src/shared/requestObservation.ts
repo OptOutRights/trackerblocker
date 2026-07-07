@@ -1,0 +1,236 @@
+import {
+  classifyRequestSiteRelationship,
+  formatUrlHost,
+} from "./domains";
+
+export type RequestTypeCategory =
+  | "script"
+  | "image"
+  | "iframe"
+  | "xhr"
+  | "beacon"
+  | "stylesheet"
+  | "other";
+
+export type RequestRelationship = "third-party" | "unknown" | "first-party";
+
+export interface RequestEvidence {
+  tabId: number;
+  frameId: number;
+  pageUrl?: string | null;
+  requestUrl?: string | null;
+  requestType?: string | null;
+  timestamp: number;
+}
+
+export interface ObservedRequestRow {
+  id: string;
+  displayName: string;
+  relationship: RequestRelationship;
+  category: "unknown";
+  status: "allowed";
+  requestCount: number;
+  requestTypes: RequestTypeCategory[];
+  lastSeen: number;
+}
+
+export interface TabRequestSummary {
+  tabId: number;
+  siteUrl: string | null;
+  siteHost: string | null;
+  totalRequests: number;
+  thirdPartyCount: number;
+  unknownCount: number;
+  firstPartyCount: number;
+  blockedCount: 0;
+  allowedCount: number;
+  rows: ObservedRequestRow[];
+}
+
+export interface TabObservationState {
+  tabId: number;
+  pageUrl: string | null;
+  rows: Map<string, ObservedRequestRow>;
+}
+
+const RELATIONSHIP_ORDER: Record<RequestRelationship, number> = {
+  "third-party": 0,
+  unknown: 1,
+  "first-party": 2,
+};
+const EMPTY_WEB_AUTHORITY_PATTERN = /^(?:https?|wss?):\/\/[/?#]/i;
+
+export function createTabObservationState(
+  tabId: number,
+  pageUrl?: string | null,
+): TabObservationState {
+  return {
+    tabId,
+    pageUrl: pageUrl ?? null,
+    rows: new Map(),
+  };
+}
+
+export function resetTabObservationState(
+  state: TabObservationState,
+  pageUrl?: string | null,
+): void {
+  state.pageUrl = pageUrl ?? null;
+  state.rows.clear();
+}
+
+export function mapRequestType(
+  requestType?: string | null,
+): RequestTypeCategory {
+  switch (requestType) {
+    case "script":
+      return "script";
+    case "image":
+      return "image";
+    case "sub_frame":
+      return "iframe";
+    case "xmlhttprequest":
+      return "xhr";
+    case "beacon":
+    case "ping":
+      return "beacon";
+    case "stylesheet":
+      return "stylesheet";
+    default:
+      return "other";
+  }
+}
+
+export function recordObservedRequest(
+  state: TabObservationState,
+  evidence: RequestEvidence,
+): void {
+  const pageUrl = state.pageUrl ?? evidence.pageUrl;
+  const classification = classifyRequestSiteRelationship({
+    pageUrl,
+    requestUrl: evidence.requestUrl,
+  });
+
+  const requestType = mapRequestType(evidence.requestType);
+  const rowSeed: {
+    relationship: RequestRelationship;
+    key: string;
+    displayName: string;
+  } =
+    classification.status === "third-party" ||
+    classification.status === "same-site"
+      ? {
+          relationship:
+            classification.status === "third-party"
+              ? "third-party"
+              : "first-party",
+          key: classification.requestSite,
+          displayName: classification.requestSite,
+        }
+      : {
+          relationship: "unknown",
+          key: getUnknownRequestKey(evidence.requestUrl),
+          displayName: getUnknownRequestDisplayName(evidence.requestUrl),
+        };
+
+  const id = `${rowSeed.relationship}:${rowSeed.key}`;
+  const existing = state.rows.get(id);
+
+  if (!existing) {
+    state.rows.set(id, {
+      id,
+      displayName: rowSeed.displayName,
+      relationship: rowSeed.relationship,
+      category: "unknown",
+      status: "allowed",
+      requestCount: 1,
+      requestTypes: [requestType],
+      lastSeen: evidence.timestamp,
+    });
+    return;
+  }
+
+  existing.requestCount += 1;
+  existing.lastSeen = Math.max(existing.lastSeen, evidence.timestamp);
+
+  if (!existing.requestTypes.includes(requestType)) {
+    existing.requestTypes = [...existing.requestTypes, requestType].sort();
+  }
+}
+
+export function summarizeTabObservation(
+  state: TabObservationState,
+): TabRequestSummary {
+  const rows = [...state.rows.values()].sort(compareObservedRows);
+
+  return {
+    tabId: state.tabId,
+    siteUrl: state.pageUrl,
+    siteHost: formatUrlHost(state.pageUrl),
+    totalRequests: rows.reduce((sum, row) => sum + row.requestCount, 0),
+    thirdPartyCount: rows.filter((row) => row.relationship === "third-party")
+      .length,
+    unknownCount: rows.filter((row) => row.relationship === "unknown").length,
+    firstPartyCount: rows.filter((row) => row.relationship === "first-party")
+      .length,
+    blockedCount: 0,
+    allowedCount: rows.length,
+    rows,
+  };
+}
+
+function compareObservedRows(
+  left: ObservedRequestRow,
+  right: ObservedRequestRow,
+): number {
+  const relationshipDelta =
+    RELATIONSHIP_ORDER[left.relationship] -
+    RELATIONSHIP_ORDER[right.relationship];
+
+  if (relationshipDelta !== 0) {
+    return relationshipDelta;
+  }
+
+  if (left.requestCount !== right.requestCount) {
+    return right.requestCount - left.requestCount;
+  }
+
+  return left.displayName.localeCompare(right.displayName);
+}
+
+function getUnknownRequestKey(requestUrl?: string | null): string {
+  return getUnknownRequestDisplayName(requestUrl).toLowerCase();
+}
+
+function getUnknownRequestDisplayName(requestUrl?: string | null): string {
+  if (!requestUrl) {
+    return "Missing request URL";
+  }
+
+  if (EMPTY_WEB_AUTHORITY_PATTERN.test(requestUrl)) {
+    return "Unclassifiable request";
+  }
+
+  const webHost = formatUrlHost(requestUrl);
+
+  if (webHost) {
+    return webHost;
+  }
+
+  try {
+    const url = new URL(requestUrl);
+    const scheme = url.protocol.replace(/:$/, "");
+
+    if (url.hostname) {
+      return `${scheme}:${url.hostname}`;
+    }
+
+    if (scheme === "about" && url.pathname) {
+      return `${scheme}:${url.pathname}`;
+    }
+
+    return `${scheme}:`;
+  } catch {
+    return "Unclassifiable request";
+  }
+}
