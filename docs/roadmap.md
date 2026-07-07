@@ -410,7 +410,12 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: QA checklist results, representative sites tested, build/lint/zip commands run, known warnings, and release-readiness notes.
+- QA notes live in `docs/qa.md`.
+- Final verification ran `npm test`, `npm run typecheck`, `npm run lint:firefox`, and `npm run zip:firefox`.
+- `web-ext run` installed the built `.output/firefox-mv3` extension as a temporary add-on in headless Firefox during a bounded runtime smoke.
+- Firefox lint reports 0 errors, 0 notices, and 1 bundled-code `UNSAFE_VAR_ASSIGNMENT` warning; source search found no `innerHTML` or `dangerouslySetInnerHTML` usage.
+- Zip output is available at `.output/trackerblocker-0.0.0-firefox.zip`; source zip is available at `.output/trackerblocker-0.0.0-sources.zip`.
+- Manual browser checks for representative sites, pause recovery, overrides, options reset, and empty states are listed in `docs/qa.md`.
 
 ## Recommended Work Order
 
