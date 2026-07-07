@@ -30,7 +30,7 @@ export default defineConfig({
   manifest: {
     name: "TrackerBlocker",
     description:
-      "Blocks and explains likely third-party trackers. This scaffold verifies the extension runtime.",
+      "Blocks and explains likely third-party trackers.",
     version: "0.0.0",
     permissions: ["activeTab", "storage"],
     action: {
