@@ -374,7 +374,12 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: options entrypoint files, storage access patterns, reset/remove flows, privacy copy, and test coverage.
+- The options page entrypoint lives in `src/entrypoints/options/` and WXT builds it as `options.html`.
+- Options reads settings through `trackerblocker.getSettings` and uses the same background message handlers as the popup.
+- Paused sites can be resumed, domain overrides can be reset to Auto, and all local settings can be reset.
+- Empty, loading, and storage-unavailable states are handled with compact inline UI.
+- The page states that settings and learned data stay on device and that the MVP does not use telemetry, accounts, sync, remote classification, or runtime explanation fetches.
+- Verification used Vitest, TypeScript, and Firefox build; options UI browser smoke checks remain part of Phase 9 QA.
 
 ### Phase 9: MVP QA And Packaging
 

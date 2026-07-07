@@ -42,4 +42,4 @@ npm run lint:firefox
 
 ## MVP Behavior
 
-The popup shows third parties observed on the active tab, local catalog categories, blocking status, and expandable explanations. Users can pause protection for the current site or set a third-party domain to Auto, Block, or Allow. Settings stay in `browser.storage.local`; observed request summaries are kept in background memory.
+The popup shows third parties observed on the active tab, local catalog categories, blocking status, and expandable explanations. Users can pause protection for the current site or set a third-party domain to Auto, Block, or Allow. The options page lists paused sites and domain overrides, and can reset local settings. Settings stay in `browser.storage.local`; observed request summaries are kept in background memory.
