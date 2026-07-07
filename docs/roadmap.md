@@ -69,17 +69,36 @@ Firefox MV3 details worth keeping in mind:
 
 Goal: first-party vs third-party classification is correct enough to trust before request observation and blocking.
 
+Purpose:
+
+- Provide one shared answer to "is this request third-party relative to the current page?" before any observation, aggregation, catalog lookup, or blocking depends on it.
+- Keep the classifier pure, framework-independent, and conservative so later request observation does not grow ad hoc URL parsing.
+- Treat unclassifiable inputs as unknown for display and allowed for blocking decisions until a later phase deliberately says otherwise.
+
 Work:
 
 - Add a framework-independent domain module using `tldts`.
 - Normalize domains and URLs defensively.
 - Compare request domain against the page/site domain using public-suffix-aware parsing.
 - Handle IPs, extension URLs, browser URLs, data URLs, missing URLs, and malformed URLs.
+- Return structured outcomes for same-site, third-party, ignored/internal schemes, and unclassifiable inputs.
+- Keep request type category mapping in Phase 2 with request observation, where the WebExtension event details are introduced.
+
+Heuristics:
+
+- Parse URLs with standard URL handling first, then use `tldts` for public-suffix-aware domain comparison.
+- Normalize hostnames by trimming trailing dots, lowercasing, and avoiding path/query/string matching.
+- Treat matching eTLD+1 domains as same-site, including subdomains such as `static.example.com` on `www.example.com`.
+- Treat different eTLD+1 domains as third-party, including public suffix edge cases such as `example.co.uk` vs `other.co.uk`.
+- Treat IP requests as same-site only when the normalized IP literals match exactly; different IPs are third-party.
+- Treat extension, browser, `about:`, `data:`, and other non-web URLs as ignored or unclassifiable rather than as third parties.
+- Treat missing or malformed inputs as unclassifiable; display them as unknown if surfaced, and do not block them by default.
 
 Acceptance:
 
 - Tests cover same-site, subdomain, cross-site, public suffix edge cases, IPs, and malformed inputs.
 - The module exports a narrow API ready for request observation to consume.
+- Roadmap/docs record the Phase 1 assumptions future observation and blocking code must preserve.
 
 Suggested branch:
 
@@ -92,7 +111,10 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: exported API, key files, test coverage, edge cases handled, and any assumptions future phases must preserve.
+- Exported API: `classifyRequestSiteRelationship()` returns structured same-site, third-party, ignored, or unclassifiable outcomes; `formatUrlHost()` provides safe host display for UI code.
+- Key files: `src/shared/domains.ts`, `src/shared/domains.test.ts`, with popup display using the shared helper instead of local URL parsing.
+- Test coverage: same host, subdomain same-site, cross-site, public suffix country-code domains, private suffix multi-tenant domains, IPs, localhost, normalization, non-web schemes, missing inputs, and malformed URLs.
+- Assumptions: use platform `URL` parsing before `tldts`; compare registrable domains with private suffixes enabled; treat unclassifiable inputs as unknown for display and allowed by default for future blocking decisions.
 
 ### Phase 2: Request Observation
 
