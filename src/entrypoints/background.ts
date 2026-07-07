@@ -11,12 +11,23 @@ import {
   type GetTabRequestSummaryResponse,
 } from "../messaging/requestSummary";
 import {
+  SETTINGS_ERROR_RESPONSE,
+  SETTINGS_RESPONSE,
+  isGetSettingsMessage,
+  isResetSettingsMessage,
+  isSetDomainOverrideMessage,
+  isUpdateSitePauseMessage,
+  type SettingsErrorResponse,
+  type SettingsResponse,
+} from "../messaging/settings";
+import {
   createTabObservationState,
   recordObservedRequest,
   resetTabObservationState,
   summarizeTabObservation,
   type TabObservationState,
 } from "../shared/requestObservation";
+import { readSettings, resetSettings, updateSettings } from "../storage/settings";
 
 export default defineBackground(() => {
   const startedAt = new Date().toISOString();
@@ -48,6 +59,42 @@ export default defineBackground(() => {
 
       sendResponse(response);
       return false;
+    }
+
+    if (isGetSettingsMessage(message)) {
+      void sendSettingsResponse(() => readSettings(), sendResponse);
+      return true;
+    }
+
+    if (isUpdateSitePauseMessage(message)) {
+      void sendSettingsResponse(
+        () =>
+          updateSettings({
+            type: "site-pause",
+            site: message.site,
+            paused: message.paused,
+          }),
+        sendResponse,
+      );
+      return true;
+    }
+
+    if (isSetDomainOverrideMessage(message)) {
+      void sendSettingsResponse(
+        () =>
+          updateSettings({
+            type: "domain-override",
+            domain: message.domain,
+            action: message.action,
+          }),
+        sendResponse,
+      );
+      return true;
+    }
+
+    if (isResetSettingsMessage(message)) {
+      void sendSettingsResponse(() => resetSettings(), sendResponse);
+      return true;
     }
 
     return false;
@@ -105,6 +152,25 @@ export default defineBackground(() => {
 
   console.info(`[TrackerBlocker] Background ready at ${startedAt}`);
 });
+
+async function sendSettingsResponse(
+  loadSettings: () => Promise<Omit<SettingsResponse, "type">>,
+  sendResponse: (response: SettingsResponse | SettingsErrorResponse) => void,
+): Promise<void> {
+  try {
+    const settings = await loadSettings();
+
+    sendResponse({
+      type: SETTINGS_RESPONSE,
+      ...settings,
+    });
+  } catch {
+    sendResponse({
+      type: SETTINGS_ERROR_RESPONSE,
+      reason: "storage-unavailable",
+    });
+  }
+}
 
 function getTabObservationState(
   tabObservations: Map<number, TabObservationState>,

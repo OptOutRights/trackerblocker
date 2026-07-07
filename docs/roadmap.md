@@ -261,7 +261,12 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: storage keys, schema version, migration behavior, accessor APIs, reset behavior, and message handlers.
+- Settings live under the `trackerblocker:settings` key in `browser.storage.local` with schema version `1`.
+- `src/storage/settings.ts` stores only paused sites and per-domain overrides; observed request summaries remain short-lived background memory.
+- Storage accessors normalize settings, migrate unversioned local shapes, drop unknown future schema versions conservatively, and expose reset/update helpers.
+- Background messages can read settings, update site pauses, set/reset domain overrides, and reset local settings.
+- Storage message failures return `trackerblocker.settingsErrorResponse` with `storage-unavailable` instead of hanging the popup/options request.
+- `src/storage/settings.test.ts` and `src/messaging/settings.test.ts` cover defaults, normalization, migration, reads/writes, reset behavior, and message guards.
 
 ### Phase 6: Blocking
 

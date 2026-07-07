@@ -13,8 +13,12 @@ Current test files:
 
 - `src/shared/domains.test.ts`: first-party vs third-party classification, URL normalization, WebSocket requests, public suffix cases, IPs, localhost, malformed inputs, and ignored schemes.
 - `src/shared/requestObservation.test.ts`: passive request aggregation, request type mapping, row ordering, top-level page classification for frame requests, unknown/unclassifiable handling, resets, and empty summaries.
+- `src/shared/trackerCatalog.test.ts`: packaged catalog validation, lookup matching, suffix boundaries, fallback explanation wording, and malformed catalog rejection.
+- `src/shared/ruleDecisions.test.ts`: rule precedence, catalog defaults, unknown handling, first-party behavior, and pause/override decisions.
+- `src/storage/settings.test.ts`: local settings defaults, normalization, migration, read/write helpers, updates, and reset behavior.
 - `src/messaging/health.test.ts`: background health-check message guard behavior.
 - `src/messaging/requestSummary.test.ts`: request summary message and response guard behavior.
+- `src/messaging/settings.test.ts`: settings message and response guard behavior.
 
 ## Types Of Tests
 
