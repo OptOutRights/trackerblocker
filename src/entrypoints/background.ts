@@ -68,7 +68,10 @@ export default defineBackground(() => {
         message.tabId,
         message.pageUrl,
       );
-      const summary = summarizeTabObservation(state);
+      const summary = summarizeTabObservation(state, {
+        sitePaused: isSitePaused(state.pageUrl ?? message.pageUrl, settingsCache),
+        domainOverrides: settingsCache.domainOverrides,
+      });
       const response: GetTabRequestSummaryResponse = {
         type: GET_TAB_REQUEST_SUMMARY_RESPONSE,
         ...summary,

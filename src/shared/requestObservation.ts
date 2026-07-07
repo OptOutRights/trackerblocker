@@ -71,6 +71,11 @@ export interface TabObservationState {
   rows: Map<string, ObservedRequestRow>;
 }
 
+export interface SummaryDecisionOptions {
+  sitePaused?: boolean;
+  domainOverrides?: Record<string, DomainOverrideAction>;
+}
+
 const FIRST_PARTY_EXPLANATION =
   "This request appears to belong to the current site.";
 const UNKNOWN_REQUEST_EXPLANATION =
@@ -196,8 +201,11 @@ export function recordObservedRequest(
 
 export function summarizeTabObservation(
   state: TabObservationState,
+  decisionOptions: SummaryDecisionOptions = {},
 ): TabRequestSummary {
-  const rows = [...state.rows.values()].sort(compareObservedRows);
+  const rows = [...state.rows.values()]
+    .map((row) => applyRowDecision(row, decisionOptions))
+    .sort(compareObservedRows);
 
   return {
     tabId: state.tabId,
@@ -214,6 +222,24 @@ export function summarizeTabObservation(
       (row) => row.status === "allowed" || row.status === "allowed-paused",
     ).length,
     rows,
+  };
+}
+
+function applyRowDecision(
+  row: ObservedRequestRow,
+  decisionOptions: SummaryDecisionOptions,
+): ObservedRequestRow {
+  const decision = decideRule({
+    relationship: row.relationship,
+    catalogDefaultAction: row.catalogDefaultAction,
+    domainOverride: decisionOptions.domainOverrides?.[row.displayName] ?? null,
+    sitePaused: decisionOptions.sitePaused,
+  });
+
+  return {
+    ...row,
+    status: decision.status,
+    ruleSource: decision.source,
   };
 }
 

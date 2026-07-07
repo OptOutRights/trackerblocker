@@ -337,7 +337,13 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: component structure, popup message/update flow, control behavior, row expansion state, accessibility notes, and smoke/manual QA coverage.
+- Popup UI remains in `src/entrypoints/popup/App.tsx` and uses the existing compact Preact/Tailwind structure.
+- The default view shows current site, active/paused protection status, observed request total, and summary filters for third parties, blocked, allowed, and unknown rows.
+- Rows expand in-place to show entity, local explanation, request types, rule source, and per-domain Auto/Block/Allow controls for third-party rows.
+- The site pause button writes through `trackerblocker.updateSitePause`; row controls write through `trackerblocker.setDomainOverride`, then refresh the summary from background state.
+- Summary responses recompute row decisions from the current settings cache so controls update visible decisions immediately.
+- Accessibility basics include real buttons, `aria-pressed` on filter/control buttons, and `aria-expanded` on expandable rows.
+- No Playwright harness exists yet; Phase 7 verification used Vitest, TypeScript, and Firefox build, with manual browser smoke checks left for Phase 9.
 
 ### Phase 8: Options Page
 

@@ -89,8 +89,8 @@ Agents should update this section as MVP pieces are started and completed. Keep 
 - [x] Domain classification: first-party vs third-party detection with public-suffix-aware parsing.
 - [x] Local tracker catalog: packaged entries with category, default action, entity, and explanation.
 - [x] Blocking engine: apply automatic rules, per-domain overrides, and per-site pause.
-- [ ] Popup default view: site status, summary counts, and aggregate third-party domain list.
-- [ ] Popup expanded rows: explanation, request types, rule source, and Auto/Block/Allow control.
+- [x] Popup default view: site status, summary counts, and aggregate third-party domain list.
+- [x] Popup expanded rows: explanation, request types, rule source, and Auto/Block/Allow control.
 - [ ] Options page: paused sites, domain overrides, reset controls, and local-only privacy note.
 - [x] Local storage: settings schema, migrations, overrides, and paused sites.
 - [ ] Tests: core classification, rule decisions, explanation lookup, and storage behavior.

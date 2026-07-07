@@ -12,13 +12,23 @@ import {
   isGetTabRequestSummaryResponse,
   type GetTabRequestSummaryResponse,
 } from "../../messaging/requestSummary";
+import {
+  GET_SETTINGS_MESSAGE,
+  SETTINGS_RESPONSE,
+  SET_DOMAIN_OVERRIDE_MESSAGE,
+  UPDATE_SITE_PAUSE_MESSAGE,
+  isSettingsErrorResponse,
+  isSettingsResponse,
+} from "../../messaging/settings";
 import { formatUrlHost } from "../../shared/domains";
+import type { DomainOverrideAction } from "../../shared/ruleDecisions";
 import type {
   ObservedRequestRow,
   RequestRelationship,
 } from "../../shared/requestObservation";
 
 type BackgroundStatus = "checking" | "ready" | "unavailable";
+type SettingsStatus = "ready" | "unavailable";
 type PopupSummary = GetTabRequestSummaryResponse | null;
 type RequestFilter =
   | "all"
@@ -26,8 +36,8 @@ type RequestFilter =
   | "blocked"
   | "allowed";
 
-function formatHostname(url?: string): string {
-  return formatUrlHost(url) ?? "Unavailable";
+function normalizePopupKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\.+$/, "");
 }
 
 function isHealthCheckResponse(value: unknown): value is HealthCheckResponse {
@@ -45,10 +55,16 @@ function isHealthCheckResponse(value: unknown): value is HealthCheckResponse {
 
 export function App() {
   const [activeHost, setActiveHost] = useState("Checking...");
+  const [activeSite, setActiveSite] = useState<string | null>(null);
   const [backgroundStatus, setBackgroundStatus] =
     useState<BackgroundStatus>("checking");
+  const [settingsStatus, setSettingsStatus] =
+    useState<SettingsStatus>("ready");
+  const [protectionPaused, setProtectionPaused] = useState(false);
   const [summary, setSummary] = useState<PopupSummary>(null);
   const [requestFilter, setRequestFilter] = useState<RequestFilter>("all");
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -63,7 +79,9 @@ export function App() {
         return;
       }
 
-      setActiveHost(formatHostname(tabs[0]?.url));
+      const tabSite = formatUrlHost(tabs[0]?.url);
+      setActiveHost(tabSite ?? "Unavailable");
+      setActiveSite(tabSite);
 
       try {
         const healthResponse = await browser.runtime.sendMessage({
@@ -90,6 +108,28 @@ export function App() {
           ) {
             setSummary(summaryResponse);
           }
+        }
+
+        const settingsResponse = await browser.runtime.sendMessage({
+          type: GET_SETTINGS_MESSAGE,
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (
+          isSettingsResponse(settingsResponse) &&
+          settingsResponse.type === SETTINGS_RESPONSE
+        ) {
+          setSettingsStatus("ready");
+          setProtectionPaused(
+            tabSite
+              ? settingsResponse.pausedSites[normalizePopupKey(tabSite)] === true
+              : false,
+          );
+        } else if (isSettingsErrorResponse(settingsResponse)) {
+          setSettingsStatus("unavailable");
         }
       } catch {
         setBackgroundStatus("unavailable");
@@ -119,7 +159,47 @@ export function App() {
       isMounted = false;
       window.clearInterval(refreshTimer);
     };
-  }, []);
+  }, [reloadToken]);
+
+  async function updateSitePause(paused: boolean) {
+    if (!activeSite) {
+      return;
+    }
+
+    const response = await browser.runtime.sendMessage({
+      type: UPDATE_SITE_PAUSE_MESSAGE,
+      site: activeSite,
+      paused,
+    });
+
+    if (isSettingsErrorResponse(response)) {
+      setSettingsStatus("unavailable");
+      return;
+    }
+
+    setProtectionPaused(paused);
+    setSettingsStatus("ready");
+    setReloadToken((token) => token + 1);
+  }
+
+  async function updateDomainOverride(
+    domain: string,
+    action: DomainOverrideAction | null,
+  ) {
+    const response = await browser.runtime.sendMessage({
+      type: SET_DOMAIN_OVERRIDE_MESSAGE,
+      domain,
+      action,
+    });
+
+    if (isSettingsErrorResponse(response)) {
+      setSettingsStatus("unavailable");
+      return;
+    }
+
+    setSettingsStatus("ready");
+    setReloadToken((token) => token + 1);
+  }
 
   const allRows = summary?.rows ?? [];
   const filteredRows = filterRows(allRows, requestFilter);
@@ -137,7 +217,7 @@ export function App() {
             </h1>
           </div>
           <span class="rounded-full border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-600">
-            Passive
+            {protectionPaused ? "Paused" : "Active"}
           </span>
         </div>
 
@@ -145,6 +225,17 @@ export function App() {
           <div class="flex items-center justify-between gap-3 rounded-md bg-zinc-100 px-3 py-2">
             <span class="text-zinc-600">Current tab</span>
             <span class="truncate font-medium text-zinc-900">{activeHost}</span>
+          </div>
+          <div class="flex items-center justify-between gap-3 rounded-md bg-zinc-100 px-3 py-2">
+            <span class="text-zinc-600">Protection</span>
+            <button
+              class="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-800 transition hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!activeSite || settingsStatus === "unavailable"}
+              type="button"
+              onClick={() => void updateSitePause(!protectionPaused)}
+            >
+              {protectionPaused ? "Resume" : "Pause"}
+            </button>
           </div>
           <div class="flex items-center justify-between gap-3 rounded-md bg-zinc-100 px-3 py-2">
             <span class="text-zinc-600">Observed requests</span>
@@ -195,11 +286,19 @@ export function App() {
           </button>
         )}
 
-        <RequestRows filter={requestFilter} rows={filteredRows} />
+        <RequestRows
+          expandedRowId={expandedRowId}
+          filter={requestFilter}
+          rows={filteredRows}
+          onSetDomainOverride={updateDomainOverride}
+          onToggleRow={(rowId) =>
+            setExpandedRowId((current) => (current === rowId ? null : rowId))
+          }
+        />
 
         <p class="mt-4 text-xs text-zinc-500">
           Background: {backgroundStatus}. Decisions use local catalog rules;
-          request cancellation starts in the blocking phase.
+          settings: {settingsStatus}.
         </p>
       </section>
     </main>
@@ -236,10 +335,19 @@ function SummaryStat({
 }
 
 function RequestRows({
+  expandedRowId,
   filter,
+  onSetDomainOverride,
+  onToggleRow,
   rows,
 }: {
+  expandedRowId: string | null;
   filter: RequestFilter;
+  onSetDomainOverride: (
+    domain: string,
+    action: DomainOverrideAction | null,
+  ) => Promise<void>;
+  onToggleRow: (rowId: string) => void;
   rows: ObservedRequestRow[];
 }) {
   if (rows.length === 0) {
@@ -256,7 +364,13 @@ function RequestRows({
     <div class="mt-5 max-h-[360px] overflow-y-auto">
       <div class="grid gap-2">
         {rows.map((row) => (
-          <RequestRow key={row.id} row={row} />
+          <RequestRow
+            isExpanded={expandedRowId === row.id}
+            key={row.id}
+            row={row}
+            onSetDomainOverride={onSetDomainOverride}
+            onToggle={() => onToggleRow(row.id)}
+          />
         ))}
       </div>
     </div>
@@ -337,10 +451,31 @@ function summaryStatClass(
   return `${base} border-zinc-200 bg-zinc-50 hover:border-zinc-300 hover:bg-white`;
 }
 
-function RequestRow({ row }: { row: ObservedRequestRow }) {
+function RequestRow({
+  isExpanded,
+  onSetDomainOverride,
+  onToggle,
+  row,
+}: {
+  isExpanded: boolean;
+  onSetDomainOverride: (
+    domain: string,
+    action: DomainOverrideAction | null,
+  ) => Promise<void>;
+  onToggle: () => void;
+  row: ObservedRequestRow;
+}) {
+  const selectedOverride = getSelectedOverride(row);
+  const canOverride = row.relationship === "third-party";
+
   return (
     <article class="rounded-lg border border-zinc-200 bg-white px-3 py-2">
-      <div class="flex items-start justify-between gap-3">
+      <button
+        aria-expanded={isExpanded}
+        class="flex w-full items-start justify-between gap-3 text-left"
+        type="button"
+        onClick={onToggle}
+      >
         <div class="min-w-0">
           <p class="truncate text-sm font-medium text-zinc-950">
             {row.displayName}
@@ -358,9 +493,103 @@ function RequestRow({ row }: { row: ObservedRequestRow }) {
           </span>
           <p class="mt-1 text-xs text-zinc-500">{formatStatus(row.status)}</p>
         </div>
-      </div>
+      </button>
+
+      {isExpanded && (
+        <div class="mt-3 border-t border-zinc-100 pt-3 text-xs text-zinc-600">
+          <dl class="grid gap-2">
+            <DetailRow
+              label="Entity"
+              value={row.entity ?? "Not in local catalog"}
+            />
+            <DetailRow label="Explanation" value={row.explanation} />
+            <DetailRow
+              label="Request types"
+              value={row.requestTypes.join(", ")}
+            />
+            <DetailRow
+              label="Rule source"
+              value={formatRuleSource(row.ruleSource)}
+            />
+          </dl>
+
+          {canOverride && (
+            <div class="mt-3 grid grid-cols-3 overflow-hidden rounded-md border border-zinc-200">
+              <OverrideButton
+                isSelected={selectedOverride === "auto"}
+                label="Auto"
+                onSelect={() =>
+                  void onSetDomainOverride(row.displayName, null)
+                }
+              />
+              <OverrideButton
+                isSelected={selectedOverride === "block"}
+                label="Block"
+                onSelect={() =>
+                  void onSetDomainOverride(row.displayName, "block")
+                }
+              />
+              <OverrideButton
+                isSelected={selectedOverride === "allow"}
+                label="Allow"
+                onSelect={() =>
+                  void onSetDomainOverride(row.displayName, "allow")
+                }
+              />
+            </div>
+          )}
+        </div>
+      )}
     </article>
   );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div class="grid grid-cols-[88px_1fr] gap-2">
+      <dt class="font-medium text-zinc-500">{label}</dt>
+      <dd class="text-zinc-800">{value}</dd>
+    </div>
+  );
+}
+
+function OverrideButton({
+  isSelected,
+  label,
+  onSelect,
+}: {
+  isSelected: boolean;
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={isSelected}
+      class={`px-2 py-2 font-medium transition ${
+        isSelected
+          ? "bg-emerald-100 text-emerald-900"
+          : "bg-white text-zinc-600 hover:bg-zinc-50"
+      }`}
+      type="button"
+      onClick={onSelect}
+    >
+      {label}
+    </button>
+  );
+}
+
+function getSelectedOverride(
+  row: ObservedRequestRow,
+): DomainOverrideAction | "auto" {
+  if (row.ruleSource === "blocked-by-user") {
+    return "block";
+  }
+
+  if (row.ruleSource === "allowed-by-user") {
+    return "allow";
+  }
+
+  return "auto";
 }
 
 function formatRelationship(relationship: RequestRelationship): string {
@@ -392,6 +621,19 @@ function formatCategory(category: ObservedRequestRow["category"]): string {
       return "likely CDN";
     case "unknown":
       return "unknown";
+  }
+}
+
+function formatRuleSource(source: ObservedRequestRow["ruleSource"]): string {
+  switch (source) {
+    case "automatic":
+      return "Automatic";
+    case "blocked-by-user":
+      return "Blocked by user";
+    case "allowed-by-user":
+      return "Allowed by user";
+    case "site-paused":
+      return "Allowed because site is paused";
   }
 }
 

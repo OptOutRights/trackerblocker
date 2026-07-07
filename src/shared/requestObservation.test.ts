@@ -108,7 +108,13 @@ describe("request observation aggregation", () => {
       },
     });
 
-    expect(summarizeTabObservation(state)).toMatchObject({
+    expect(
+      summarizeTabObservation(state, {
+        domainOverrides: {
+          "google-analytics.com": "allow",
+        },
+      }),
+    ).toMatchObject({
       blockedCount: 0,
       allowedCount: 1,
       rows: [
@@ -133,7 +139,11 @@ describe("request observation aggregation", () => {
       sitePaused: true,
     });
 
-    expect(summarizeTabObservation(state)).toMatchObject({
+    expect(
+      summarizeTabObservation(state, {
+        sitePaused: true,
+      }),
+    ).toMatchObject({
       blockedCount: 0,
       allowedCount: 1,
       rows: [
@@ -141,6 +151,35 @@ describe("request observation aggregation", () => {
           displayName: "google-analytics.com",
           ruleSource: "site-paused",
           status: "allowed-paused",
+        },
+      ],
+    });
+  });
+
+  it("recomputes summary decisions with current settings", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://www.google-analytics.com/analytics.js",
+      requestType: "script",
+      timestamp: 100,
+    });
+
+    expect(
+      summarizeTabObservation(state, {
+        domainOverrides: {
+          "google-analytics.com": "allow",
+        },
+      }),
+    ).toMatchObject({
+      blockedCount: 0,
+      allowedCount: 1,
+      rows: [
+        {
+          ruleSource: "allowed-by-user",
+          status: "allowed",
         },
       ],
     });
