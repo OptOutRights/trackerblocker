@@ -85,8 +85,8 @@ There should be no runtime model calls and no remote classification in the MVP. 
 Agents should update this section as MVP pieces are started and completed. Keep notes short and link to implementation docs or issues when useful.
 
 - [x] Project scaffold: WXT, TypeScript, Preact, Tailwind, and Firefox dev workflow.
-- [ ] Request observation: collect third-party requests for the active tab.
-- [ ] Domain classification: first-party vs third-party detection with public-suffix-aware parsing.
+- [x] Request observation: collect third-party requests for the active tab.
+- [x] Domain classification: first-party vs third-party detection with public-suffix-aware parsing.
 - [ ] Local tracker catalog: packaged entries with category, default action, entity, and explanation.
 - [ ] Blocking engine: apply automatic rules, per-domain overrides, and per-site pause.
 - [ ] Popup default view: site status, summary counts, and aggregate third-party domain list.
