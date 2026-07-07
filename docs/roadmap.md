@@ -299,7 +299,12 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: cancellation listener details, required permissions, blocked-request recording path, recovery behavior, and manual QA sites.
+- `browser.webRequest.onBeforeRequest` now registers with `["blocking"]` and returns `{ cancel: true }` for rows whose local decision is `blocked`.
+- The manifest includes `webRequestBlocking`; `npm run lint:firefox` validates the built Firefox MV3 output with zero errors and one bundled popup warning.
+- Blocking decisions use an in-memory settings cache loaded from `browser.storage.local`, so the blocking listener stays synchronous while settings remain local.
+- Blocked attempts are recorded through `recordObservedRequest()` before cancellation, so the popup summary includes attempted requests.
+- Site pause and per-domain allow override feed the same decision path and prevent cancellation.
+- Request observation tests cover catalog-blocked rows, allow overrides, and site-pause recovery; manual Firefox checks remain part of Phase 9 QA.
 
 ### Phase 7: Popup Controls And Expanded Rows
 

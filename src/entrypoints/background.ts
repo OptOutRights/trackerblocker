@@ -27,11 +27,28 @@ import {
   summarizeTabObservation,
   type TabObservationState,
 } from "../shared/requestObservation";
-import { readSettings, resetSettings, updateSettings } from "../storage/settings";
+import { formatUrlHost } from "../shared/domains";
+import {
+  normalizeSettings,
+  normalizeSettingsKey,
+  readSettings,
+  resetSettings,
+  updateSettings,
+  type TrackerBlockerSettings,
+} from "../storage/settings";
 
 export default defineBackground(() => {
   const startedAt = new Date().toISOString();
   const tabObservations = new Map<number, TabObservationState>();
+  let settingsCache = normalizeSettings(undefined);
+
+  void readSettings()
+    .then((settings) => {
+      settingsCache = settings;
+    })
+    .catch(() => {
+      settingsCache = normalizeSettings(undefined);
+    });
 
   browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (isHealthCheckMessage(message)) {
@@ -62,7 +79,13 @@ export default defineBackground(() => {
     }
 
     if (isGetSettingsMessage(message)) {
-      void sendSettingsResponse(() => readSettings(), sendResponse);
+      void sendSettingsResponse(
+        () => readSettings(),
+        sendResponse,
+        (settings) => {
+          settingsCache = settings;
+        },
+      );
       return true;
     }
 
@@ -75,6 +98,9 @@ export default defineBackground(() => {
             paused: message.paused,
           }),
         sendResponse,
+        (settings) => {
+          settingsCache = settings;
+        },
       );
       return true;
     }
@@ -88,12 +114,21 @@ export default defineBackground(() => {
             action: message.action,
           }),
         sendResponse,
+        (settings) => {
+          settingsCache = settings;
+        },
       );
       return true;
     }
 
     if (isResetSettingsMessage(message)) {
-      void sendSettingsResponse(() => resetSettings(), sendResponse);
+      void sendSettingsResponse(
+        () => resetSettings(),
+        sendResponse,
+        (settings) => {
+          settingsCache = settings;
+        },
+      );
       return true;
     }
 
@@ -118,18 +153,24 @@ export default defineBackground(() => {
         return undefined;
       }
 
-      recordObservedRequest(state, {
+      const row = recordObservedRequest(state, {
         tabId: details.tabId,
         frameId: details.frameId,
         pageUrl: state.pageUrl ?? requestDocumentUrl,
         requestUrl: details.url,
         requestType: details.type,
         timestamp: details.timeStamp,
+        sitePaused: isSitePaused(
+          state.pageUrl ?? requestDocumentUrl,
+          settingsCache,
+        ),
+        domainOverrides: settingsCache.domainOverrides,
       });
 
-      return undefined;
+      return row.status === "blocked" ? { cancel: true } : undefined;
     },
     { urls: ["<all_urls>"] },
+    ["blocking"],
   );
 
   browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
@@ -156,9 +197,11 @@ export default defineBackground(() => {
 async function sendSettingsResponse(
   loadSettings: () => Promise<Omit<SettingsResponse, "type">>,
   sendResponse: (response: SettingsResponse | SettingsErrorResponse) => void,
+  onSettingsLoaded?: (settings: TrackerBlockerSettings) => void,
 ): Promise<void> {
   try {
     const settings = await loadSettings();
+    onSettingsLoaded?.(settings);
 
     sendResponse({
       type: SETTINGS_RESPONSE,
@@ -170,6 +213,17 @@ async function sendSettingsResponse(
       reason: "storage-unavailable",
     });
   }
+}
+
+function isSitePaused(
+  pageUrl: string | null | undefined,
+  settings: TrackerBlockerSettings,
+): boolean {
+  const site = formatUrlHost(pageUrl);
+
+  return site
+    ? settings.pausedSites[normalizeSettingsKey(site)] === true
+    : false;
 }
 
 function getTabObservationState(

@@ -88,7 +88,7 @@ Agents should update this section as MVP pieces are started and completed. Keep 
 - [x] Request observation: collect third-party requests for the active tab.
 - [x] Domain classification: first-party vs third-party detection with public-suffix-aware parsing.
 - [x] Local tracker catalog: packaged entries with category, default action, entity, and explanation.
-- [ ] Blocking engine: apply automatic rules, per-domain overrides, and per-site pause.
+- [x] Blocking engine: apply automatic rules, per-domain overrides, and per-site pause.
 - [ ] Popup default view: site status, summary counts, and aggregate third-party domain list.
 - [ ] Popup expanded rows: explanation, request types, rule source, and Auto/Block/Allow control.
 - [ ] Options page: paused sites, domain overrides, reset controls, and local-only privacy note.

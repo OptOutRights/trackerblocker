@@ -94,6 +94,58 @@ describe("request observation aggregation", () => {
     });
   });
 
+  it("applies per-domain allow overrides to catalog-blocked rows", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://www.google-analytics.com/analytics.js",
+      requestType: "script",
+      timestamp: 100,
+      domainOverrides: {
+        "google-analytics.com": "allow",
+      },
+    });
+
+    expect(summarizeTabObservation(state)).toMatchObject({
+      blockedCount: 0,
+      allowedCount: 1,
+      rows: [
+        {
+          displayName: "google-analytics.com",
+          ruleSource: "allowed-by-user",
+          status: "allowed",
+        },
+      ],
+    });
+  });
+
+  it("lets site pause allow catalog-blocked rows", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://www.google-analytics.com/analytics.js",
+      requestType: "script",
+      timestamp: 100,
+      sitePaused: true,
+    });
+
+    expect(summarizeTabObservation(state)).toMatchObject({
+      blockedCount: 0,
+      allowedCount: 1,
+      rows: [
+        {
+          displayName: "google-analytics.com",
+          ruleSource: "site-paused",
+          status: "allowed-paused",
+        },
+      ],
+    });
+  });
+
   it("keeps confirmed third-party rows before unknown and first-party rows", () => {
     const state = createTabObservationState(1, "https://www.example.com");
 

@@ -10,6 +10,7 @@ import {
 } from "./trackerCatalog";
 import {
   decideRule,
+  type DomainOverrideAction,
   type RuleDecisionSource,
   type RuleDecisionStatus,
 } from "./ruleDecisions";
@@ -32,6 +33,8 @@ export interface RequestEvidence {
   requestUrl?: string | null;
   requestType?: string | null;
   timestamp: number;
+  sitePaused?: boolean;
+  domainOverrides?: Record<string, DomainOverrideAction>;
 }
 
 export interface ObservedRequestRow {
@@ -123,7 +126,7 @@ export function mapRequestType(
 export function recordObservedRequest(
   state: TabObservationState,
   evidence: RequestEvidence,
-): void {
+): ObservedRequestRow {
   const pageUrl = state.pageUrl ?? evidence.pageUrl;
   const classification = classifyRequestSiteRelationship({
     pageUrl,
@@ -154,15 +157,16 @@ export function recordObservedRequest(
 
   const id = `${rowSeed.relationship}:${rowSeed.key}`;
   const existing = state.rows.get(id);
+  const catalogFields = getCatalogFields(rowSeed);
+  const decision = decideRule({
+    relationship: rowSeed.relationship,
+    catalogDefaultAction: catalogFields.catalogDefaultAction,
+    domainOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
+    sitePaused: evidence.sitePaused,
+  });
 
   if (!existing) {
-    const catalogFields = getCatalogFields(rowSeed);
-    const decision = decideRule({
-      relationship: rowSeed.relationship,
-      catalogDefaultAction: catalogFields.catalogDefaultAction,
-    });
-
-    state.rows.set(id, {
+    const row: ObservedRequestRow = {
       id,
       displayName: rowSeed.displayName,
       relationship: rowSeed.relationship,
@@ -172,16 +176,22 @@ export function recordObservedRequest(
       requestCount: 1,
       requestTypes: [requestType],
       lastSeen: evidence.timestamp,
-    });
-    return;
+    };
+
+    state.rows.set(id, row);
+    return row;
   }
 
   existing.requestCount += 1;
   existing.lastSeen = Math.max(existing.lastSeen, evidence.timestamp);
+  existing.status = decision.status;
+  existing.ruleSource = decision.source;
 
   if (!existing.requestTypes.includes(requestType)) {
     existing.requestTypes = [...existing.requestTypes, requestType].sort();
   }
+
+  return existing;
 }
 
 export function summarizeTabObservation(
