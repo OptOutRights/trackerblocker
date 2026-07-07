@@ -88,6 +88,7 @@ Heuristics:
 
 - Parse URLs with standard URL handling first, then use `tldts` for public-suffix-aware domain comparison.
 - Normalize hostnames by trimming trailing dots, lowercasing, and avoiding path/query/string matching.
+- Treat HTTP(S) and WebSocket request URLs as comparable web requests.
 - Treat matching eTLD+1 domains as same-site, including subdomains such as `static.example.com` on `www.example.com`.
 - Treat different eTLD+1 domains as third-party, including public suffix edge cases such as `example.co.uk` vs `other.co.uk`.
 - Treat IP requests as same-site only when the normalized IP literals match exactly; different IPs are third-party.
@@ -113,7 +114,7 @@ TODO: implementation details
 
 - Exported API: `classifyRequestSiteRelationship()` returns structured same-site, third-party, ignored, or unclassifiable outcomes; `formatUrlHost()` provides safe host display for UI code.
 - Key files: `src/shared/domains.ts`, `src/shared/domains.test.ts`, with popup display using the shared helper instead of local URL parsing.
-- Test coverage: same host, subdomain same-site, cross-site, public suffix country-code domains, private suffix multi-tenant domains, IPs, localhost, normalization, non-web schemes, missing inputs, and malformed URLs.
+- Test coverage: same host, subdomain same-site, cross-site, WebSocket requests, public suffix country-code domains, private suffix multi-tenant domains, IPs, localhost, normalization, non-web schemes, missing inputs, and malformed URLs.
 - Assumptions: use platform `URL` parsing before `tldts`; compare registrable domains with private suffixes enabled; treat unclassifiable inputs as unknown for display and allowed by default for future blocking decisions.
 
 ### Phase 2: Request Observation
@@ -149,7 +150,11 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: permissions added, listener strategy, background state shape, popup message contract, reset/navigation behavior, and manual test notes.
+- Permissions added: `webRequest` plus `<all_urls>` host permissions; no blocking permission or request cancellation.
+- Listener strategy: `browser.webRequest.onBeforeRequest` records passive request evidence relative to the top-level tab page; `tabs.onUpdated` and `main_frame` requests reset tab state; `tabs.onRemoved` clears memory.
+- Background state shape: short-lived in-memory tab summaries aggregate rows by relationship, normalized display name, request count, request types, and last-seen timestamp.
+- Popup message contract: `trackerblocker.getTabRequestSummary` returns active-tab counts and rows ordered as third-party, unknown/unclassifiable, then first-party; the popup refreshes while open.
+- Test coverage: request type mapping, aggregation, ordering, top-level-page-relative frame requests, WebSocket requests, public-suffix-aware first-party handling, unknown/unclassifiable handling, resets, empty summaries, and message guards.
 
 ### Phase 3: Local Tracker Catalog
 

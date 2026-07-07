@@ -11,8 +11,10 @@ This project should keep tests lightweight, local-first, and focused on privacy-
 
 Current test files:
 
-- `src/shared/domains.test.ts`: first-party vs third-party classification, URL normalization, public suffix cases, IPs, localhost, malformed inputs, and ignored schemes.
+- `src/shared/domains.test.ts`: first-party vs third-party classification, URL normalization, WebSocket requests, public suffix cases, IPs, localhost, malformed inputs, and ignored schemes.
+- `src/shared/requestObservation.test.ts`: passive request aggregation, request type mapping, row ordering, top-level page classification for frame requests, unknown/unclassifiable handling, resets, and empty summaries.
 - `src/messaging/health.test.ts`: background health-check message guard behavior.
+- `src/messaging/requestSummary.test.ts`: request summary message and response guard behavior.
 
 ## Types Of Tests
 
@@ -23,6 +25,7 @@ Use Vitest for pure TypeScript logic. These tests should not require Firefox, ex
 Good candidates:
 
 - Domain and URL classification.
+- Passive request evidence normalization and aggregation.
 - Catalog lookup and explanation fallback.
 - Rule decision precedence.
 - Storage schema normalization and migrations.
