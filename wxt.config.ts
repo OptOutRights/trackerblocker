@@ -29,10 +29,10 @@ export default defineConfig({
   },
   manifest: {
     name: "TrackerBlocker",
-    description:
-      "Blocks and explains likely third-party trackers.",
+    description: "Blocks and explains likely third-party trackers.",
     version: "0.0.0",
-    permissions: ["activeTab", "storage"],
+    permissions: ["activeTab", "storage", "webRequest"],
+    host_permissions: ["<all_urls>"],
     action: {
       default_title: "TrackerBlocker",
     },
