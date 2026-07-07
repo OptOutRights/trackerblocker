@@ -39,6 +39,8 @@ export interface RequestEvidence {
 
 export interface ObservedRequestRow {
   id: string;
+  host: string | null;
+  siteDomain: string | null;
   displayName: string;
   relationship: RequestRelationship;
   category: CatalogCategory | "unknown";
@@ -142,6 +144,8 @@ export function recordObservedRequest(
   const rowSeed: {
     relationship: RequestRelationship;
     key: string;
+    host: string | null;
+    siteDomain: string | null;
     displayName: string;
   } =
     classification.status === "third-party" ||
@@ -151,12 +155,16 @@ export function recordObservedRequest(
             classification.status === "third-party"
               ? "third-party"
               : "first-party",
-          key: classification.requestSite,
-          displayName: classification.requestSite,
+          key: classification.requestHost,
+          host: classification.requestHost,
+          siteDomain: classification.requestSite,
+          displayName: classification.requestHost,
         }
       : {
           relationship: "unknown",
           key: getUnknownRequestKey(evidence.requestUrl),
+          host: null,
+          siteDomain: null,
           displayName: getUnknownRequestDisplayName(evidence.requestUrl),
         };
 
@@ -173,6 +181,8 @@ export function recordObservedRequest(
   if (!existing) {
     const row: ObservedRequestRow = {
       id,
+      host: rowSeed.host,
+      siteDomain: rowSeed.siteDomain,
       displayName: rowSeed.displayName,
       relationship: rowSeed.relationship,
       ...catalogFields,
@@ -232,7 +242,7 @@ function applyRowDecision(
   const decision = decideRule({
     relationship: row.relationship,
     catalogDefaultAction: row.catalogDefaultAction,
-    domainOverride: decisionOptions.domainOverrides?.[row.displayName] ?? null,
+    domainOverride: getDomainOverride(row, decisionOptions.domainOverrides),
     sitePaused: decisionOptions.sitePaused,
   });
 
@@ -277,6 +287,19 @@ function getCatalogFields(rowSeed: {
       catalogMatch?.entry.explanation ?? UNKNOWN_THIRD_PARTY_EXPLANATION,
     catalogDefaultAction: catalogMatch?.entry.defaultAction ?? null,
   };
+}
+
+function getDomainOverride(
+  row: ObservedRequestRow,
+  domainOverrides: Record<string, DomainOverrideAction> | undefined,
+): DomainOverrideAction | null {
+  if (!domainOverrides) {
+    return null;
+  }
+
+  const overrideKey = row.host ?? row.displayName;
+
+  return domainOverrides[overrideKey] ?? null;
 }
 
 function compareObservedRows(

@@ -138,10 +138,10 @@ export function App() {
 
         <section class="mb-6">
           <h2 class="text-sm font-semibold uppercase text-zinc-500">
-            Domain overrides
+            Hostname overrides
           </h2>
           <SettingRows
-            emptyText="No domain overrides."
+            emptyText="No hostname overrides."
             items={domainOverrides.map(([domain, action]) => ({
               id: domain,
               label: domain,

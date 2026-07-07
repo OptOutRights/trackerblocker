@@ -6,7 +6,7 @@ This checklist records the current MVP verification state for local dogfooding.
 
 Last run on July 7, 2026:
 
-- `npm test`: passed, 8 test files and 71 tests.
+- `npm test`: passed, 8 test files and 72 tests.
 - `npm run typecheck`: passed.
 - `npm run lint:firefox`: passed with 0 errors, 0 notices, and 1 bundled-code warning for dynamic `innerHTML`.
 - `npm run zip:firefox`: passed and produced `.output/trackerblocker-0.0.0-firefox.zip` and `.output/trackerblocker-0.0.0-sources.zip`.
@@ -19,13 +19,13 @@ Last run on July 7, 2026:
 Use a fresh Firefox profile with `npm run dev:firefox` or the built `.output/firefox-mv3` extension.
 
 - Visit a quiet first-party page such as `https://example.com` and confirm the popup handles an empty or near-empty request list.
-- Visit a content site with third-party resources and confirm the popup shows third-party domains, categories, counts, statuses, and expanded explanations.
-- Confirm a known catalog-blocked domain is canceled and still appears as blocked in the popup.
+- Visit a content site with third-party resources and confirm the popup shows third-party hostnames, categories, counts, statuses, and expanded explanations.
+- Confirm a known catalog-blocked hostname is canceled and still appears as blocked in the popup.
 - Pause protection for the current site, refresh, and confirm third parties are listed but allowed because the site is paused.
-- Set a blocked third-party domain to Allow, refresh, and confirm it is allowed.
-- Set an unknown third-party domain to Block, refresh, and confirm it is blocked.
-- Open the options page, confirm paused sites and domain overrides appear, then remove each item.
-- Use the options reset control and confirm paused sites and domain overrides are cleared.
+- Set a blocked third-party hostname to Allow, refresh, and confirm it is allowed.
+- Set an unknown third-party hostname to Block, refresh, and confirm it is blocked.
+- Open the options page, confirm paused sites and hostname overrides appear, then remove each item.
+- Use the options reset control and confirm paused sites and hostname overrides are cleared.
 
 ## Known Limitations
 
