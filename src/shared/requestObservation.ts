@@ -8,6 +8,11 @@ import {
   type CatalogCategory,
   type CatalogDefaultAction,
 } from "./trackerCatalog";
+import {
+  decideRule,
+  type RuleDecisionSource,
+  type RuleDecisionStatus,
+} from "./ruleDecisions";
 
 export type RequestTypeCategory =
   | "script"
@@ -37,7 +42,8 @@ export interface ObservedRequestRow {
   entity: string | null;
   explanation: string;
   catalogDefaultAction: CatalogDefaultAction | null;
-  status: "allowed";
+  status: RuleDecisionStatus;
+  ruleSource: RuleDecisionSource;
   requestCount: number;
   requestTypes: RequestTypeCategory[];
   lastSeen: number;
@@ -51,7 +57,7 @@ export interface TabRequestSummary {
   thirdPartyCount: number;
   unknownCount: number;
   firstPartyCount: number;
-  blockedCount: 0;
+  blockedCount: number;
   allowedCount: number;
   rows: ObservedRequestRow[];
 }
@@ -151,13 +157,18 @@ export function recordObservedRequest(
 
   if (!existing) {
     const catalogFields = getCatalogFields(rowSeed);
+    const decision = decideRule({
+      relationship: rowSeed.relationship,
+      catalogDefaultAction: catalogFields.catalogDefaultAction,
+    });
 
     state.rows.set(id, {
       id,
       displayName: rowSeed.displayName,
       relationship: rowSeed.relationship,
       ...catalogFields,
-      status: "allowed",
+      status: decision.status,
+      ruleSource: decision.source,
       requestCount: 1,
       requestTypes: [requestType],
       lastSeen: evidence.timestamp,
@@ -185,11 +196,13 @@ export function summarizeTabObservation(
     totalRequests: rows.reduce((sum, row) => sum + row.requestCount, 0),
     thirdPartyCount: rows.filter((row) => row.relationship === "third-party")
       .length,
-    unknownCount: rows.filter((row) => row.relationship === "unknown").length,
+    unknownCount: rows.filter((row) => row.status === "unknown").length,
     firstPartyCount: rows.filter((row) => row.relationship === "first-party")
       .length,
-    blockedCount: 0,
-    allowedCount: rows.length,
+    blockedCount: rows.filter((row) => row.status === "blocked").length,
+    allowedCount: rows.filter(
+      (row) => row.status === "allowed" || row.status === "allowed-paused",
+    ).length,
     rows,
   };
 }

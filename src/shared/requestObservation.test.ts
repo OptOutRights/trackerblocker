@@ -44,10 +44,10 @@ describe("request observation aggregation", () => {
 
     expect(summarizeTabObservation(state)).toMatchObject({
       thirdPartyCount: 1,
-      unknownCount: 0,
+      unknownCount: 1,
       firstPartyCount: 0,
       blockedCount: 0,
-      allowedCount: 1,
+      allowedCount: 0,
       totalRequests: 2,
       rows: [
         {
@@ -55,10 +55,11 @@ describe("request observation aggregation", () => {
           relationship: "third-party",
           requestCount: 2,
           requestTypes: ["image", "script"],
-          status: "allowed",
           category: "unknown",
           entity: null,
           catalogDefaultAction: null,
+          ruleSource: "automatic",
+          status: "unknown",
         },
       ],
     });
@@ -86,7 +87,8 @@ describe("request observation aggregation", () => {
           catalogDefaultAction: "block",
           explanation:
             "This domain is commonly used to measure visits, page views, and user interactions.",
-          status: "allowed",
+          ruleSource: "automatic",
+          status: "blocked",
         },
       ],
     });

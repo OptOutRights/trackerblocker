@@ -225,7 +225,12 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: decision input/output types, precedence behavior, rule source names, test matrix, and known limitations.
+- Decision logic lives in `src/shared/ruleDecisions.ts` and stays browser-independent.
+- `decideRule()` returns `status`, `source`, and `shouldBlock` from relationship, catalog default action, optional domain override, and optional site pause.
+- Precedence is site pause, per-domain block/allow override, first-party allow, unclassifiable/unknown visibility, catalog default, then unknown third-party allowed by default.
+- Rule sources are `automatic`, `blocked-by-user`, `allowed-by-user`, and `site-paused`; statuses are `blocked`, `allowed`, `unknown`, and `allowed-paused`.
+- Request observation now applies automatic decisions to row summaries before actual request cancellation exists.
+- `src/shared/ruleDecisions.test.ts` covers precedence, catalog defaults, unknowns, and first-party behavior.
 
 ### Phase 5: Local Storage And Overrides
 

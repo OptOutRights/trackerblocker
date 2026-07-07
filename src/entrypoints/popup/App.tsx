@@ -20,7 +20,11 @@ import type {
 
 type BackgroundStatus = "checking" | "ready" | "unavailable";
 type PopupSummary = GetTabRequestSummaryResponse | null;
-type RequestFilter = "all" | RequestRelationship | "blocked";
+type RequestFilter =
+  | "all"
+  | RequestRelationship
+  | "blocked"
+  | "allowed";
 
 function formatHostname(url?: string): string {
   return formatUrlHost(url) ?? "Unavailable";
@@ -159,25 +163,25 @@ export function App() {
             value={summary?.thirdPartyCount ?? 0}
           />
           <SummaryStat
-            filter="unknown"
-            isActive={requestFilter === "unknown"}
-            label="Unknown"
-            onSelect={setRequestFilter}
-            value={summary?.unknownCount ?? 0}
-          />
-          <SummaryStat
-            filter="first-party"
-            isActive={requestFilter === "first-party"}
-            label="First"
-            onSelect={setRequestFilter}
-            value={summary?.firstPartyCount ?? 0}
-          />
-          <SummaryStat
             filter="blocked"
             isActive={requestFilter === "blocked"}
             label="Blocked"
             onSelect={setRequestFilter}
             value={summary?.blockedCount ?? 0}
+          />
+          <SummaryStat
+            filter="allowed"
+            isActive={requestFilter === "allowed"}
+            label="Allowed"
+            onSelect={setRequestFilter}
+            value={summary?.allowedCount ?? 0}
+          />
+          <SummaryStat
+            filter="unknown"
+            isActive={requestFilter === "unknown"}
+            label="Unknown"
+            onSelect={setRequestFilter}
+            value={summary?.unknownCount ?? 0}
           />
         </div>
 
@@ -194,8 +198,8 @@ export function App() {
         <RequestRows filter={requestFilter} rows={filteredRows} />
 
         <p class="mt-4 text-xs text-zinc-500">
-          Background: {backgroundStatus}. All observed requests are allowed in
-          this phase.
+          Background: {backgroundStatus}. Decisions use local catalog rules;
+          request cancellation starts in the blocking phase.
         </p>
       </section>
     </main>
@@ -268,7 +272,17 @@ function filterRows(
   }
 
   if (filter === "blocked") {
-    return [];
+    return rows.filter((row) => row.status === "blocked");
+  }
+
+  if (filter === "allowed") {
+    return rows.filter(
+      (row) => row.status === "allowed" || row.status === "allowed-paused",
+    );
+  }
+
+  if (filter === "unknown") {
+    return rows.filter((row) => row.status === "unknown");
   }
 
   return rows.filter((row) => row.relationship === filter);
@@ -284,6 +298,8 @@ function formatFilterLabel(filter: RequestFilter): string {
       return "unknown";
     case "blocked":
       return "blocked";
+    case "allowed":
+      return "allowed";
     case "all":
       return "all";
   }
@@ -306,8 +322,11 @@ function summaryStatClass(
       case "third-party":
         return `${base} border-amber-500 bg-amber-100 shadow-sm`;
       case "unknown":
-      case "blocked":
         return `${base} border-zinc-500 bg-zinc-200 shadow-sm`;
+      case "blocked":
+        return `${base} border-red-500 bg-red-100 shadow-sm`;
+      case "allowed":
+        return `${base} border-emerald-500 bg-emerald-100 shadow-sm`;
       case "first-party":
         return `${base} border-emerald-500 bg-emerald-100 shadow-sm`;
       case "all":
@@ -337,7 +356,7 @@ function RequestRow({ row }: { row: ObservedRequestRow }) {
           <span class={relationshipBadgeClass(row.relationship)}>
             {row.requestCount}
           </span>
-          <p class="mt-1 text-xs text-zinc-500">allowed</p>
+          <p class="mt-1 text-xs text-zinc-500">{formatStatus(row.status)}</p>
         </div>
       </div>
     </article>
@@ -373,6 +392,19 @@ function formatCategory(category: ObservedRequestRow["category"]): string {
       return "likely CDN";
     case "unknown":
       return "unknown";
+  }
+}
+
+function formatStatus(status: ObservedRequestRow["status"]): string {
+  switch (status) {
+    case "blocked":
+      return "blocked";
+    case "allowed":
+      return "allowed";
+    case "unknown":
+      return "unknown";
+    case "allowed-paused":
+      return "paused";
   }
 }
 
