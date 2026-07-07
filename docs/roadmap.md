@@ -185,7 +185,12 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: catalog file paths, schema shape, lookup API, seed data scope, validation tests, and wording rules for explanations.
+- Catalog data lives in `src/data/trackerCatalog.json` and is imported through `src/shared/trackerCatalog.ts`.
+- Catalog entries include `id`, `matchType`, `domain`, `entity`, `category`, `defaultAction`, and one-sentence `explanation`.
+- `lookupTrackerCatalogEntry()` normalizes domains, matches exact/suffix entries on label boundaries, and chooses the longest most-specific match.
+- Seed data covers advertising, analytics, session replay, social, payment, security, and CDN examples, with block defaults only for tracking-oriented categories.
+- `src/shared/trackerCatalog.test.ts` validates packaged data, malformed catalog rejection, suffix boundaries, exact matches, longest-match behavior, and cautious unknown fallback wording.
+- Request observation enriches third-party rows with local catalog category, entity, explanation, and catalog default action; uncataloged third parties use the local unknown explanation.
 
 ### Phase 4: Decision Engine
 

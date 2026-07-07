@@ -328,6 +328,8 @@ function RequestRow({ row }: { row: ObservedRequestRow }) {
           </p>
           <p class="mt-1 text-xs text-zinc-500">
             {formatRelationship(row.relationship)} -{" "}
+            {formatCategory(row.category)}
+            {row.entity ? ` by ${row.entity}` : ""} -{" "}
             {row.requestTypes.join(", ")}
           </p>
         </div>
@@ -348,6 +350,27 @@ function formatRelationship(relationship: RequestRelationship): string {
       return "third party";
     case "first-party":
       return "first party";
+    case "unknown":
+      return "unknown";
+  }
+}
+
+function formatCategory(category: ObservedRequestRow["category"]): string {
+  switch (category) {
+    case "advertising":
+      return "likely advertising";
+    case "analytics":
+      return "likely analytics";
+    case "session-replay":
+      return "likely session replay";
+    case "social":
+      return "likely social";
+    case "payment":
+      return "likely payment";
+    case "security":
+      return "likely security";
+    case "cdn":
+      return "likely CDN";
     case "unknown":
       return "unknown";
   }

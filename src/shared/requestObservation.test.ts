@@ -57,6 +57,36 @@ describe("request observation aggregation", () => {
           requestTypes: ["image", "script"],
           status: "allowed",
           category: "unknown",
+          entity: null,
+          catalogDefaultAction: null,
+        },
+      ],
+    });
+  });
+
+  it("adds local catalog details to known third-party rows", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://www.google-analytics.com/analytics.js",
+      requestType: "script",
+      timestamp: 100,
+    });
+
+    expect(summarizeTabObservation(state)).toMatchObject({
+      thirdPartyCount: 1,
+      rows: [
+        {
+          displayName: "google-analytics.com",
+          relationship: "third-party",
+          category: "analytics",
+          entity: "Google",
+          catalogDefaultAction: "block",
+          explanation:
+            "This domain is commonly used to measure visits, page views, and user interactions.",
+          status: "allowed",
         },
       ],
     });

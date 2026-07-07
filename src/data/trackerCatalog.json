@@ -1,0 +1,92 @@
+[
+  {
+    "id": "google-doubleclick",
+    "matchType": "suffix",
+    "domain": "doubleclick.net",
+    "entity": "Google",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used to deliver ads and measure ad interactions across sites."
+  },
+  {
+    "id": "google-analytics",
+    "matchType": "suffix",
+    "domain": "google-analytics.com",
+    "entity": "Google",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used to measure visits, page views, and user interactions."
+  },
+  {
+    "id": "google-tag-manager",
+    "matchType": "suffix",
+    "domain": "googletagmanager.com",
+    "entity": "Google",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used to load site tags that can include analytics or advertising tools."
+  },
+  {
+    "id": "hotjar",
+    "matchType": "suffix",
+    "domain": "hotjar.com",
+    "entity": "Hotjar",
+    "category": "session-replay",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for behavior analytics such as heatmaps, recordings, and feedback tools."
+  },
+  {
+    "id": "meta-facebook-connect",
+    "matchType": "suffix",
+    "domain": "facebook.net",
+    "entity": "Meta",
+    "category": "social",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used to load social widgets, login helpers, or social advertising tools."
+  },
+  {
+    "id": "stripe",
+    "matchType": "suffix",
+    "domain": "stripe.com",
+    "entity": "Stripe",
+    "category": "payment",
+    "defaultAction": "allow",
+    "explanation": "This domain is commonly used to process payments or support checkout flows."
+  },
+  {
+    "id": "paypal",
+    "matchType": "suffix",
+    "domain": "paypal.com",
+    "entity": "PayPal",
+    "category": "payment",
+    "defaultAction": "allow",
+    "explanation": "This domain is commonly used to process payments or support checkout flows."
+  },
+  {
+    "id": "hcaptcha",
+    "matchType": "suffix",
+    "domain": "hcaptcha.com",
+    "entity": "hCaptcha",
+    "category": "security",
+    "defaultAction": "allow",
+    "explanation": "This domain is commonly used to reduce automated abuse and protect forms."
+  },
+  {
+    "id": "cloudflare-cdn",
+    "matchType": "suffix",
+    "domain": "cloudflare.com",
+    "entity": "Cloudflare",
+    "category": "cdn",
+    "defaultAction": "allow",
+    "explanation": "This domain is commonly used to deliver site infrastructure, security, or performance services."
+  },
+  {
+    "id": "cloudflare-cdnjs",
+    "matchType": "suffix",
+    "domain": "cdnjs.cloudflare.com",
+    "entity": "Cloudflare",
+    "category": "cdn",
+    "defaultAction": "allow",
+    "explanation": "This domain is commonly used to load shared JavaScript or CSS libraries from a CDN."
+  }
+]

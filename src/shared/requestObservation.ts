@@ -2,6 +2,12 @@ import {
   classifyRequestSiteRelationship,
   formatUrlHost,
 } from "./domains";
+import {
+  lookupTrackerCatalogEntry,
+  UNKNOWN_THIRD_PARTY_EXPLANATION,
+  type CatalogCategory,
+  type CatalogDefaultAction,
+} from "./trackerCatalog";
 
 export type RequestTypeCategory =
   | "script"
@@ -27,7 +33,10 @@ export interface ObservedRequestRow {
   id: string;
   displayName: string;
   relationship: RequestRelationship;
-  category: "unknown";
+  category: CatalogCategory | "unknown";
+  entity: string | null;
+  explanation: string;
+  catalogDefaultAction: CatalogDefaultAction | null;
   status: "allowed";
   requestCount: number;
   requestTypes: RequestTypeCategory[];
@@ -53,6 +62,10 @@ export interface TabObservationState {
   rows: Map<string, ObservedRequestRow>;
 }
 
+const FIRST_PARTY_EXPLANATION =
+  "This request appears to belong to the current site.";
+const UNKNOWN_REQUEST_EXPLANATION =
+  "This request was observed, but TrackerBlocker could not classify its site relationship.";
 const RELATIONSHIP_ORDER: Record<RequestRelationship, number> = {
   "third-party": 0,
   unknown: 1,
@@ -137,11 +150,13 @@ export function recordObservedRequest(
   const existing = state.rows.get(id);
 
   if (!existing) {
+    const catalogFields = getCatalogFields(rowSeed);
+
     state.rows.set(id, {
       id,
       displayName: rowSeed.displayName,
       relationship: rowSeed.relationship,
-      category: "unknown",
+      ...catalogFields,
       status: "allowed",
       requestCount: 1,
       requestTypes: [requestType],
@@ -176,6 +191,42 @@ export function summarizeTabObservation(
     blockedCount: 0,
     allowedCount: rows.length,
     rows,
+  };
+}
+
+function getCatalogFields(rowSeed: {
+  relationship: RequestRelationship;
+  displayName: string;
+}): Pick<
+  ObservedRequestRow,
+  "category" | "entity" | "explanation" | "catalogDefaultAction"
+> {
+  if (rowSeed.relationship === "first-party") {
+    return {
+      category: "unknown",
+      entity: null,
+      explanation: FIRST_PARTY_EXPLANATION,
+      catalogDefaultAction: null,
+    };
+  }
+
+  if (rowSeed.relationship === "unknown") {
+    return {
+      category: "unknown",
+      entity: null,
+      explanation: UNKNOWN_REQUEST_EXPLANATION,
+      catalogDefaultAction: null,
+    };
+  }
+
+  const catalogMatch = lookupTrackerCatalogEntry(rowSeed.displayName);
+
+  return {
+    category: catalogMatch?.entry.category ?? "unknown",
+    entity: catalogMatch?.entry.entity ?? null,
+    explanation:
+      catalogMatch?.entry.explanation ?? UNKNOWN_THIRD_PARTY_EXPLANATION,
+    catalogDefaultAction: catalogMatch?.entry.defaultAction ?? null,
   };
 }
 
