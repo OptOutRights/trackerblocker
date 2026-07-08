@@ -1,5 +1,5 @@
 import type { DomainOverrideAction } from "../shared/ruleDecisions";
-import type { TrackerBlockerSettings } from "../storage/settings";
+import type { SitePauseMode, TrackerBlockerSettings } from "../storage/settings";
 
 export const GET_SETTINGS_MESSAGE = "trackerblocker.getSettings";
 export const UPDATE_SITE_PAUSE_MESSAGE = "trackerblocker.updateSitePause";
@@ -15,7 +15,8 @@ export interface GetSettingsMessage {
 export interface UpdateSitePauseMessage {
   type: typeof UPDATE_SITE_PAUSE_MESSAGE;
   site: string;
-  paused: boolean;
+  mode: SitePauseMode;
+  tabId?: number;
 }
 
 export interface SetDomainOverrideMessage {
@@ -56,8 +57,9 @@ export function isUpdateSitePauseMessage(
     hasType(value, UPDATE_SITE_PAUSE_MESSAGE) &&
     "site" in value &&
     typeof value.site === "string" &&
-    "paused" in value &&
-    typeof value.paused === "boolean"
+    "mode" in value &&
+    (value.mode === "once" || value.mode === "always" || value.mode === null) &&
+    (!("tabId" in value) || typeof value.tabId === "number")
   );
 }
 

@@ -27,6 +27,8 @@ import {
   type ObservedRequestRow,
   type RequestRelationship,
 } from "../../shared/requestObservation";
+import type { SitePauseMode, SitePauseStatus } from "../../storage/settings";
+import { RefreshToast } from "./RefreshToast";
 
 type BackgroundStatus = "checking" | "ready" | "unavailable";
 type SettingsStatus = "ready" | "unavailable";
@@ -36,10 +38,6 @@ type RequestFilter =
   | RequestRelationship
   | "blocked"
   | "allowed";
-
-function normalizePopupKey(value: string): string {
-  return value.trim().toLowerCase().replace(/\.+$/, "");
-}
 
 function isHealthCheckResponse(value: unknown): value is HealthCheckResponse {
   return (
@@ -57,11 +55,14 @@ function isHealthCheckResponse(value: unknown): value is HealthCheckResponse {
 export function App() {
   const [activeHost, setActiveHost] = useState("Checking...");
   const [activeSite, setActiveSite] = useState<string | null>(null);
+  const [activeTabId, setActiveTabId] = useState<number | null>(null);
   const [backgroundStatus, setBackgroundStatus] =
     useState<BackgroundStatus>("checking");
   const [settingsStatus, setSettingsStatus] =
     useState<SettingsStatus>("ready");
-  const [protectionPaused, setProtectionPaused] = useState(false);
+  const [sitePauseStatus, setSitePauseStatus] =
+    useState<SitePauseStatus>("active");
+  const [pauseRefreshHint, setPauseRefreshHint] = useState<string | null>(null);
   const [summary, setSummary] = useState<PopupSummary>(null);
   const [requestFilter, setRequestFilter] = useState<RequestFilter>("all");
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
@@ -81,8 +82,10 @@ export function App() {
       }
 
       const tabSite = formatUrlHost(tabs[0]?.url);
+      const activeTab = tabs[0];
       setActiveHost(tabSite ?? "Unavailable");
       setActiveSite(tabSite);
+      setActiveTabId(typeof activeTab?.id === "number" ? activeTab.id : null);
 
       try {
         const healthResponse = await browser.runtime.sendMessage({
@@ -92,8 +95,6 @@ export function App() {
         setBackgroundStatus(
           isHealthCheckResponse(healthResponse) ? "ready" : "unavailable",
         );
-
-        const activeTab = tabs[0];
 
         if (typeof activeTab?.id === "number") {
           const summaryResponse = await browser.runtime.sendMessage({
@@ -108,6 +109,7 @@ export function App() {
             summaryResponse.type === GET_TAB_REQUEST_SUMMARY_RESPONSE
           ) {
             setSummary(summaryResponse);
+            setSitePauseStatus(summaryResponse.sitePauseStatus);
           }
         }
 
@@ -124,11 +126,6 @@ export function App() {
           settingsResponse.type === SETTINGS_RESPONSE
         ) {
           setSettingsStatus("ready");
-          setProtectionPaused(
-            tabSite
-              ? settingsResponse.pausedSites[normalizePopupKey(tabSite)] === true
-              : false,
-          );
         } else if (isSettingsErrorResponse(settingsResponse)) {
           setSettingsStatus("unavailable");
         }
@@ -165,7 +162,7 @@ export function App() {
     };
   }, [reloadToken]);
 
-  async function updateSitePause(paused: boolean) {
+  async function updateSitePause(mode: SitePauseMode) {
     if (!activeSite) {
       return;
     }
@@ -174,7 +171,8 @@ export function App() {
       const response = await browser.runtime.sendMessage({
         type: UPDATE_SITE_PAUSE_MESSAGE,
         site: activeSite,
-        paused,
+        mode,
+        tabId: activeTabId ?? undefined,
       });
 
       if (isSettingsErrorResponse(response) || !isSettingsResponse(response)) {
@@ -182,7 +180,8 @@ export function App() {
         return;
       }
 
-      setProtectionPaused(paused);
+      setSitePauseStatus(formatOptimisticPauseStatus(mode));
+      setPauseRefreshHint(formatPauseModeRefreshHint(mode));
       setSettingsStatus("ready");
       setReloadToken((token) => token + 1);
     } catch {
@@ -213,6 +212,20 @@ export function App() {
     }
   }
 
+  async function refreshActiveTab() {
+    try {
+      if (activeTabId === null) {
+        await browser.tabs.reload();
+      } else {
+        await browser.tabs.reload(activeTabId);
+      }
+
+      setPauseRefreshHint(null);
+    } catch {
+      setSettingsStatus("unavailable");
+    }
+  }
+
   const allRows = summary?.rows ?? [];
   const filteredRows = filterRows(allRows, requestFilter);
 
@@ -229,7 +242,7 @@ export function App() {
             </h1>
           </div>
           <span class="rounded-full border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-600">
-            {protectionPaused ? "Paused" : "Active"}
+            {formatPauseStatus(sitePauseStatus)}
           </span>
         </div>
 
@@ -240,14 +253,12 @@ export function App() {
           </div>
           <div class="flex items-center justify-between gap-3 rounded-md bg-zinc-100 px-3 py-2">
             <span class="text-zinc-600">Protection</span>
-            <button
-              class="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-800 transition hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!activeSite || settingsStatus === "unavailable"}
-              type="button"
-              onClick={() => void updateSitePause(!protectionPaused)}
-            >
-              {protectionPaused ? "Resume" : "Pause"}
-            </button>
+            <PauseControls
+              activeTabId={activeTabId}
+              isDisabled={!activeSite || settingsStatus === "unavailable"}
+              status={sitePauseStatus}
+              onSetPause={updateSitePause}
+            />
           </div>
           <div class="flex items-center justify-between gap-3 rounded-md bg-zinc-100 px-3 py-2">
             <span class="text-zinc-600">Observed requests</span>
@@ -313,6 +324,11 @@ export function App() {
           settings: {settingsStatus}.
         </p>
       </section>
+      <RefreshToast
+        message={pauseRefreshHint}
+        onDismiss={() => setPauseRefreshHint(null)}
+        onRefresh={() => void refreshActiveTab()}
+      />
     </main>
   );
 }
@@ -342,6 +358,72 @@ function SummaryStat({
     >
       <div class="text-base font-semibold text-zinc-950">{value}</div>
       <div class="mt-1 text-zinc-500">{label}</div>
+    </button>
+  );
+}
+
+function PauseControls({
+  activeTabId,
+  isDisabled,
+  onSetPause,
+  status,
+}: {
+  activeTabId: number | null;
+  isDisabled: boolean;
+  onSetPause: (mode: SitePauseMode) => Promise<void>;
+  status: SitePauseStatus;
+}) {
+  if (status === "paused-always") {
+    return (
+      <PauseButton
+        isDisabled={isDisabled}
+        label="Resume"
+        onClick={() => void onSetPause(null)}
+      />
+    );
+  }
+
+  return (
+    <div class="flex shrink-0 gap-2">
+      {status === "paused-once" ? (
+        <PauseButton
+          isDisabled={isDisabled}
+          label="Resume"
+          onClick={() => void onSetPause(null)}
+        />
+      ) : (
+        <PauseButton
+          isDisabled={isDisabled || activeTabId === null}
+          label="Pause once"
+          onClick={() => void onSetPause("once")}
+        />
+      )}
+      <PauseButton
+        isDisabled={isDisabled}
+        label="Always"
+        onClick={() => void onSetPause("always")}
+      />
+    </div>
+  );
+}
+
+function PauseButton({
+  isDisabled,
+  label,
+  onClick,
+}: {
+  isDisabled: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      class="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-800 transition hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={isDisabled}
+      type="button"
+      onClick={onClick}
+    >
+      {label}
     </button>
   );
 }
@@ -412,6 +494,38 @@ function filterRows(
   }
 
   return rows.filter((row) => row.relationship === filter);
+}
+
+function formatOptimisticPauseStatus(mode: SitePauseMode): SitePauseStatus {
+  switch (mode) {
+    case "once":
+      return "paused-once";
+    case "always":
+      return "paused-always";
+    case null:
+      return "active";
+  }
+}
+
+function formatPauseStatus(status: SitePauseStatus): string {
+  switch (status) {
+    case "active":
+      return "Active";
+    case "paused-once":
+      return "Paused once";
+    case "paused-always":
+      return "Paused always";
+  }
+}
+
+function formatPauseModeRefreshHint(mode: SitePauseMode): string {
+  switch (mode) {
+    case null:
+      return "Refresh page to apply protection.";
+    case "once":
+    case "always":
+      return "Refresh page to reload affected requests.";
+  }
 }
 
 function formatFilterLabel(filter: RequestFilter): string {

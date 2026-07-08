@@ -23,7 +23,22 @@ describe("settings messaging", () => {
       isUpdateSitePauseMessage({
         type: UPDATE_SITE_PAUSE_MESSAGE,
         site: "example.com",
-        paused: true,
+        mode: "once",
+        tabId: 1,
+      }),
+    ).toBe(true);
+    expect(
+      isUpdateSitePauseMessage({
+        type: UPDATE_SITE_PAUSE_MESSAGE,
+        site: "example.com",
+        mode: "always",
+      }),
+    ).toBe(true);
+    expect(
+      isUpdateSitePauseMessage({
+        type: UPDATE_SITE_PAUSE_MESSAGE,
+        site: "example.com",
+        mode: null,
       }),
     ).toBe(true);
     expect(
@@ -48,7 +63,14 @@ describe("settings messaging", () => {
       isUpdateSitePauseMessage({
         type: UPDATE_SITE_PAUSE_MESSAGE,
         site: 1,
-        paused: true,
+        mode: "always",
+      }),
+    ).toBe(false);
+    expect(
+      isUpdateSitePauseMessage({
+        type: UPDATE_SITE_PAUSE_MESSAGE,
+        site: "example.com",
+        mode: "forever",
       }),
     ).toBe(false);
     expect(

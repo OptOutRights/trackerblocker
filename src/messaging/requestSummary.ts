@@ -1,4 +1,5 @@
 import type { TabRequestSummary } from "../shared/requestObservation";
+import type { SitePauseStatus } from "../storage/settings";
 
 export const GET_TAB_REQUEST_SUMMARY_MESSAGE =
   "trackerblocker.getTabRequestSummary";
@@ -13,6 +14,7 @@ export interface GetTabRequestSummaryMessage {
 
 export interface GetTabRequestSummaryResponse extends TabRequestSummary {
   type: typeof GET_TAB_REQUEST_SUMMARY_RESPONSE;
+  sitePauseStatus: SitePauseStatus;
 }
 
 export function isGetTabRequestSummaryMessage(
@@ -39,6 +41,10 @@ export function isGetTabRequestSummaryResponse(
     "tabId" in value &&
     typeof value.tabId === "number" &&
     "rows" in value &&
-    Array.isArray(value.rows)
+    Array.isArray(value.rows) &&
+    "sitePauseStatus" in value &&
+    (value.sitePauseStatus === "active" ||
+      value.sitePauseStatus === "paused-once" ||
+      value.sitePauseStatus === "paused-always")
   );
 }

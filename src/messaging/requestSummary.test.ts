@@ -32,6 +32,7 @@ describe("request summary messaging", () => {
       isGetTabRequestSummaryResponse({
         type: GET_TAB_REQUEST_SUMMARY_RESPONSE,
         tabId: 1,
+        sitePauseStatus: "active",
         rows: [],
       }),
     ).toBe(true);
@@ -42,6 +43,7 @@ describe("request summary messaging", () => {
       isGetTabRequestSummaryResponse({
         type: GET_TAB_REQUEST_SUMMARY_RESPONSE,
         tabId: 1,
+        sitePauseStatus: "paused-forever",
         rows: {},
       }),
     ).toBe(false);

@@ -21,11 +21,13 @@ Use a fresh Firefox profile with `npm run dev:firefox` or the built `.output/fir
 - Visit a quiet first-party page such as `https://example.com` and confirm the popup handles an empty or near-empty request list.
 - Visit a content site with third-party resources and confirm the popup shows third-party hostnames, categories, counts, statuses, and expanded explanations.
 - Confirm a known catalog-blocked hostname is canceled and still appears as blocked in the popup.
-- Pause protection for the current site, refresh, and confirm third parties are listed but allowed because the site is paused.
+- Pause protection once for the current site, refresh, and confirm third parties are listed but allowed because the site is paused.
+- Navigate the same tab to another site, return to the original site, and confirm the pause-once state no longer applies.
+- Always pause the current site, open it in another tab, and confirm the site remains paused until resumed.
 - Set a blocked third-party hostname to Allow, refresh, and confirm it is allowed.
 - Set an unknown third-party hostname to Block, refresh, and confirm it is blocked.
-- Open the options page, confirm paused sites and hostname overrides appear, then remove each item.
-- Use the options reset control and confirm paused sites and hostname overrides are cleared.
+- Open the options page, confirm always-paused sites and hostname overrides appear, then remove each item.
+- Use the options reset control and confirm always-paused sites and hostname overrides are cleared.
 
 ## Known Limitations
 

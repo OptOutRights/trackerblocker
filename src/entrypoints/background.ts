@@ -34,12 +34,14 @@ import {
   readSettings,
   resetSettings,
   updateSettings,
+  type SitePauseStatus,
   type TrackerBlockerSettings,
 } from "../storage/settings";
 
 export default defineBackground(() => {
   const startedAt = new Date().toISOString();
   const tabObservations = new Map<number, TabObservationState>();
+  const temporarySitePauses = new Map<number, string>();
   let settingsCache = normalizeSettings(undefined);
 
   void readSettings()
@@ -68,12 +70,19 @@ export default defineBackground(() => {
         message.tabId,
         message.pageUrl,
       );
+      const sitePauseStatus = getSitePauseStatus(
+        temporarySitePauses,
+        message.tabId,
+        state.pageUrl ?? message.pageUrl,
+        settingsCache,
+      );
       const summary = summarizeTabObservation(state, {
-        sitePaused: isSitePaused(state.pageUrl ?? message.pageUrl, settingsCache),
+        sitePaused: sitePauseStatus !== "active",
         domainOverrides: settingsCache.domainOverrides,
       });
       const response: GetTabRequestSummaryResponse = {
         type: GET_TAB_REQUEST_SUMMARY_RESPONSE,
+        sitePauseStatus,
         ...summary,
       };
 
@@ -93,16 +102,40 @@ export default defineBackground(() => {
     }
 
     if (isUpdateSitePauseMessage(message)) {
+      if (message.mode === "once") {
+        void sendSettingsResponse(
+          () => readSettings(),
+          sendResponse,
+          (settings) => {
+            settingsCache = settings;
+            if (typeof message.tabId === "number") {
+              setTemporarySitePause(
+                temporarySitePauses,
+                message.tabId,
+                message.site,
+              );
+            }
+          },
+        );
+        return true;
+      }
+
       void sendSettingsResponse(
         () =>
           updateSettings({
             type: "site-pause",
             site: message.site,
-            paused: message.paused,
+            paused: message.mode === "always",
           }),
         sendResponse,
         (settings) => {
           settingsCache = settings;
+          if (
+            (message.mode === null || message.mode === "always") &&
+            typeof message.tabId === "number"
+          ) {
+            temporarySitePauses.delete(message.tabId);
+          }
         },
       );
       return true;
@@ -130,6 +163,7 @@ export default defineBackground(() => {
         sendResponse,
         (settings) => {
           settingsCache = settings;
+          temporarySitePauses.clear();
         },
       );
       return true;
@@ -152,9 +186,21 @@ export default defineBackground(() => {
       );
 
       if (details.type === "main_frame") {
+        clearTemporaryPauseForNavigation(
+          temporarySitePauses,
+          details.tabId,
+          details.url,
+        );
         resetTabObservationState(state, details.url);
         return undefined;
       }
+
+      const sitePauseStatus = getSitePauseStatus(
+        temporarySitePauses,
+        details.tabId,
+        state.pageUrl ?? requestDocumentUrl,
+        settingsCache,
+      );
 
       const row = recordObservedRequest(state, {
         tabId: details.tabId,
@@ -163,10 +209,7 @@ export default defineBackground(() => {
         requestUrl: details.url,
         requestType: details.type,
         timestamp: details.timeStamp,
-        sitePaused: isSitePaused(
-          state.pageUrl ?? requestDocumentUrl,
-          settingsCache,
-        ),
+        sitePaused: sitePauseStatus !== "active",
         domainOverrides: settingsCache.domainOverrides,
       });
 
@@ -182,6 +225,7 @@ export default defineBackground(() => {
     }
 
     const state = getTabObservationState(tabObservations, tabId);
+    clearTemporaryPauseForNavigation(temporarySitePauses, tabId, changeInfo.url);
 
     if (state.pageUrl === changeInfo.url) {
       return;
@@ -192,6 +236,7 @@ export default defineBackground(() => {
 
   browser.tabs.onRemoved.addListener((tabId) => {
     tabObservations.delete(tabId);
+    temporarySitePauses.delete(tabId);
   });
 
   console.info(`[TrackerBlocker] Background ready at ${startedAt}`);
@@ -218,15 +263,57 @@ async function sendSettingsResponse(
   }
 }
 
-function isSitePaused(
+function getSitePauseStatus(
+  temporarySitePauses: Map<number, string>,
+  tabId: number,
   pageUrl: string | null | undefined,
   settings: TrackerBlockerSettings,
-): boolean {
-  const site = formatUrlHost(pageUrl);
+): SitePauseStatus {
+  const site = normalizeSiteFromUrl(pageUrl);
 
-  return site
-    ? settings.pausedSites[normalizeSettingsKey(site)] === true
-    : false;
+  if (!site) {
+    return "active";
+  }
+
+  if (settings.pausedSites[site] === true) {
+    return "paused-always";
+  }
+
+  return temporarySitePauses.get(tabId) === site ? "paused-once" : "active";
+}
+
+function setTemporarySitePause(
+  temporarySitePauses: Map<number, string>,
+  tabId: number,
+  site: string,
+): void {
+  const normalizedSite = normalizeSettingsKey(site);
+
+  if (normalizedSite) {
+    temporarySitePauses.set(tabId, normalizedSite);
+  }
+}
+
+function clearTemporaryPauseForNavigation(
+  temporarySitePauses: Map<number, string>,
+  tabId: number,
+  nextUrl: string,
+): void {
+  const pausedSite = temporarySitePauses.get(tabId);
+
+  if (!pausedSite) {
+    return;
+  }
+
+  if (normalizeSiteFromUrl(nextUrl) !== pausedSite) {
+    temporarySitePauses.delete(tabId);
+  }
+}
+
+function normalizeSiteFromUrl(url: string | null | undefined): string | null {
+  const site = formatUrlHost(url);
+
+  return site ? normalizeSettingsKey(site) : null;
 }
 
 function getTabObservationState(

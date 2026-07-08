@@ -51,7 +51,7 @@ export function App() {
       const response = await browser.runtime.sendMessage({
         type: UPDATE_SITE_PAUSE_MESSAGE,
         site,
-        paused: false,
+        mode: null,
       });
 
       if (isSettingsErrorResponse(response) || !isSettingsResponse(response)) {
@@ -134,14 +134,14 @@ export function App() {
 
         <section class="mb-6">
           <h2 class="text-sm font-semibold uppercase text-zinc-500">
-            Paused sites
+            Always-paused sites
           </h2>
           <SettingRows
-            emptyText="No paused sites."
+            emptyText="No always-paused sites."
             items={pausedSites.map((site) => ({
               id: site,
               label: site,
-              value: "Protection paused",
+              value: "Protection always paused",
               actionLabel: "Resume",
               onAction: () => void removeSitePause(site),
             }))}

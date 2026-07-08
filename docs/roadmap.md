@@ -262,7 +262,7 @@ Worktree suitability:
 TODO: implementation details
 
 - Settings live under the `trackerblocker:settings` key in `browser.storage.local` with schema version `1`.
-- `src/storage/settings.ts` stores only paused sites and per-hostname overrides; observed request summaries remain short-lived background memory.
+- `src/storage/settings.ts` stores only always-paused sites and per-hostname overrides; observed request summaries and pause-once state remain short-lived background memory.
 - Storage accessors normalize settings, migrate unversioned local shapes, drop unknown future schema versions conservatively, and expose reset/update helpers.
 - Background messages can read settings, update site pauses, set/reset hostname overrides, and reset local settings.
 - Storage message failures return `trackerblocker.settingsErrorResponse` with `storage-unavailable` instead of hanging the popup/options request.
@@ -303,7 +303,7 @@ TODO: implementation details
 - The manifest includes `webRequestBlocking`; `npm run lint:firefox` validates the built Firefox MV3 output with zero errors and one bundled popup warning.
 - Blocking decisions use an in-memory settings cache loaded from `browser.storage.local`, so the blocking listener stays synchronous while settings remain local.
 - Blocked attempts are recorded through `recordObservedRequest()` before cancellation, so the popup summary includes attempted requests.
-- Site pause and per-hostname allow override feed the same decision path and prevent cancellation.
+- Pause once, always pause, and per-hostname allow override feed the same decision path and prevent cancellation.
 - Request observation tests cover catalog-blocked rows, allow overrides, and site-pause recovery; manual Firefox checks remain part of Phase 9 QA.
 
 ### Phase 7: Popup Controls And Expanded Rows
@@ -339,6 +339,7 @@ TODO: implementation details
 
 - Popup UI remains in `src/entrypoints/popup/App.tsx` and uses the existing compact Preact/Tailwind structure.
 - The default view shows current site, active/paused protection status, observed request total, and summary filters for third parties, blocked, allowed, and uncataloged/unclassifiable rows.
+- Popup protection controls support active, paused once, and paused always states. Pause once is tab-scoped and survives refresh on the same site, while always pause is stored locally.
 - Rows expand in-place to show entity, local explanation, request types, rule source, and per-hostname Auto/Block/Allow controls for third-party rows.
 - The site pause button writes through `trackerblocker.updateSitePause`; row controls write through `trackerblocker.setDomainOverride`, then refresh the summary from background state.
 - Summary responses recompute row decisions from the current settings cache so controls update visible decisions immediately.
@@ -352,7 +353,7 @@ Goal: users can review and reset local controls outside the popup.
 Work:
 
 - Add WXT options entrypoint.
-- List paused sites with remove controls.
+- List always-paused sites with remove controls.
 - List per-hostname overrides with reset-to-Auto controls.
 - Add reset local settings control.
 - State that settings and learned data stay on device.
@@ -376,7 +377,7 @@ TODO: implementation details
 
 - The options page entrypoint lives in `src/entrypoints/options/` and WXT builds it as `options.html`.
 - Options reads settings through `trackerblocker.getSettings` and uses the same background message handlers as the popup.
-- Paused sites can be resumed, hostname overrides can be reset to Auto, and all local settings can be reset.
+- Always-paused sites can be resumed, hostname overrides can be reset to Auto, and all local settings can be reset.
 - Empty, loading, and storage-unavailable states are handled with compact inline UI.
 - The page states that settings and learned data stay on device and that the MVP does not use telemetry, accounts, sync, remote classification, or runtime explanation fetches.
 - Verification used Vitest, TypeScript, and Firefox build; options UI browser smoke checks remain part of Phase 9 QA.
@@ -476,7 +477,7 @@ The MVP is done when:
 - The popup shows third-party hostnames, counts, categories, statuses, and explanations.
 - Known block categories are blocked by default.
 - Unknown third parties are allowed by default and shown clearly.
-- Site pause and per-hostname overrides work.
+- Pause once, always pause, and per-hostname overrides work.
 - Options page can review and reset local controls.
 - Settings stay in `browser.storage.local`.
 - Catalog and explanations are packaged local data.

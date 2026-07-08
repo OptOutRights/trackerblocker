@@ -43,15 +43,15 @@ Unknown third parties should fail gracefully with plain language, for example: "
 The MVP should support two override levels:
 
 - **Per-hostname control**: Auto, Block, or Allow for a specific third-party hostname.
-- **Per-site pause**: Pause protection for the current site until turned back on.
+- **Per-site pause**: Pause protection once for the current tab/site or always for the current site until turned back on.
 
-Per-site pause is the broken-site recovery path. When a site is paused, third-party hostnames should still be listed, but their status should clearly say they are allowed because protection is paused.
+Per-site pause is the broken-site recovery path. Pause once survives refresh while the tab remains on that site, but clears when the tab navigates to another site or closes. Always pause is saved locally and applies to that site in any tab. When a site is paused, third-party hostnames should still be listed, but their status should clearly say they are allowed because protection is paused.
 
 ## Options Page
 
 The options page should stay small in the MVP:
 
-- List paused sites with a way to remove each pause.
+- List always-paused sites with a way to remove each pause.
 - List per-hostname overrides with a way to reset each override to Auto.
 - Provide a reset option for local settings.
 - State that settings and learned data stay on the device.
@@ -88,9 +88,9 @@ Agents should update this section as MVP pieces are started and completed. Keep 
 - [x] Request observation: collect third-party requests for the active tab.
 - [x] Domain classification: first-party vs third-party detection with public-suffix-aware parsing.
 - [x] Local tracker catalog: packaged entries with category, default action, entity, and explanation.
-- [x] Blocking engine: apply automatic rules, per-hostname overrides, and per-site pause.
+- [x] Blocking engine: apply automatic rules, per-hostname overrides, pause once, and always pause.
 - [x] Popup default view: site status, summary counts, and aggregate third-party hostname list.
 - [x] Popup expanded rows: explanation, request types, rule source, and Auto/Block/Allow control.
-- [x] Options page: paused sites, hostname overrides, reset controls, and local-only privacy note.
-- [x] Local storage: settings schema, migrations, overrides, and paused sites.
+- [x] Options page: always-paused sites, hostname overrides, reset controls, and local-only privacy note.
+- [x] Local storage: settings schema, migrations, overrides, and always-paused sites.
 - [x] Tests: core classification, rule decisions, explanation lookup, and storage behavior.

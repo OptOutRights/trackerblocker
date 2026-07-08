@@ -5,6 +5,9 @@ import type { DomainOverrideAction } from "../shared/ruleDecisions";
 export const SETTINGS_STORAGE_KEY = "trackerblocker:settings";
 export const SETTINGS_SCHEMA_VERSION = 1;
 
+export type SitePauseMode = "once" | "always" | null;
+export type SitePauseStatus = "active" | "paused-once" | "paused-always";
+
 export interface TrackerBlockerSettings {
   schemaVersion: typeof SETTINGS_SCHEMA_VERSION;
   pausedSites: Record<string, true>;
