@@ -133,6 +133,7 @@ export function App() {
         }
       } catch {
         setBackgroundStatus("unavailable");
+        setSettingsStatus("unavailable");
       }
     }
 
@@ -143,6 +144,7 @@ export function App() {
 
       setActiveHost("Unavailable");
       setBackgroundStatus("unavailable");
+      setSettingsStatus("unavailable");
     });
 
     const refreshTimer = window.setInterval(() => {
@@ -152,6 +154,7 @@ export function App() {
         }
 
         setBackgroundStatus("unavailable");
+        setSettingsStatus("unavailable");
       });
     }, 1000);
 
@@ -166,39 +169,47 @@ export function App() {
       return;
     }
 
-    const response = await browser.runtime.sendMessage({
-      type: UPDATE_SITE_PAUSE_MESSAGE,
-      site: activeSite,
-      paused,
-    });
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: UPDATE_SITE_PAUSE_MESSAGE,
+        site: activeSite,
+        paused,
+      });
 
-    if (isSettingsErrorResponse(response)) {
+      if (isSettingsErrorResponse(response) || !isSettingsResponse(response)) {
+        setSettingsStatus("unavailable");
+        return;
+      }
+
+      setProtectionPaused(paused);
+      setSettingsStatus("ready");
+      setReloadToken((token) => token + 1);
+    } catch {
       setSettingsStatus("unavailable");
-      return;
     }
-
-    setProtectionPaused(paused);
-    setSettingsStatus("ready");
-    setReloadToken((token) => token + 1);
   }
 
   async function updateDomainOverride(
     domain: string,
     action: DomainOverrideAction | null,
   ) {
-    const response = await browser.runtime.sendMessage({
-      type: SET_DOMAIN_OVERRIDE_MESSAGE,
-      domain,
-      action,
-    });
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: SET_DOMAIN_OVERRIDE_MESSAGE,
+        domain,
+        action,
+      });
 
-    if (isSettingsErrorResponse(response)) {
+      if (isSettingsErrorResponse(response) || !isSettingsResponse(response)) {
+        setSettingsStatus("unavailable");
+        return;
+      }
+
+      setSettingsStatus("ready");
+      setReloadToken((token) => token + 1);
+    } catch {
       setSettingsStatus("unavailable");
-      return;
     }
-
-    setSettingsStatus("ready");
-    setReloadToken((token) => token + 1);
   }
 
   const allRows = summary?.rows ?? [];

@@ -47,46 +47,58 @@ export function App() {
   }, []);
 
   async function removeSitePause(site: string) {
-    const response = await browser.runtime.sendMessage({
-      type: UPDATE_SITE_PAUSE_MESSAGE,
-      site,
-      paused: false,
-    });
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: UPDATE_SITE_PAUSE_MESSAGE,
+        site,
+        paused: false,
+      });
 
-    if (isSettingsErrorResponse(response)) {
+      if (isSettingsErrorResponse(response) || !isSettingsResponse(response)) {
+        setStatus("unavailable");
+        return;
+      }
+
+      await loadSettings();
+    } catch {
       setStatus("unavailable");
-      return;
     }
-
-    await loadSettings();
   }
 
   async function resetDomainOverride(domain: string) {
-    const response = await browser.runtime.sendMessage({
-      type: SET_DOMAIN_OVERRIDE_MESSAGE,
-      domain,
-      action: null,
-    });
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: SET_DOMAIN_OVERRIDE_MESSAGE,
+        domain,
+        action: null,
+      });
 
-    if (isSettingsErrorResponse(response)) {
+      if (isSettingsErrorResponse(response) || !isSettingsResponse(response)) {
+        setStatus("unavailable");
+        return;
+      }
+
+      await loadSettings();
+    } catch {
       setStatus("unavailable");
-      return;
     }
-
-    await loadSettings();
   }
 
   async function resetLocalSettings() {
-    const response = await browser.runtime.sendMessage({
-      type: RESET_SETTINGS_MESSAGE,
-    });
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: RESET_SETTINGS_MESSAGE,
+      });
 
-    if (isSettingsErrorResponse(response)) {
+      if (isSettingsErrorResponse(response) || !isSettingsResponse(response)) {
+        setStatus("unavailable");
+        return;
+      }
+
+      await loadSettings();
+    } catch {
       setStatus("unavailable");
-      return;
     }
-
-    await loadSettings();
   }
 
   const pausedSites = Object.keys(settings?.pausedSites ?? {}).sort();
