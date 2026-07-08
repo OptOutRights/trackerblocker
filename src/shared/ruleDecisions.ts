@@ -1,10 +1,6 @@
 import type { CatalogDefaultAction } from "./trackerCatalog";
 
-export type RuleDecisionStatus =
-  | "blocked"
-  | "allowed"
-  | "unknown"
-  | "allowed-paused";
+export type RuleDecisionStatus = "blocked" | "allowed" | "allowed-paused";
 export type RuleDecisionSource =
   | "automatic"
   | "blocked-by-user"
@@ -64,7 +60,7 @@ export function decideRule(input: RuleDecisionInput): RuleDecision {
 
   if (input.relationship === "unknown") {
     return {
-      status: "unknown",
+      status: "allowed",
       source: "automatic",
       shouldBlock: false,
     };
@@ -87,7 +83,7 @@ export function decideRule(input: RuleDecisionInput): RuleDecision {
   }
 
   return {
-    status: "unknown",
+    status: "allowed",
     source: "automatic",
     shouldBlock: false,
   };

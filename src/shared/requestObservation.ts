@@ -224,7 +224,7 @@ export function summarizeTabObservation(
     totalRequests: rows.reduce((sum, row) => sum + row.requestCount, 0),
     thirdPartyCount: rows.filter((row) => row.relationship === "third-party")
       .length,
-    unknownCount: rows.filter((row) => row.status === "unknown").length,
+    unknownCount: rows.filter(isUnknownRow).length,
     firstPartyCount: rows.filter((row) => row.relationship === "first-party")
       .length,
     blockedCount: rows.filter((row) => row.status === "blocked").length,
@@ -251,6 +251,13 @@ function applyRowDecision(
     status: decision.status,
     ruleSource: decision.source,
   };
+}
+
+export function isUnknownRow(row: ObservedRequestRow): boolean {
+  return (
+    row.relationship === "unknown" ||
+    (row.relationship === "third-party" && row.category === "unknown")
+  );
 }
 
 function getCatalogFields(rowSeed: {

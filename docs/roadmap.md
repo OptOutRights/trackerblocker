@@ -228,7 +228,7 @@ TODO: implementation details
 - Decision logic lives in `src/shared/ruleDecisions.ts` and stays browser-independent.
 - `decideRule()` returns `status`, `source`, and `shouldBlock` from relationship, catalog default action, optional hostname override, and optional site pause.
 - Precedence is site pause, per-hostname block/allow override, first-party allow, unclassifiable/unknown visibility, catalog default, then unknown third-party allowed by default.
-- Rule sources are `automatic`, `blocked-by-user`, `allowed-by-user`, and `site-paused`; statuses are `blocked`, `allowed`, `unknown`, and `allowed-paused`.
+- Rule sources are `automatic`, `blocked-by-user`, `allowed-by-user`, and `site-paused`; statuses are `blocked`, `allowed`, and `allowed-paused`.
 - Request observation now applies automatic decisions to row summaries before actual request cancellation exists.
 - `src/shared/ruleDecisions.test.ts` covers precedence, catalog defaults, unknowns, and first-party behavior.
 
@@ -338,7 +338,7 @@ Worktree suitability:
 TODO: implementation details
 
 - Popup UI remains in `src/entrypoints/popup/App.tsx` and uses the existing compact Preact/Tailwind structure.
-- The default view shows current site, active/paused protection status, observed request total, and summary filters for third parties, blocked, allowed, and unknown rows.
+- The default view shows current site, active/paused protection status, observed request total, and summary filters for third parties, blocked, allowed, and uncataloged/unclassifiable rows.
 - Rows expand in-place to show entity, local explanation, request types, rule source, and per-hostname Auto/Block/Allow controls for third-party rows.
 - The site pause button writes through `trackerblocker.updateSitePause`; row controls write through `trackerblocker.setDomainOverride`, then refresh the summary from background state.
 - Summary responses recompute row decisions from the current settings cache so controls update visible decisions immediately.

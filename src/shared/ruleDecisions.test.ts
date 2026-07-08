@@ -72,14 +72,14 @@ describe("decideRule", () => {
     });
   });
 
-  it("keeps unknown third parties visible but allowed by default", () => {
+  it("allows unknown third parties by default", () => {
     expect(
       decideRule({
         relationship: "third-party",
         catalogDefaultAction: null,
       }),
     ).toEqual({
-      status: "unknown",
+      status: "allowed",
       source: "automatic",
       shouldBlock: false,
     });
@@ -98,14 +98,14 @@ describe("decideRule", () => {
     });
   });
 
-  it("keeps unclassified requests visible but allowed by default", () => {
+  it("allows unclassified requests by default", () => {
     expect(
       decideRule({
         relationship: "unknown",
         catalogDefaultAction: null,
       }),
     ).toEqual({
-      status: "unknown",
+      status: "allowed",
       source: "automatic",
       shouldBlock: false,
     });

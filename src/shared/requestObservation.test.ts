@@ -47,7 +47,7 @@ describe("request observation aggregation", () => {
       unknownCount: 2,
       firstPartyCount: 0,
       blockedCount: 0,
-      allowedCount: 0,
+      allowedCount: 2,
       totalRequests: 2,
       rows: [
         {
@@ -61,7 +61,7 @@ describe("request observation aggregation", () => {
           entity: null,
           catalogDefaultAction: null,
           ruleSource: "automatic",
-          status: "unknown",
+          status: "allowed",
         },
         {
           host: "img.tracker.test",
@@ -74,7 +74,7 @@ describe("request observation aggregation", () => {
           entity: null,
           catalogDefaultAction: null,
           ruleSource: "automatic",
-          status: "unknown",
+          status: "allowed",
         },
       ],
     });
@@ -274,7 +274,9 @@ describe("request observation aggregation", () => {
 
     expect(summarizeTabObservation(state)).toMatchObject({
       thirdPartyCount: 0,
+      unknownCount: 0,
       firstPartyCount: 1,
+      allowedCount: 1,
       rows: [
         {
           host: "cdn.example.co.uk",
@@ -358,10 +360,12 @@ describe("request observation aggregation", () => {
     expect(summarizeTabObservation(state)).toMatchObject({
       unknownCount: 1,
       blockedCount: 0,
+      allowedCount: 1,
       rows: [
         {
           displayName: "Unclassifiable request",
           relationship: "unknown",
+          status: "allowed",
           requestCount: 2,
           requestTypes: ["script", "xhr"],
         },
@@ -382,10 +386,12 @@ describe("request observation aggregation", () => {
 
     expect(summarizeTabObservation(state)).toMatchObject({
       unknownCount: 1,
+      allowedCount: 1,
       rows: [
         {
           displayName: "moz-extension:extension-id",
           relationship: "unknown",
+          status: "allowed",
         },
       ],
     });

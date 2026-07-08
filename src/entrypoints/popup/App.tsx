@@ -22,9 +22,10 @@ import {
 } from "../../messaging/settings";
 import { formatUrlHost } from "../../shared/domains";
 import type { DomainOverrideAction } from "../../shared/ruleDecisions";
-import type {
-  ObservedRequestRow,
-  RequestRelationship,
+import {
+  isUnknownRow,
+  type ObservedRequestRow,
+  type RequestRelationship,
 } from "../../shared/requestObservation";
 
 type BackgroundStatus = "checking" | "ready" | "unavailable";
@@ -407,7 +408,7 @@ function filterRows(
   }
 
   if (filter === "unknown") {
-    return rows.filter((row) => row.status === "unknown");
+    return rows.filter(isUnknownRow);
   }
 
   return rows.filter((row) => row.relationship === filter);
@@ -654,8 +655,6 @@ function formatStatus(status: ObservedRequestRow["status"]): string {
       return "blocked";
     case "allowed":
       return "allowed";
-    case "unknown":
-      return "unknown";
     case "allowed-paused":
       return "paused";
   }
