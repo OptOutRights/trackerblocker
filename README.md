@@ -1,6 +1,6 @@
 # TrackerBlocker
 
-A Firefox-first WebExtension that blocks likely third-party trackers and explains why each third party is present.
+A Firefox extension that learns which companies are tracking you across the web, blocks them before they load, and sends privacy signals telling companies not to sell, share, or track your data.
 
 ## Development
 
