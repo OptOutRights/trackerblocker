@@ -1,0 +1,1806 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TrackerBlocker: Third-Party Request Sources</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #17211f;
+        --muted: #5c6864;
+        --paper: #fbfaf6;
+        --panel: #ffffff;
+        --line: #d8ddd6;
+        --line-strong: #aeb8b1;
+        --green: #1e7d5b;
+        --green-soft: #e4f3ec;
+        --blue: #245f91;
+        --blue-soft: #e4eef8;
+        --red: #af3b35;
+        --red-soft: #f8e7e4;
+        --yellow: #94660d;
+        --yellow-soft: #fff1c9;
+        --purple: #6c4c9a;
+        --purple-soft: #eee8f8;
+        --shadow: 0 10px 30px rgba(23, 33, 31, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          linear-gradient(180deg, rgba(228, 243, 236, 0.75), transparent 340px),
+          var(--paper);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        line-height: 1.55;
+      }
+
+      a {
+        color: var(--blue);
+      }
+
+      code {
+        padding: 0.12rem 0.32rem;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: #f6f7f4;
+        font-size: 0.92em;
+      }
+
+      .page {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 34px 0 72px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+        gap: 32px;
+        align-items: center;
+        min-height: 520px;
+      }
+
+      .hero h1 {
+        margin: 0 0 16px;
+        font-size: clamp(2.4rem, 5vw, 5.7rem);
+        line-height: 0.95;
+        letter-spacing: 0;
+      }
+
+      .hero p {
+        max-width: 680px;
+        margin: 0 0 22px;
+        color: var(--muted);
+        font-size: 1.08rem;
+      }
+
+      .tag-row,
+      .mini-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 4px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.7);
+        color: var(--muted);
+        font-size: 0.88rem;
+        font-weight: 650;
+      }
+
+      .browser-art {
+        overflow: hidden;
+        border: 1px solid var(--line-strong);
+        border-radius: 12px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .browser-top {
+        display: flex;
+        gap: 7px;
+        align-items: center;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #f2f4ef;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--line-strong);
+      }
+
+      .address {
+        flex: 1;
+        margin-left: 10px;
+        padding: 7px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: white;
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+
+      .viewport {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+        padding: 18px;
+      }
+
+      .site-box {
+        position: relative;
+        min-height: 270px;
+        padding: 20px;
+        border: 2px solid #c9d9cf;
+        border-radius: 10px;
+        background: linear-gradient(180deg, #ffffff, #f8fbf8);
+      }
+
+      .site-title {
+        display: inline-flex;
+        align-items: center;
+        padding: 5px 9px;
+        border-radius: 7px;
+        background: var(--green-soft);
+        color: var(--green);
+        font-weight: 800;
+      }
+
+      .resource-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .resource {
+        min-height: 52px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+
+      .resource.third {
+        border-color: #e2a9a5;
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .resource.mixed {
+        border-color: #e2c36e;
+        background: var(--yellow-soft);
+        color: var(--yellow);
+      }
+
+      .extension-gate {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        gap: 10px;
+        align-items: center;
+        margin-top: 14px;
+        padding: 12px;
+        border-radius: 9px;
+        background: #eef5f2;
+      }
+
+      .gate-pill {
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: white;
+        text-align: center;
+        font-size: 0.86rem;
+        font-weight: 750;
+      }
+
+      .arrow {
+        color: var(--muted);
+        font-weight: 900;
+      }
+
+      .section {
+        margin-top: 38px;
+      }
+
+      .section h2 {
+        margin: 0 0 10px;
+        font-size: clamp(1.7rem, 3vw, 2.4rem);
+        letter-spacing: 0;
+      }
+
+      .section > p {
+        max-width: 850px;
+        margin: 0 0 18px;
+        color: var(--muted);
+      }
+
+      .baseline-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .baseline-card,
+      .legend-card,
+      .source-card,
+      .note-card {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 3px 14px rgba(23, 33, 31, 0.04);
+      }
+
+      .baseline-card {
+        padding: 15px;
+      }
+
+      .baseline-card h3,
+      .legend-card h3,
+      .note-card h3 {
+        margin: 0 0 8px;
+        font-size: 1rem;
+      }
+
+      .baseline-card p,
+      .legend-card p,
+      .note-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.93rem;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(130px, 1fr));
+        gap: 8px;
+        align-items: stretch;
+        margin-top: 16px;
+      }
+
+      .flow-step {
+        position: relative;
+        min-height: 112px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: white;
+      }
+
+      .flow-step::after {
+        content: ">";
+        position: absolute;
+        top: 50%;
+        right: -11px;
+        z-index: 2;
+        width: 20px;
+        height: 20px;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        background: var(--paper);
+        color: var(--muted);
+        line-height: 18px;
+        text-align: center;
+        transform: translateY(-50%);
+      }
+
+      .flow-step:last-child::after {
+        display: none;
+      }
+
+      .flow-step b {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .flow-step span {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .legend-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .legend-card {
+        padding: 16px;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 25px;
+        margin-bottom: 8px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 850;
+        text-transform: uppercase;
+      }
+
+      .status.done {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .status.partial {
+        background: var(--yellow-soft);
+        color: var(--yellow);
+      }
+
+      .status.gap {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .source-grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .source-card {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        overflow: hidden;
+      }
+
+      .source-visual {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 230px;
+        padding: 18px;
+        border-right: 1px solid var(--line);
+        background: #f7f8f4;
+      }
+
+      .source-visual h3 {
+        margin: 0;
+        font-size: 1.08rem;
+        line-height: 1.18;
+      }
+
+      .sketch {
+        display: grid;
+        gap: 8px;
+        margin-top: 16px;
+      }
+
+      .box,
+      .tiny-box {
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        background: white;
+        color: var(--ink);
+        text-align: center;
+        font-weight: 800;
+      }
+
+      .box {
+        padding: 10px;
+        font-size: 0.86rem;
+      }
+
+      .tiny-box {
+        padding: 7px;
+        font-size: 0.76rem;
+      }
+
+      .bad {
+        border-color: #dcaaa6;
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .ok {
+        border-color: #acd2bd;
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .warn {
+        border-color: #ddc16f;
+        background: var(--yellow-soft);
+        color: var(--yellow);
+      }
+
+      .info {
+        border-color: #b7cce3;
+        background: var(--blue-soft);
+        color: var(--blue);
+      }
+
+      .purple {
+        border-color: #cec0e5;
+        background: var(--purple-soft);
+        color: var(--purple);
+      }
+
+      .line {
+        height: 18px;
+        border-left: 2px solid var(--line-strong);
+        justify-self: center;
+      }
+
+      .source-body {
+        padding: 18px;
+      }
+
+      .plain-explain {
+        margin: 0 0 14px;
+        font-size: 1rem;
+      }
+
+      .three-cols {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .mini-panel {
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+      }
+
+      .mini-panel h4 {
+        margin: 0 0 6px;
+        font-size: 0.86rem;
+        text-transform: uppercase;
+      }
+
+      .mini-panel p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.91rem;
+      }
+
+      .priority {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        margin-top: 12px;
+        padding: 3px 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 800;
+      }
+
+      .matrix {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: white;
+      }
+
+      .matrix th,
+      .matrix td {
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .matrix th {
+        background: #eef4f0;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+      }
+
+      .matrix tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .footer-note {
+        margin-top: 32px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #ffffff;
+        color: var(--muted);
+      }
+
+      @media (max-width: 920px) {
+        .hero,
+        .source-card {
+          grid-template-columns: 1fr;
+        }
+
+        .source-visual {
+          min-height: auto;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .baseline-grid,
+        .legend-grid,
+        .three-cols,
+        .flow {
+          grid-template-columns: 1fr;
+        }
+
+        .flow-step::after {
+          display: none;
+        }
+      }
+
+      @media print {
+        body {
+          background: white;
+        }
+
+        .page {
+          width: auto;
+          padding: 0;
+        }
+
+        .hero {
+          min-height: auto;
+        }
+
+        .source-card,
+        .baseline-card,
+        .legend-card,
+        .note-card {
+          box-shadow: none;
+          break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div>
+          <div class="tag-row" aria-label="Document traits">
+            <span class="tag">Firefox-first</span>
+            <span class="tag">Local-only</span>
+            <span class="tag">No telemetry</span>
+            <span class="tag">MVP plus future map</span>
+          </div>
+          <h1>Where third-party requests come from</h1>
+          <p>
+            A web page is not one request. It is more like opening a tiny city:
+            the main document arrives first, then scripts, images, frames,
+            beacons, redirects, workers, headers, and browser features can all
+            start more traffic. TrackerBlocker sits at the browser's request
+            gate and decides what to observe, explain, allow, restrict, or block
+            using packaged local rules.
+          </p>
+          <div class="mini-row">
+            <span class="tag">Source: where it begins</span>
+            <span class="tag">Inspect: what DevTools can show</span>
+            <span class="tag">Intercept: where we can see it</span>
+            <span class="tag">Current solution: what exists today</span>
+          </div>
+        </div>
+
+        <aside class="browser-art" aria-label="Simplified browser diagram">
+          <div class="browser-top">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="address">https://example-news.test/article</span>
+          </div>
+          <div class="viewport">
+            <div class="site-box">
+              <span class="site-title">Top-level page</span>
+              <div class="resource-grid">
+                <div class="resource">HTML</div>
+                <div class="resource">CSS</div>
+                <div class="resource third">Ad script</div>
+                <div class="resource third">Analytics XHR</div>
+                <div class="resource mixed">Payment iframe</div>
+                <div class="resource third">Beacon</div>
+              </div>
+              <div class="extension-gate">
+                <div class="gate-pill">Request starts</div>
+                <div class="arrow">></div>
+                <div class="gate-pill">TrackerBlocker checks host</div>
+                <div class="gate-pill ok">Allow</div>
+                <div class="arrow">or</div>
+                <div class="gate-pill bad">Cancel</div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="section">
+        <h2>The Current Gate</h2>
+        <p>
+          Today the extension mostly works at one powerful checkpoint:
+          <code>browser.webRequest.onBeforeRequest</code>. That is early enough
+          to cancel many network requests before they leave the browser. It now
+          pairs that gate with lifecycle, redirect, and request-header hooks, but
+          it still does not explain everything by itself.
+        </p>
+
+        <div class="flow" aria-label="Current TrackerBlocker request flow">
+          <div class="flow-step">
+            <b>1. Page asks</b>
+            <span>A script, image, frame, beacon, XHR, or navigation requests a URL.</span>
+          </div>
+          <div class="flow-step">
+            <b>2. Browser emits event</b>
+            <span>Firefox exposes request, redirect, completion, error, or header events through webRequest.</span>
+          </div>
+          <div class="flow-step">
+            <b>3. Classify site</b>
+            <span>The request host is compared with the current page site.</span>
+          </div>
+          <div class="flow-step">
+            <b>4. Check catalog</b>
+            <span>Known local entries say block, allow, or unknown.</span>
+          </div>
+          <div class="flow-step">
+            <b>5. Decide</b>
+            <span>User override, site pause, host rules, and path rules produce allow, restrict, or block.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Legend</h2>
+        <div class="legend-grid">
+          <div class="legend-card">
+            <span class="status done">Implemented</span>
+            <h3>The MVP handles this path</h3>
+            <p>Usually means the request is observed and can be blocked by hostname/catalog rules.</p>
+          </div>
+          <div class="legend-card">
+            <span class="status partial">Partial</span>
+            <h3>Visible, but shallow</h3>
+            <p>The extension sees some of it, but attribution, labels, path rules, or header control are missing.</p>
+          </div>
+          <div class="legend-card">
+            <span class="status gap">Gap</span>
+            <h3>Not solved yet</h3>
+            <p>This needs another browser hook, metadata, path rules, or may not be fully visible to WebExtensions.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Request Source Map</h2>
+        <p>
+          Each card explains the concept in plain language, then maps it to the
+          inspection surface, interception point, and TrackerBlocker's current
+          behavior. Page inspection can reveal many visible requests, but not
+          every cause: browser-owned traffic, DNS/CNAME details, cache-only
+          service-worker responses, preconnects, and extension-internal messages
+          need other diagnostics. TrackerBlocker now labels those weak spots
+          instead of claiming complete visibility.
+        </p>
+
+        <div class="source-grid">
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Top-Level Page Navigation</h3>
+              <div class="sketch">
+                <div class="box ok">User clicks link</div>
+                <div class="line"></div>
+                <div class="box info">New main_frame URL</div>
+                <div class="line"></div>
+                <div class="box">Reset tab state</div>
+              </div>
+              <span class="status done">Implemented</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                This is the browser loading a new page in the main tab. Think
+                "I am going to a new address." It is not a tracker by itself,
+                but it tells the extension to forget the old page's request list.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>User clicks, redirects, forms, scripts, or session restore.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Mostly yes. The address bar and Network panel show main document loads; session restore or extension causes need browser/extension logs.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>onBeforeRequest</code> for <code>main_frame</code>, plus <code>tabs.onUpdated</code>.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Resets tab observations and clears pause-once when the site changes.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Parser Subresources</h3>
+              <div class="sketch">
+                <div class="box ok">HTML document</div>
+                <div class="line"></div>
+                <div class="tiny-box">script</div>
+                <div class="tiny-box">image</div>
+                <div class="tiny-box">stylesheet</div>
+                <div class="tiny-box warn">font/media/manifest</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                When the browser reads HTML, it automatically discovers more
+                things to fetch. A page can look empty in the address bar while
+                dozens of subresources quietly load behind it.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Tags like <code>&lt;script&gt;</code>, <code>&lt;img&gt;</code>, <code>&lt;link&gt;</code>, video, fonts, embeds, and manifests.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Usually yes. Inspector shows markup and Network shows fetched assets, though cache, CSS imports, and favicon behavior can hide context.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>onBeforeRequest</code>, then inspect <code>details.type</code>.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Common Firefox request types now map to clear labels, including fonts, media, WebSockets, manifests, objects, and prefetch-like requests.</p>
+                </div>
+              </div>
+              <span class="priority">Remaining fallback: browser-specific unknown types still use other.</span>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Script Fetch And XHR</h3>
+              <div class="sketch">
+                <div class="box">Page script</div>
+                <div class="line"></div>
+                <div class="box bad">fetch('/track')</div>
+                <div class="line"></div>
+                <div class="box bad">analytics host</div>
+              </div>
+              <span class="status done">Implemented</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                JavaScript can send data after the page loads. This is common
+                for analytics events, ad conversions, identity matching,
+                experimentation, and product usage tracking.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p><code>fetch()</code>, <code>XMLHttpRequest</code>, SDKs, workers, and third-party scripts.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Yes for requests, not always cause. Network shows Fetch/XHR, but minified SDKs and workers can obscure the initiator.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>onBeforeRequest</code> for <code>xmlhttprequest</code>.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Mapped to <code>xhr</code>, then blocked only by hostname catalog or user override.</p>
+                </div>
+              </div>
+              <span class="priority">Future: path rules for /collect, /track, /events, /conversion.</span>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Beacon And Ping</h3>
+              <div class="sketch">
+                <div class="box">Click or page exit</div>
+                <div class="line"></div>
+                <div class="box bad">tiny event payload</div>
+                <div class="line"></div>
+                <div class="box bad">measurement server</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                Beacons are small "just letting you know this happened" messages.
+                They are popular because they can fire when you leave a page,
+                click a button, or scroll to a target.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p><code>navigator.sendBeacon()</code>, link pings, unload tracking, analytics SDKs.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Partly. Network may show beacons and pings if logging is open and preserved before clicks or page exit.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>onBeforeRequest</code> for <code>beacon</code> and <code>ping</code> where Firefox exposes them.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Both map to <code>beacon</code>, but decisions are still hostname-based.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Third-Party Scripts</h3>
+              <div class="sketch">
+                <div class="box ok">example.com</div>
+                <div class="line"></div>
+                <div class="box bad">tracker-cdn.com/sdk.js</div>
+                <div class="line"></div>
+                <div class="box bad">more requests</div>
+              </div>
+              <span class="status done">Implemented</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                A third-party script is code from another company running on
+                the current page. Once loaded, it can observe page behavior and
+                start more network requests.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Ad tags, analytics SDKs, social widgets, replay tools, payment helpers, fraud tools.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Yes for loaded files. Inspector, Network, and Sources show script URLs; behavior still needs code or request analysis.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>onBeforeRequest</code> for <code>script</code>.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Known tracker script hosts block. Functional hosts can be cataloged as allow.</p>
+                </div>
+              </div>
+              <span class="priority">Important: no script content inspection today.</span>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Tag Managers</h3>
+              <div class="sketch">
+                <div class="box warn">tag-manager.js</div>
+                <div class="line"></div>
+                <div class="tiny-box bad">ads</div>
+                <div class="tiny-box bad">analytics</div>
+                <div class="tiny-box warn">site tools</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                A tag manager is a loader for other loaders. Marketing teams use
+                it to add or remove tracking tools without changing site code.
+                Blocking it can help a lot, but can also break things if the
+                site uses it for functional scripts.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Google Tag Manager and similar containers that inject downstream tags.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Partly. DevTools shows the loader and downstream requests, but not always the container rules or exact causality chain.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Block/restrict the loader or block the downstream requests it creates.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>No special model. Hostname catalog rules only, with no child-request attribution.</p>
+                </div>
+              </div>
+              <span class="priority">Needs metadata and breakage review before aggressive defaults.</span>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Iframes</h3>
+              <div class="sketch">
+                <div class="box ok">Page</div>
+                <div class="line"></div>
+                <div class="box warn">Embedded mini-page</div>
+                <div class="line"></div>
+                <div class="box bad">its own resources</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                An iframe is a page inside a page. Ads, videos, comments,
+                payment forms, maps, CAPTCHA, and social widgets often arrive as
+                iframes. Each iframe can have its own scripts and requests.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p><code>&lt;iframe&gt;</code>, embedded widgets, ads, maps, players, login, checkout, CAPTCHA.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Usually yes. Inspector shows iframe elements and Network shows frame documents, but cross-origin contents can be restricted.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>onBeforeRequest</code> for <code>sub_frame</code>; use <code>documentUrl</code> or <code>originUrl</code>.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p><code>sub_frame</code> maps to <code>iframe</code>. Frame ancestry is not stored beyond <code>frameId</code>.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Requests Inside Frames</h3>
+              <div class="sketch">
+                <div class="box warn">ad iframe</div>
+                <div class="line"></div>
+                <div class="tiny-box bad">pixel</div>
+                <div class="tiny-box bad">script</div>
+                <div class="tiny-box bad">XHR</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                The iframe is only the first layer. Once that mini-page loads,
+                it can make its own requests. For a blocker, the hard question
+                is not just "what host?" but "who caused this?"
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Scripts, pixels, XHR, images, and nested frames inside a third-party frame.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Partly. Network can show frame requests, but nested frames, redirects, and early requests need stored ancestry for clear explanation.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Use <code>webRequest</code> and preserve top-level site plus frame initiator.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Aggregates by request host. No "loaded by this frame" explanation yet.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Redirect Chains</h3>
+              <div class="sketch">
+                <div class="box ok">click</div>
+                <div class="line"></div>
+                <div class="box bad">ad.net</div>
+                <div class="line"></div>
+                <div class="box bad">measure.io</div>
+                <div class="line"></div>
+                <div class="box ok">final site</div>
+              </div>
+              <span class="status gap">Gap</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                Redirects are handoffs. A request goes to one URL, which tells
+                the browser to go somewhere else, then somewhere else again.
+                Ads, affiliate links, login, and measurement flows use this a lot.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Ads, affiliate links, login flows, consent tools, and measurement URLs.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Yes when captured. Preserve Network logs before navigating; fast hops, blocked requests, and downloads may still need redirect events.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Add <code>onBeforeRedirect</code>, plus <code>onCompleted</code> and <code>onErrorOccurred</code>.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Stores visible redirect hops as source host, destination host, status code, and timestamp.</p>
+                </div>
+              </div>
+              <span class="priority">Full redirect URLs and query strings are not stored.</span>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>WebSockets</h3>
+              <div class="sketch">
+                <div class="box">Page</div>
+                <div class="line"></div>
+                <div class="box purple">wss:// live pipe</div>
+                <div class="line"></div>
+                <div class="box purple">server stays connected</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                A WebSocket is a long-lived two-way connection. Instead of many
+                small request/response trips, the page opens a pipe and keeps it
+                open. Chat, dashboards, tracking, and personalization can use it.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p><code>ws:</code> and <code>wss:</code> connections opened by pages and SDKs.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Yes while open. Network can show WebSocket handshakes and frames, but closed or worker-originated sockets are harder to attribute later.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>onBeforeRequest</code> where Firefox exposes WebSocket handshakes.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Site classification supports <code>ws</code>/<code>wss</code>, and exposed WebSocket handshakes map to <code>websocket</code>.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>EventSource And Streaming</h3>
+              <div class="sketch">
+                <div class="box">Page opens stream</div>
+                <div class="line"></div>
+                <div class="box info">server keeps sending</div>
+                <div class="line"></div>
+                <div class="box warn">generic request type</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                Some requests stay open so the server can keep pushing updates.
+                They may look like normal XHR/fetch at the browser hook even
+                though the behavior is closer to a live feed.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Server-sent events, streaming fetch, long polling, chat, notifications, experiments.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Yes for visible connections. Network shows long-lived requests, but labels may look like ordinary XHR/fetch without more context.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>onBeforeRequest</code>; improve labels with path and response metadata later.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Covered as ordinary network requests, with no separate streaming category.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Workers And Worklets</h3>
+              <div class="sketch">
+                <div class="box">Main page</div>
+                <div class="line"></div>
+                <div class="box purple">background helper thread</div>
+                <div class="line"></div>
+                <div class="box bad">its own requests</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                Workers are JavaScript helpers that run off the main page
+                thread. They can import scripts and make requests without being
+                directly tied to a visible button or image.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Dedicated workers, shared workers, service workers, audio worklets, paint worklets.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Partly. DevTools can inspect some workers and requests; worklets and initiators are not always obvious from the DOM.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Use <code>webRequest</code> for worker script loads and worker-originated network requests.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Covered only when Firefox exposes normal tab-associated request events.</p>
+                </div>
+              </div>
+              <span class="priority">Future: store worker/initiator details when available.</span>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Service Workers</h3>
+              <div class="sketch">
+                <div class="box ok">Page asks</div>
+                <div class="line"></div>
+                <div class="box warn">service worker intercepts</div>
+                <div class="line"></div>
+                <div class="box warn">cache or network</div>
+              </div>
+              <span class="status gap">Gap</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                A service worker is a site's local proxy. It can answer from
+                cache before the network is touched. That means "I did not see a
+                network request" is not always the same as "nothing happened."
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Offline caches, app shells, background sync-like behavior, fetch handlers.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Partly, not completely. DevTools shows registrations and caches, but cache-served responses may not appear as network rows.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Use <code>webRequest</code> only for requests that actually hit the network.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>No special handling. Cache-served responses may not be visible.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Preload, Prefetch, Preconnect</h3>
+              <div class="sketch">
+                <div class="box">Page hints</div>
+                <div class="line"></div>
+                <div class="tiny-box info">preload</div>
+                <div class="tiny-box warn">DNS</div>
+                <div class="tiny-box warn">socket warmup</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                Pages can ask the browser to prepare things before they are
+                needed. Some hints fetch real URLs; others only resolve DNS or
+                open a connection, which may not look like a normal request.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p><code>preload</code>, <code>prefetch</code>, prerender, DNS prefetch, and preconnect hints.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Partly. Inspector shows hints and Network shows URL fetches; DNS prefetch and preconnect may not appear as requests.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Use <code>webRequest</code> for URL-bearing fetches. DNS and connection setup may be weakly visible.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>URL-bearing requests may be seen. No distinct prefetch/preconnect category.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Response Headers That Spawn Work</h3>
+              <div class="sketch">
+                <div class="box">Server response</div>
+                <div class="line"></div>
+                <div class="box info">Link / policy / redirect</div>
+                <div class="line"></div>
+                <div class="box warn">browser fetches more</div>
+              </div>
+              <span class="status gap">Gap</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                Not every request begins in the visible HTML. A server response
+                can include headers that tell the browser to fetch, report,
+                redirect, cache, or enforce policies.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p><code>Link</code> headers, redirects, refresh behavior, reporting endpoints, policy headers.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Partly. Network shows response headers and follow-on requests; DOM inspection alone will not reveal header-driven causes.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Use <code>onHeadersReceived</code> if the extension needs to inspect response headers.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Only the resulting requests are observed. Headers are not inspected.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Reporting, CSP, NEL</h3>
+              <div class="sketch">
+                <div class="box warn">Browser notices event</div>
+                <div class="line"></div>
+                <div class="box bad">report upload</div>
+                <div class="line"></div>
+                <div class="box bad">report collector</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                Sites can configure the browser to send reports about security
+                violations, network failures, and errors. These can be useful,
+                but they are still data leaving the browser.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>CSP reports, Network Error Logging, Reporting API, crash/error SDK endpoints.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Partly. Headers and Network uploads may reveal reports, but they often fire only after errors, violations, or navigation.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Use <code>webRequest</code> for visible report uploads; add path/type labels later.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Covered only as ordinary requests if visible. No reporting category.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Outgoing Headers</h3>
+              <div class="sketch">
+                <div class="box">Request URL</div>
+                <div class="line"></div>
+                <div class="box bad">cookies + referrer</div>
+                <div class="line"></div>
+                <div class="box bad">identifier travels</div>
+              </div>
+              <span class="status gap">Gap</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                The URL is only part of the story. Requests can carry cookies,
+                referrers, user-agent hints, authorization data, and cached
+                identifiers. A "restrict" mode would target this layer.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Cookies, referrers, authorization headers, user-agent hints, ETags, cache validators.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Yes for captured requests. Network shows request headers and cookies, but sensitive fields should stay out of default product behavior.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>onBeforeSendHeaders</code>, cookie APIs, and careful header modification.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Restrict mode removes outgoing <code>Cookie</code> and <code>Referer</code> headers for reviewed third parties.</p>
+                </div>
+              </div>
+              <span class="priority">Header values are not stored; response headers are not modified.</span>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Incoming Headers</h3>
+              <div class="sketch">
+                <div class="box">Third-party response</div>
+                <div class="line"></div>
+                <div class="box bad">Set-Cookie / cache state</div>
+                <div class="line"></div>
+                <div class="box bad">browser stores ID</div>
+              </div>
+              <span class="status gap">Gap</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                A third party can set state when it responds. That state can
+                help recognize the browser later. Blocking the request prevents
+                this; restricting would require header-level control.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p><code>Set-Cookie</code>, redirects, cache headers, HSTS, reporting headers, browser state.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Yes for captured responses, partly for stored state. Network shows headers; Storage shows some resulting state.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>onHeadersReceived</code>, used conservatively because it can break sites.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Not implemented. Response headers are not inspected or modified.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Web Storage</h3>
+              <div class="sketch">
+                <div class="box bad">Third-party script</div>
+                <div class="line"></div>
+                <div class="tiny-box bad">localStorage</div>
+                <div class="tiny-box bad">IndexedDB</div>
+                <div class="tiny-box bad">Cache API</div>
+              </div>
+              <span class="status gap">Gap</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                Tracking is not only network. Once a third-party script runs, it
+                may write identifiers into browser storage for its origin. This
+                is hard to intercept cleanly from a WebExtension.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>localStorage, IndexedDB, Cache API, service worker caches, other origin storage.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Partly. Storage shows values by origin, but usually not which script wrote them or why.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Content-script API patching is possible but fragile. Network blocking is cleaner.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Not inspected. TrackerBlocker only uses its own <code>browser.storage.local</code>.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>CNAME Cloaking</h3>
+              <div class="sketch">
+                <div class="box ok">metrics.example.com</div>
+                <div class="line"></div>
+                <div class="box warn">DNS alias</div>
+                <div class="line"></div>
+                <div class="box bad">tracker vendor</div>
+              </div>
+              <span class="status gap">Gap</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                CNAME cloaking makes a tracker look first-party. The URL says
+                <code>metrics.example.com</code>, but DNS points it to a third-party
+                tracking service behind the scenes.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>First-party-looking hostnames delegated to third-party tracking infrastructure.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>No, not from page inspection alone. DevTools shows the hostname, not the DNS CNAME chain behind it.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Need DNS/CNAME knowledge, curated rules, or browser-provided canonical names.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Not implemented. Same eTLD+1 requests are treated as first-party.</p>
+                </div>
+              </div>
+              <span class="priority">Important gap for mature blocking, but not trivial offline.</span>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Mixed-Use Infrastructure</h3>
+              <div class="sketch">
+                <div class="box warn">Cloud/CDN/payment</div>
+                <div class="line"></div>
+                <div class="box ok">site needs it</div>
+                <div class="line"></div>
+                <div class="box bad">may also measure</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                Some third parties are both useful and privacy-relevant.
+                Payments, CAPTCHA, CDNs, maps, video, login, and security tools
+                can be necessary for the page to work.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>CDNs, cloud providers, CAPTCHA, payments, login, maps, video, security vendors.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Partly. DevTools shows hosts, paths, frames, and headers; product meaning needs catalog context and breakage testing.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Prefer allow or restrict. Use narrow host/path rules for confirmed tracking endpoints.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Catalog can mark services as allow, block, or restrict, and precise path rules can override broad host defaults.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Internal URLs</h3>
+              <div class="sketch">
+                <div class="tiny-box info">about:</div>
+                <div class="tiny-box info">moz-extension:</div>
+                <div class="tiny-box info">data:</div>
+                <div class="tiny-box info">blob:</div>
+              </div>
+              <span class="status done">Implemented</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                Not every URL is a website. Browser pages, extension pages,
+                inline data, blobs, and local files are different from normal
+                HTTP traffic and should not be called third-party trackers.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p><code>about:</code>, <code>moz-extension:</code>, <code>data:</code>, <code>blob:</code>, <code>file:</code>, and related schemes.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Yes for visible references, but they are not normal third-party web requests. Blob/data URLs can be short-lived.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Classify non-web schemes as ignored or unclassifiable.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Only <code>http</code>, <code>https</code>, <code>ws</code>, and <code>wss</code> are comparable web schemes.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Browser-Managed Requests</h3>
+              <div class="sketch">
+                <div class="box warn">Firefox or extension</div>
+                <div class="line"></div>
+                <div class="box warn">no content tab</div>
+                <div class="line"></div>
+                <div class="box ok">ignore for page UI</div>
+              </div>
+              <span class="status done">Implemented</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                Some requests belong to the browser, another extension, update
+                checks, safe browsing, or background contexts. Mixing these with
+                page requests would make the popup confusing.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Browser services, other extensions, updates, safe browsing, captive portal checks.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>No, not from a page. These belong to browser or extension debugging contexts and should stay outside page summaries.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p>Keep browser-owned traffic separate and label it if ever shown.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Requests with <code>tabId &lt; 0</code> are intentionally skipped.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Downloads And Protocols</h3>
+              <div class="sketch">
+                <div class="box">Click</div>
+                <div class="line"></div>
+                <div class="box warn">download or app handoff</div>
+                <div class="line"></div>
+                <div class="box warn">maybe tracked redirect</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                Some clicks leave normal page loading and become downloads or
+                external app handoffs. Ad and affiliate flows can use redirects
+                before that happens.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Downloads, app links, protocol handlers, affiliate redirects.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Partly. Network may show pre-handoff redirects; after Downloads or external apps take over, page inspection is not enough.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>webRequest</code> before handoff; downloads API only if future diagnostics need it.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Only normal visible URL requests are observed.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Form Posts</h3>
+              <div class="sketch">
+                <div class="box ok">User submits form</div>
+                <div class="line"></div>
+                <div class="box warn">POST request</div>
+                <div class="line"></div>
+                <div class="box warn">first or third party</div>
+              </div>
+              <span class="status partial">Partial</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                A form can submit data to the current site or to another
+                service. For privacy, the blocker should usually classify the
+                destination host without reading the form body.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Newsletter forms, login, checkout, marketing forms, embedded services.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>Yes for destination and headers. Inspector shows form attributes and Network shows submissions; bodies need privacy caution.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>onBeforeRequest</code> for navigation or subresource form submissions.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Covered as ordinary visible requests. Request bodies are not inspected.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="source-card">
+            <div class="source-visual">
+              <h3>Extension UI Messages</h3>
+              <div class="sketch">
+                <div class="box ok">Popup</div>
+                <div class="line"></div>
+                <div class="box info">runtime message</div>
+                <div class="line"></div>
+                <div class="box ok">background state</div>
+              </div>
+              <span class="status done">Implemented</span>
+            </div>
+            <div class="source-body">
+              <p class="plain-explain">
+                The popup and options pages talk to the background script. This
+                is not web tracking traffic, but it is part of the system that
+                shows summaries and updates user rules.
+              </p>
+              <div class="three-cols">
+                <div class="mini-panel">
+                  <h4>Source</h4>
+                  <p>Popup summary requests, settings reads, site pause, hostname override, reset.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to inspect</h4>
+                  <p>No, not from the web page. These are extension-internal messages visible through extension debugging or logs.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>How to intercept</h4>
+                  <p><code>browser.runtime.onMessage</code> inside the extension.</p>
+                </div>
+                <div class="mini-panel">
+                  <h4>Current solution</h4>
+                  <p>Implemented and kept separate from page request observation.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Implemented Gap Closers</h2>
+        <p>
+          TrackerBlocker now deepens the current request gate in local-only
+          layers. The remaining gaps are labeled where Firefox or WebExtensions
+          cannot provide complete page-level visibility.
+        </p>
+        <table class="matrix">
+          <thead>
+            <tr>
+              <th>Layer</th>
+              <th>Current behavior</th>
+              <th>Privacy boundary</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Catalog metadata</td>
+              <td>Entries can carry source, confidence, breakage risk, notes, and precise path rules.</td>
+              <td>Metadata is packaged JSON only; no remote classification.</td>
+            </tr>
+            <tr>
+              <td>Path-level rules</td>
+              <td>Host defaults can be overridden by local <code>path-prefix</code> or <code>url-prefix</code> rules.</td>
+              <td>Rules match URL path/prefix only; request bodies are not inspected.</td>
+            </tr>
+            <tr>
+              <td>Redirect recording</td>
+              <td>Visible redirect hops record source host, destination host, status code, and timestamp.</td>
+              <td>Full redirect URLs and query strings are not stored.</td>
+            </tr>
+            <tr>
+              <td>Restrict mode</td>
+              <td>Reviewed third parties can load while outgoing <code>Cookie</code> and <code>Referer</code> headers are removed.</td>
+              <td>Header values are not stored, and response headers are not modified.</td>
+            </tr>
+            <tr>
+              <td>Frame/initiator ancestry</td>
+              <td>Rows show browser-exposed frame ids, parent frame ids, document hosts, and initiator hosts.</td>
+              <td>This is not full script-level causality and is labeled as limited.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>Mental Model</h2>
+        <div class="baseline-grid">
+          <div class="baseline-card">
+            <h3>Page layer</h3>
+            <p>HTML, scripts, frames, workers, forms, storage APIs, and user interactions create demand.</p>
+          </div>
+          <div class="baseline-card">
+            <h3>Browser layer</h3>
+            <p>Firefox turns that demand into network requests, cache hits, DNS, connections, and reports.</p>
+          </div>
+          <div class="baseline-card">
+            <h3>Extension layer</h3>
+            <p>TrackerBlocker observes request events, compares sites, checks local rules, and returns allow or cancel.</p>
+          </div>
+          <div class="baseline-card">
+            <h3>User layer</h3>
+            <p>The popup explains what was seen and lets the user pause, allow, or block a hostname.</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="footer-note">
+        This HTML guide is a learning companion to
+        <code>docs/reasoning/third-party-request-sources.md</code>. It is not a
+        new blocking policy by itself. The core rule still applies: keep tracker
+        intelligence local, packaged, privacy-preserving, and cautious about
+        mixed-use services.
+      </div>
+    </main>
+  </body>
+</html>
