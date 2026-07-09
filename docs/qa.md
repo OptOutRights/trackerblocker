@@ -4,9 +4,9 @@ This checklist records the current MVP verification state for local dogfooding.
 
 ## Automated Verification
 
-Last run on July 7, 2026:
+Last run on July 9, 2026:
 
-- `npm test`: passed, 8 test files and 72 tests.
+- `npm test`: passed, 8 test files and 77 tests.
 - `npm run typecheck`: passed.
 - `npm run lint:firefox`: passed with 0 errors, 0 notices, and 1 bundled-code warning for dynamic `innerHTML`.
 - `npm run zip:firefox`: passed and produced `.output/trackerblocker-0.0.0-firefox.zip` and `.output/trackerblocker-0.0.0-sources.zip`.
@@ -32,4 +32,4 @@ Use a fresh Firefox profile with `npm run dev:firefox` or the built `.output/fir
 ## Known Limitations
 
 - Playwright UI smoke tests are not configured yet; runtime UI verification currently relies on WXT build, `web-ext` validation, bounded Firefox launch, and the manual checklist above.
-- The initial catalog is intentionally small and representative.
+- The packaged catalog is intentionally conservative and endpoint-focused; broad mixed-use product domains remain out of the default block list.
