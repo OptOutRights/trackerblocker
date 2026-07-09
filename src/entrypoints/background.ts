@@ -23,6 +23,9 @@ import {
 import {
   createTabObservationState,
   recordObservedRequest,
+  recordRequestCompleted,
+  recordRequestFailed,
+  recordRequestRedirect,
   resetTabObservationState,
   summarizeTabObservation,
   type TabObservationState,
@@ -196,9 +199,14 @@ export default defineBackground(() => {
         );
 
         const row = recordObservedRequest(state, {
+          requestId: details.requestId,
           tabId: details.tabId,
           frameId: details.frameId,
+          parentFrameId: getRequestParentFrameId(details),
           pageUrl: state.pageUrl ?? requestDocumentUrl,
+          documentUrl: getRequestDocumentUrl(details),
+          originUrl: getRequestOriginUrl(details),
+          initiator: getRequestInitiator(details),
           requestUrl: details.url,
           requestType: details.type,
           timestamp: details.timeStamp,
@@ -210,6 +218,69 @@ export default defineBackground(() => {
       },
       { urls: ["<all_urls>"] },
       ["blocking"],
+    );
+
+    browser.webRequest.onBeforeRedirect.addListener(
+      (details) => {
+        if (details.tabId < 0) {
+          return;
+        }
+
+        const state = tabObservations.get(details.tabId);
+
+        if (!state) {
+          return;
+        }
+
+        recordRequestRedirect(state, {
+          requestId: details.requestId,
+          fromUrl: details.url,
+          redirectUrl: details.redirectUrl,
+          statusCode: details.statusCode,
+          timestamp: details.timeStamp,
+        });
+      },
+      { urls: ["<all_urls>"] },
+    );
+
+    browser.webRequest.onCompleted.addListener(
+      (details) => {
+        if (details.tabId < 0) {
+          return;
+        }
+
+        const state = tabObservations.get(details.tabId);
+
+        if (!state) {
+          return;
+        }
+
+        recordRequestCompleted(state, {
+          requestId: details.requestId,
+          timestamp: details.timeStamp,
+        });
+      },
+      { urls: ["<all_urls>"] },
+    );
+
+    browser.webRequest.onErrorOccurred.addListener(
+      (details) => {
+        if (details.tabId < 0) {
+          return;
+        }
+
+        const state = tabObservations.get(details.tabId);
+
+        if (!state) {
+          return;
+        }
+
+        recordRequestFailed(state, {
+          requestId: details.requestId,
+          timestamp: details.timeStamp,
+        });
+      },
+      { urls: ["<all_urls>"] },
     );
 
     browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
@@ -337,6 +408,27 @@ function getTabObservationState(
   return state;
 }
 
+function getRequestParentFrameId(details: unknown): number | undefined {
+  if (
+    typeof details === "object" &&
+    details !== null &&
+    "parentFrameId" in details &&
+    typeof details.parentFrameId === "number"
+  ) {
+    return details.parentFrameId;
+  }
+
+  return undefined;
+}
+
+function getRequestOriginUrl(details: unknown): string | undefined {
+  return getRequestStringProperty(details, "originUrl");
+}
+
+function getRequestInitiator(details: unknown): string | undefined {
+  return getRequestStringProperty(details, "initiator");
+}
+
 function getRequestDocumentUrl(details: unknown): string | undefined {
   if (
     typeof details === "object" &&
@@ -354,6 +446,23 @@ function getRequestDocumentUrl(details: unknown): string | undefined {
     typeof details.originUrl === "string"
   ) {
     return details.originUrl;
+  }
+
+  return undefined;
+}
+
+function getRequestStringProperty(
+  details: unknown,
+  property: "originUrl" | "initiator",
+): string | undefined {
+  if (typeof details !== "object" || details === null) {
+    return undefined;
+  }
+
+  const record = details as Record<string, unknown>;
+
+  if (property in record && typeof record[property] === "string") {
+    return record[property];
   }
 
   return undefined;
