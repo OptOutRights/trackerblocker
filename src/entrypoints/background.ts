@@ -44,202 +44,203 @@ export default defineBackground(() => {
   const temporarySitePauses = new Map<number, string>();
   let settingsCache = normalizeSettings(undefined);
 
-  void readSettings()
-    .then((settings) => {
-      settingsCache = settings;
-    })
-    .catch(() => {
-      settingsCache = normalizeSettings(undefined);
-    });
+  const registerListeners = () => {
+    browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (isHealthCheckMessage(message)) {
+        const response: HealthCheckResponse = {
+          type: HEALTH_CHECK_RESPONSE,
+          ok: true,
+          startedAt,
+        };
 
-  browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (isHealthCheckMessage(message)) {
-      const response: HealthCheckResponse = {
-        type: HEALTH_CHECK_RESPONSE,
-        ok: true,
-        startedAt,
-      };
+        sendResponse(response);
+        return false;
+      }
 
-      sendResponse(response);
-      return false;
-    }
+      if (isGetTabRequestSummaryMessage(message)) {
+        const state = getTabObservationState(
+          tabObservations,
+          message.tabId,
+          message.pageUrl,
+        );
+        const sitePauseStatus = getSitePauseStatus(
+          temporarySitePauses,
+          message.tabId,
+          state.pageUrl ?? message.pageUrl,
+          settingsCache,
+        );
+        const summary = summarizeTabObservation(state, {
+          sitePaused: sitePauseStatus !== "active",
+          domainOverrides: settingsCache.domainOverrides,
+        });
+        const response: GetTabRequestSummaryResponse = {
+          type: GET_TAB_REQUEST_SUMMARY_RESPONSE,
+          sitePauseStatus,
+          ...summary,
+        };
 
-    if (isGetTabRequestSummaryMessage(message)) {
-      const state = getTabObservationState(
-        tabObservations,
-        message.tabId,
-        message.pageUrl,
-      );
-      const sitePauseStatus = getSitePauseStatus(
-        temporarySitePauses,
-        message.tabId,
-        state.pageUrl ?? message.pageUrl,
-        settingsCache,
-      );
-      const summary = summarizeTabObservation(state, {
-        sitePaused: sitePauseStatus !== "active",
-        domainOverrides: settingsCache.domainOverrides,
-      });
-      const response: GetTabRequestSummaryResponse = {
-        type: GET_TAB_REQUEST_SUMMARY_RESPONSE,
-        sitePauseStatus,
-        ...summary,
-      };
+        sendResponse(response);
+        return false;
+      }
 
-      sendResponse(response);
-      return false;
-    }
-
-    if (isGetSettingsMessage(message)) {
-      void sendSettingsResponse(
-        () => readSettings(),
-        sendResponse,
-        (settings) => {
-          settingsCache = settings;
-        },
-      );
-      return true;
-    }
-
-    if (isUpdateSitePauseMessage(message)) {
-      if (message.mode === "once") {
+      if (isGetSettingsMessage(message)) {
         void sendSettingsResponse(
           () => readSettings(),
           sendResponse,
           (settings) => {
             settingsCache = settings;
-            if (typeof message.tabId === "number") {
-              setTemporarySitePause(
-                temporarySitePauses,
-                message.tabId,
-                message.site,
-              );
+          },
+        );
+        return true;
+      }
+
+      if (isUpdateSitePauseMessage(message)) {
+        if (message.mode === "once") {
+          void sendSettingsResponse(
+            () => readSettings(),
+            sendResponse,
+            (settings) => {
+              settingsCache = settings;
+              if (typeof message.tabId === "number") {
+                setTemporarySitePause(
+                  temporarySitePauses,
+                  message.tabId,
+                  message.site,
+                );
+              }
+            },
+          );
+          return true;
+        }
+
+        void sendSettingsResponse(
+          () =>
+            updateSettings({
+              type: "site-pause",
+              site: message.site,
+              paused: message.mode === "always",
+            }),
+          sendResponse,
+          (settings) => {
+            settingsCache = settings;
+            if (
+              (message.mode === null || message.mode === "always") &&
+              typeof message.tabId === "number"
+            ) {
+              temporarySitePauses.delete(message.tabId);
             }
           },
         );
         return true;
       }
 
-      void sendSettingsResponse(
-        () =>
-          updateSettings({
-            type: "site-pause",
-            site: message.site,
-            paused: message.mode === "always",
-          }),
-        sendResponse,
-        (settings) => {
-          settingsCache = settings;
-          if (
-            (message.mode === null || message.mode === "always") &&
-            typeof message.tabId === "number"
-          ) {
-            temporarySitePauses.delete(message.tabId);
-          }
-        },
-      );
-      return true;
-    }
-
-    if (isSetDomainOverrideMessage(message)) {
-      void sendSettingsResponse(
-        () =>
-          updateSettings({
-            type: "domain-override",
-            domain: message.domain,
-            action: message.action,
-          }),
-        sendResponse,
-        (settings) => {
-          settingsCache = settings;
-        },
-      );
-      return true;
-    }
-
-    if (isResetSettingsMessage(message)) {
-      void sendSettingsResponse(
-        () => resetSettings(),
-        sendResponse,
-        (settings) => {
-          settingsCache = settings;
-          temporarySitePauses.clear();
-        },
-      );
-      return true;
-    }
-
-    return false;
-  });
-
-  browser.webRequest.onBeforeRequest.addListener(
-    (details) => {
-      if (details.tabId < 0) {
-        return undefined;
+      if (isSetDomainOverrideMessage(message)) {
+        void sendSettingsResponse(
+          () =>
+            updateSettings({
+              type: "domain-override",
+              domain: message.domain,
+              action: message.action,
+            }),
+          sendResponse,
+          (settings) => {
+            settingsCache = settings;
+          },
+        );
+        return true;
       }
 
-      const requestDocumentUrl = getRequestDocumentUrl(details);
-      const state = getTabObservationState(
-        tabObservations,
-        details.tabId,
-        requestDocumentUrl,
-      );
+      if (isResetSettingsMessage(message)) {
+        void sendSettingsResponse(
+          () => resetSettings(),
+          sendResponse,
+          (settings) => {
+            settingsCache = settings;
+            temporarySitePauses.clear();
+          },
+        );
+        return true;
+      }
 
-      if (details.type === "main_frame") {
-        clearTemporaryPauseForNavigation(
+      return false;
+    });
+
+    browser.webRequest.onBeforeRequest.addListener(
+      (details) => {
+        if (details.tabId < 0) {
+          return undefined;
+        }
+
+        const requestDocumentUrl = getRequestDocumentUrl(details);
+        const state = getTabObservationState(
+          tabObservations,
+          details.tabId,
+          requestDocumentUrl,
+        );
+
+        if (details.type === "main_frame") {
+          clearTemporaryPauseForNavigation(
+            temporarySitePauses,
+            details.tabId,
+            details.url,
+          );
+          resetTabObservationState(state, details.url);
+          return undefined;
+        }
+
+        const sitePauseStatus = getSitePauseStatus(
           temporarySitePauses,
           details.tabId,
-          details.url,
+          state.pageUrl ?? requestDocumentUrl,
+          settingsCache,
         );
-        resetTabObservationState(state, details.url);
-        return undefined;
+
+        const row = recordObservedRequest(state, {
+          tabId: details.tabId,
+          frameId: details.frameId,
+          pageUrl: state.pageUrl ?? requestDocumentUrl,
+          requestUrl: details.url,
+          requestType: details.type,
+          timestamp: details.timeStamp,
+          sitePaused: sitePauseStatus !== "active",
+          domainOverrides: settingsCache.domainOverrides,
+        });
+
+        return row.status === "blocked" ? { cancel: true } : undefined;
+      },
+      { urls: ["<all_urls>"] },
+      ["blocking"],
+    );
+
+    browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+      if (!changeInfo.url) {
+        return;
       }
 
-      const sitePauseStatus = getSitePauseStatus(
-        temporarySitePauses,
-        details.tabId,
-        state.pageUrl ?? requestDocumentUrl,
-        settingsCache,
-      );
+      const state = getTabObservationState(tabObservations, tabId);
+      clearTemporaryPauseForNavigation(temporarySitePauses, tabId, changeInfo.url);
 
-      const row = recordObservedRequest(state, {
-        tabId: details.tabId,
-        frameId: details.frameId,
-        pageUrl: state.pageUrl ?? requestDocumentUrl,
-        requestUrl: details.url,
-        requestType: details.type,
-        timestamp: details.timeStamp,
-        sitePaused: sitePauseStatus !== "active",
-        domainOverrides: settingsCache.domainOverrides,
-      });
+      if (state.pageUrl === changeInfo.url) {
+        return;
+      }
 
-      return row.status === "blocked" ? { cancel: true } : undefined;
-    },
-    { urls: ["<all_urls>"] },
-    ["blocking"],
-  );
+      resetTabObservationState(state, changeInfo.url);
+    });
 
-  browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
-    if (!changeInfo.url) {
-      return;
-    }
+    browser.tabs.onRemoved.addListener((tabId) => {
+      tabObservations.delete(tabId);
+      temporarySitePauses.delete(tabId);
+    });
 
-    const state = getTabObservationState(tabObservations, tabId);
-    clearTemporaryPauseForNavigation(temporarySitePauses, tabId, changeInfo.url);
+    console.info(`[TrackerBlocker] Background ready at ${startedAt}`);
+  };
 
-    if (state.pageUrl === changeInfo.url) {
-      return;
-    }
-
-    resetTabObservationState(state, changeInfo.url);
-  });
-
-  browser.tabs.onRemoved.addListener((tabId) => {
-    tabObservations.delete(tabId);
-    temporarySitePauses.delete(tabId);
-  });
-
-  console.info(`[TrackerBlocker] Background ready at ${startedAt}`);
+  void readSettings()
+    .catch(() => normalizeSettings(undefined))
+    .then((settings) => {
+      settingsCache = settings;
+      registerListeners();
+    });
 });
 
 async function sendSettingsResponse(
