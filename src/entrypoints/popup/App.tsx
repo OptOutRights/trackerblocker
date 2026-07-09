@@ -23,7 +23,6 @@ import {
 import { formatUrlHost } from "../../shared/domains";
 import type { DomainOverrideAction } from "../../shared/ruleDecisions";
 import {
-  isUnknownRow,
   type ObservedRequestRow,
   type RequestRelationship,
 } from "../../shared/requestObservation";
@@ -33,11 +32,7 @@ import { RefreshToast } from "./RefreshToast";
 type BackgroundStatus = "checking" | "ready" | "unavailable";
 type SettingsStatus = "ready" | "unavailable";
 type PopupSummary = GetTabRequestSummaryResponse | null;
-type RequestFilter =
-  | "all"
-  | RequestRelationship
-  | "blocked"
-  | "allowed";
+type RequestView = "summary" | "blocked" | "all";
 
 function isHealthCheckResponse(value: unknown): value is HealthCheckResponse {
   return (
@@ -64,7 +59,7 @@ export function App() {
     useState<SitePauseStatus>("active");
   const [pauseRefreshHint, setPauseRefreshHint] = useState<string | null>(null);
   const [summary, setSummary] = useState<PopupSummary>(null);
-  const [requestFilter, setRequestFilter] = useState<RequestFilter>("all");
+  const [requestView, setRequestView] = useState<RequestView>("summary");
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -227,102 +222,61 @@ export function App() {
   }
 
   const allRows = summary?.rows ?? [];
-  const filteredRows = filterRows(allRows, requestFilter);
+  const blockedRows = filterRows(allRows, "blocked");
+  const visibleRows =
+    requestView === "blocked"
+      ? blockedRows
+      : requestView === "all"
+        ? allRows
+        : [];
+  const hasSystemIssue =
+    backgroundStatus === "unavailable" || settingsStatus === "unavailable";
 
   return (
-    <main class="w-[380px] bg-zinc-50 p-4 text-zinc-950">
-      <section class="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <p class="text-xs font-semibold uppercase text-emerald-700">
-              TrackerBlocker
-            </p>
-            <h1 class="mt-1 text-xl font-semibold leading-tight">
-              Request observation
-            </h1>
-          </div>
-          <span class="rounded-full border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-600">
-            {formatPauseStatus(sitePauseStatus)}
-          </span>
-        </div>
-
-        <div class="mt-4 grid gap-2 text-sm">
-          <div class="flex items-center justify-between gap-3 rounded-md bg-zinc-100 px-3 py-2">
-            <span class="text-zinc-600">Current tab</span>
-            <span class="truncate font-medium text-zinc-900">{activeHost}</span>
-          </div>
-          <div class="flex items-center justify-between gap-3 rounded-md bg-zinc-100 px-3 py-2">
-            <span class="text-zinc-600">Protection</span>
-            <PauseControls
-              activeTabId={activeTabId}
-              isDisabled={!activeSite || settingsStatus === "unavailable"}
-              status={sitePauseStatus}
-              onSetPause={updateSitePause}
-            />
-          </div>
-          <div class="flex items-center justify-between gap-3 rounded-md bg-zinc-100 px-3 py-2">
-            <span class="text-zinc-600">Observed requests</span>
-            <span class="font-medium text-zinc-900">
-              {summary?.totalRequests ?? 0}
-            </span>
-          </div>
-        </div>
-
-        <div class="mt-4 grid grid-cols-4 gap-2 text-center text-xs">
-          <SummaryStat
-            filter="third-party"
-            isActive={requestFilter === "third-party"}
-            label="Third"
-            onSelect={setRequestFilter}
-            value={summary?.thirdPartyCount ?? 0}
-          />
-          <SummaryStat
-            filter="blocked"
-            isActive={requestFilter === "blocked"}
-            label="Blocked"
-            onSelect={setRequestFilter}
-            value={summary?.blockedCount ?? 0}
-          />
-          <SummaryStat
-            filter="allowed"
-            isActive={requestFilter === "allowed"}
-            label="Allowed"
-            onSelect={setRequestFilter}
-            value={summary?.allowedCount ?? 0}
-          />
-          <SummaryStat
-            filter="unknown"
-            isActive={requestFilter === "unknown"}
-            label="Unknown"
-            onSelect={setRequestFilter}
-            value={summary?.unknownCount ?? 0}
-          />
-        </div>
-
-        {requestFilter !== "all" && (
-          <button
-            class="mt-3 text-xs font-medium text-emerald-700 hover:text-emerald-900"
-            type="button"
-            onClick={() => setRequestFilter("all")}
-          >
-            Showing {formatFilterLabel(requestFilter)} only. Show all.
-          </button>
-        )}
-
-        <RequestRows
-          expandedRowId={expandedRowId}
-          filter={requestFilter}
-          rows={filteredRows}
-          onSetDomainOverride={updateDomainOverride}
-          onToggleRow={(rowId) =>
-            setExpandedRowId((current) => (current === rowId ? null : rowId))
-          }
+    <main class="tb-popup w-[380px] p-3 text-zinc-950">
+      <section class="tb-shell">
+        <DashboardHeader
+          activeHost={activeHost}
+          isUnavailable={backgroundStatus === "unavailable"}
+          status={sitePauseStatus}
         />
 
-        <p class="mt-4 text-xs text-zinc-500">
-          Background: {backgroundStatus}. Decisions use local catalog rules;
-          settings: {settingsStatus}.
-        </p>
+        <MetricPanel
+          blockedDomainCount={summary?.blockedCount ?? 0}
+        />
+
+        <PauseControls
+          activeTabId={activeTabId}
+          isDisabled={!activeSite || settingsStatus === "unavailable"}
+          status={sitePauseStatus}
+          onSetPause={updateSitePause}
+        />
+
+        <RequestActions
+          blockedCount={blockedRows.length}
+          currentView={requestView}
+          totalCount={allRows.length}
+          onChange={setRequestView}
+        />
+
+        {requestView !== "summary" && (
+          <RequestRows
+            expandedRowId={expandedRowId}
+            rows={visibleRows}
+            view={requestView}
+            onSetDomainOverride={updateDomainOverride}
+            onToggleRow={(rowId) =>
+              setExpandedRowId((current) => (current === rowId ? null : rowId))
+            }
+          />
+        )}
+
+        {hasSystemIssue && (
+          <SystemNotice
+            backgroundStatus={backgroundStatus}
+            settingsStatus={settingsStatus}
+          />
+        )}
       </section>
       <RefreshToast
         message={pauseRefreshHint}
@@ -333,32 +287,48 @@ export function App() {
   );
 }
 
-function SummaryStat({
-  filter,
-  isActive,
-  label,
-  onSelect,
-  value,
+function DashboardHeader({
+  activeHost,
+  isUnavailable,
+  status,
 }: {
-  filter: RequestFilter;
-  isActive: boolean;
-  label: string;
-  onSelect: (filter: RequestFilter) => void;
-  value: number;
+  activeHost: string;
+  isUnavailable: boolean;
+  status: SitePauseStatus;
 }) {
-  const isDisabled = value === 0;
+  const statusLabel = isUnavailable ? "Unavailable" : formatPauseStatus(status);
 
   return (
-    <button
-      aria-pressed={isActive}
-      class={summaryStatClass(filter, isActive, isDisabled)}
-      disabled={isDisabled}
-      type="button"
-      onClick={() => onSelect(isActive ? "all" : filter)}
-    >
-      <div class="text-base font-semibold text-zinc-950">{value}</div>
-      <div class="mt-1 text-zinc-500">{label}</div>
-    </button>
+    <header class="flex items-start justify-between gap-4">
+      <div class="min-w-0">
+        <p class="text-[13px] font-semibold text-zinc-900">TrackerBlocker</p>
+        <div class="mt-2.5 flex min-w-0 items-center gap-2 text-sm text-zinc-600">
+          <span class="tb-signal-dot" aria-hidden="true" />
+          <span class="truncate font-medium text-zinc-900">{activeHost}</span>
+        </div>
+      </div>
+      <span class={pauseStatusClass(isUnavailable ? "unavailable" : status)}>
+        {statusLabel}
+      </span>
+    </header>
+  );
+}
+
+function MetricPanel({
+  blockedDomainCount,
+}: {
+  blockedDomainCount: number;
+}) {
+  return (
+    <section class="tb-metric-panel mt-5" aria-label="Protection summary">
+      <p class="tb-block-summary">
+        <span class="font-semibold text-zinc-950">{blockedDomainCount}</span>
+        <span>
+          potential {blockedDomainCount === 1 ? "tracker" : "trackers"}{" "}
+          <span class="tb-underlined-word">blocked</span>
+        </span>
+      </p>
+    </section>
   );
 }
 
@@ -375,20 +345,22 @@ function PauseControls({
 }) {
   if (status === "paused-always") {
     return (
-      <PauseButton
-        isDisabled={isDisabled}
-        label="Resume"
-        onClick={() => void onSetPause(null)}
-      />
+      <div class="mt-3 flex">
+        <PauseButton
+          isDisabled={isDisabled}
+          label="Resume protection"
+          onClick={() => void onSetPause(null)}
+        />
+      </div>
     );
   }
 
   return (
-    <div class="flex shrink-0 gap-2">
+    <div class="mt-3 grid grid-cols-2 gap-2">
       {status === "paused-once" ? (
         <PauseButton
           isDisabled={isDisabled}
-          label="Resume"
+          label="Resume protection"
           onClick={() => void onSetPause(null)}
         />
       ) : (
@@ -400,7 +372,7 @@ function PauseControls({
       )}
       <PauseButton
         isDisabled={isDisabled}
-        label="Always"
+        label="Always pause"
         onClick={() => void onSetPause("always")}
       />
     </div>
@@ -418,7 +390,7 @@ function PauseButton({
 }) {
   return (
     <button
-      class="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-800 transition hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
+      class="tb-command-button"
       disabled={isDisabled}
       type="button"
       onClick={onClick}
@@ -428,34 +400,96 @@ function PauseButton({
   );
 }
 
+function RequestActions({
+  blockedCount,
+  currentView,
+  onChange,
+  totalCount,
+}: {
+  blockedCount: number;
+  currentView: RequestView;
+  onChange: (view: RequestView) => void;
+  totalCount: number;
+}) {
+  return (
+    <section class="mt-3 flex items-center gap-2" aria-label="Site inspection">
+      <RequestActionButton
+        count={blockedCount}
+        isSelected={currentView === "blocked"}
+        label="Blocked sites"
+        onSelect={() =>
+          onChange(currentView === "blocked" ? "summary" : "blocked")
+        }
+      />
+      <RequestActionButton
+        count={totalCount}
+        isSelected={currentView === "all"}
+        label="All sites"
+        onSelect={() => onChange(currentView === "all" ? "summary" : "all")}
+      />
+    </section>
+  );
+}
+
+function RequestActionButton({
+  count,
+  isSelected,
+  label,
+  onSelect,
+}: {
+  count: number;
+  isSelected: boolean;
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={isSelected}
+      class={isSelected ? "tb-action-button is-selected" : "tb-action-button"}
+      type="button"
+      onClick={onSelect}
+    >
+      <span>{label}</span>
+      <span>{count}</span>
+    </button>
+  );
+}
+
 function RequestRows({
   expandedRowId,
-  filter,
   onSetDomainOverride,
   onToggleRow,
   rows,
+  view,
 }: {
   expandedRowId: string | null;
-  filter: RequestFilter;
   onSetDomainOverride: (
     domain: string,
     action: DomainOverrideAction | null,
   ) => Promise<void>;
   onToggleRow: (rowId: string) => void;
   rows: ObservedRequestRow[];
+  view: Exclude<RequestView, "summary">;
 }) {
   if (rows.length === 0) {
     return (
-      <div class="mt-5 rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">
-        {filter === "all"
-          ? "No requests observed for this tab yet. Refresh the page to capture current requests."
-          : `No ${formatFilterLabel(filter)} requests observed for this tab.`}
+      <div class="tb-empty-panel mt-3">
+        <p class="text-sm font-medium text-zinc-800">
+          {view === "blocked"
+            ? "No blocked sites on this page yet."
+            : "No sites observed for this tab yet."}
+        </p>
+        <p class="mt-1 text-xs leading-snug text-zinc-500">
+          {view === "blocked"
+            ? "Open all sites to inspect allowed or uncataloged activity."
+            : "Refresh the page to capture current requests."}
+        </p>
       </div>
     );
   }
 
   return (
-    <div class="mt-5 max-h-[360px] overflow-y-auto">
+    <div class="mt-3 max-h-[320px] overflow-y-auto">
       <div class="grid gap-2">
         {rows.map((row) => (
           <RequestRow
@@ -473,9 +507,9 @@ function RequestRows({
 
 function filterRows(
   rows: ObservedRequestRow[],
-  filter: RequestFilter,
+  filter: RequestView,
 ): ObservedRequestRow[] {
-  if (filter === "all") {
+  if (filter === "all" || filter === "summary") {
     return rows;
   }
 
@@ -483,17 +517,7 @@ function filterRows(
     return rows.filter((row) => row.status === "blocked");
   }
 
-  if (filter === "allowed") {
-    return rows.filter(
-      (row) => row.status === "allowed" || row.status === "allowed-paused",
-    );
-  }
-
-  if (filter === "unknown") {
-    return rows.filter(isUnknownRow);
-  }
-
-  return rows.filter((row) => row.relationship === filter);
+  return rows;
 }
 
 function formatOptimisticPauseStatus(mode: SitePauseMode): SitePauseStatus {
@@ -528,53 +552,33 @@ function formatPauseModeRefreshHint(mode: SitePauseMode): string {
   }
 }
 
-function formatFilterLabel(filter: RequestFilter): string {
-  switch (filter) {
-    case "third-party":
-      return "third-party";
-    case "first-party":
-      return "first-party";
-    case "unknown":
-      return "unknown";
-    case "blocked":
-      return "blocked";
-    case "allowed":
-      return "allowed";
-    case "all":
-      return "all";
-  }
+function SystemNotice({
+  backgroundStatus,
+  settingsStatus,
+}: {
+  backgroundStatus: BackgroundStatus;
+  settingsStatus: SettingsStatus;
+}) {
+  return (
+    <p class="mt-4 border-l-2 border-[#d9534f] bg-[#fff6f4] px-3 py-2 text-xs leading-snug text-[#7a2d2a]">
+      Some extension services are unavailable. Background: {backgroundStatus};
+      settings: {settingsStatus}.
+    </p>
+  );
 }
 
-function summaryStatClass(
-  filter: RequestFilter,
-  isActive: boolean,
-  isDisabled: boolean,
-): string {
-  const base =
-    "rounded-md border px-2 py-2 transition text-center focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1";
+function pauseStatusClass(status: SitePauseStatus | "unavailable"): string {
+  const base = "tb-status-pill";
 
-  if (isDisabled) {
-    return `${base} cursor-not-allowed border-zinc-200 bg-zinc-50 opacity-50`;
+  switch (status) {
+    case "active":
+      return `${base} is-active`;
+    case "paused-once":
+    case "paused-always":
+      return `${base} is-paused`;
+    case "unavailable":
+      return `${base} is-unavailable`;
   }
-
-  if (isActive) {
-    switch (filter) {
-      case "third-party":
-        return `${base} border-amber-500 bg-amber-100 shadow-sm`;
-      case "unknown":
-        return `${base} border-zinc-500 bg-zinc-200 shadow-sm`;
-      case "blocked":
-        return `${base} border-red-500 bg-red-100 shadow-sm`;
-      case "allowed":
-        return `${base} border-emerald-500 bg-emerald-100 shadow-sm`;
-      case "first-party":
-        return `${base} border-emerald-500 bg-emerald-100 shadow-sm`;
-      case "all":
-        return `${base} border-emerald-600 bg-emerald-50 shadow-sm`;
-    }
-  }
-
-  return `${base} border-zinc-200 bg-zinc-50 hover:border-zinc-300 hover:bg-white`;
 }
 
 function RequestRow({
@@ -595,7 +599,7 @@ function RequestRow({
   const canOverride = row.relationship === "third-party";
 
   return (
-    <article class="rounded-lg border border-zinc-200 bg-white px-3 py-2">
+    <article class={requestRowClass(row.status)}>
       <button
         aria-expanded={isExpanded}
         class="flex w-full items-start justify-between gap-3 text-left"
@@ -614,15 +618,15 @@ function RequestRow({
           </p>
         </div>
         <div class="shrink-0 text-right">
-          <span class={relationshipBadgeClass(row.relationship)}>
-            {row.requestCount}
-          </span>
-          <p class="mt-1 text-xs text-zinc-500">{formatStatus(row.status)}</p>
+          <span class={statusBadgeClass(row.status)}>{row.requestCount}</span>
+          <p class="mt-1 text-xs font-medium text-zinc-500">
+            {formatStatus(row.status)}
+          </p>
         </div>
       </button>
 
       {isExpanded && (
-        <div class="mt-3 border-t border-zinc-100 pt-3 text-xs text-zinc-600">
+        <div class="mt-3 border-t border-zinc-200/80 pt-3 text-xs text-zinc-600">
           <dl class="grid gap-2">
             <DetailRow
               label="Entity"
@@ -640,7 +644,7 @@ function RequestRow({
           </dl>
 
           {canOverride && (
-            <div class="mt-3 grid grid-cols-3 overflow-hidden rounded-md border border-zinc-200">
+            <div class="mt-3 grid grid-cols-3 overflow-hidden border border-zinc-200 bg-white">
               <OverrideButton
                 isSelected={selectedOverride === "auto"}
                 label="Auto"
@@ -693,7 +697,7 @@ function OverrideButton({
       aria-pressed={isSelected}
       class={`px-2 py-2 font-medium transition ${
         isSelected
-          ? "bg-emerald-100 text-emerald-900"
+          ? "bg-[#dff5ff] text-zinc-950"
           : "bg-white text-zinc-600 hover:bg-zinc-50"
       }`}
       type="button"
@@ -774,16 +778,29 @@ function formatStatus(status: ObservedRequestRow["status"]): string {
   }
 }
 
-function relationshipBadgeClass(relationship: RequestRelationship): string {
-  const base =
-    "inline-flex min-w-8 justify-center rounded-full px-2 py-1 text-xs font-semibold";
+function requestRowClass(status: ObservedRequestRow["status"]): string {
+  const base = "tb-request-row";
 
-  switch (relationship) {
-    case "third-party":
-      return `${base} bg-amber-100 text-amber-900`;
-    case "unknown":
-      return `${base} bg-zinc-200 text-zinc-800`;
-    case "first-party":
-      return `${base} bg-emerald-100 text-emerald-900`;
+  switch (status) {
+    case "blocked":
+      return `${base} is-blocked`;
+    case "allowed":
+      return `${base} is-allowed`;
+    case "allowed-paused":
+      return `${base} is-paused`;
+  }
+}
+
+function statusBadgeClass(status: ObservedRequestRow["status"]): string {
+  const base =
+    "inline-flex min-w-8 justify-center border px-2 py-1 text-xs font-semibold leading-none";
+
+  switch (status) {
+    case "blocked":
+      return `${base} border-[#5db7dd] bg-[#dff5ff] text-zinc-950`;
+    case "allowed":
+      return `${base} border-zinc-200 bg-white text-zinc-700`;
+    case "allowed-paused":
+      return `${base} border-[#9fcbd6] bg-[#e8f8fb] text-zinc-800`;
   }
 }
