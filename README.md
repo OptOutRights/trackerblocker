@@ -39,3 +39,7 @@ Lint the built Firefox extension:
 ```sh
 npm run lint:firefox
 ```
+
+## Maintainer
+
+Maintained by [Opt Out Rights Foundation](https://optoutrights.org).
