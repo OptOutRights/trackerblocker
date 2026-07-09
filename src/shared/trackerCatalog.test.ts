@@ -10,7 +10,7 @@ import {
 
 describe("TRACKER_CATALOG", () => {
   it("loads the packaged catalog", () => {
-    expect(TRACKER_CATALOG.length).toBeGreaterThan(0);
+    expect(TRACKER_CATALOG.length).toBeGreaterThanOrEqual(60);
     expect(TRACKER_CATALOG).toContainEqual(
       expect.objectContaining({
         domain: "google-analytics.com",
@@ -18,6 +18,119 @@ describe("TRACKER_CATALOG", () => {
         defaultAction: "block",
       }),
     );
+  });
+
+  it("blocks representative high-confidence tracker categories", () => {
+    expect(lookupTrackerCatalogEntry("pagead2.googlesyndication.com")).toMatchObject({
+      entry: {
+        entity: "Google",
+        category: "advertising",
+        defaultAction: "block",
+      },
+    });
+    expect(lookupTrackerCatalogEntry("api2.amplitude.com")).toMatchObject({
+      entry: {
+        entity: "Amplitude",
+        category: "analytics",
+        defaultAction: "block",
+      },
+    });
+    expect(lookupTrackerCatalogEntry("static.hotjar.com")).toMatchObject({
+      entry: {
+        entity: "Hotjar",
+        category: "session-replay",
+        defaultAction: "block",
+      },
+    });
+    expect(lookupTrackerCatalogEntry("tr.snapchat.com")).toMatchObject({
+      entry: {
+        entity: "Snap",
+        category: "social",
+        defaultAction: "block",
+      },
+    });
+    expect(lookupTrackerCatalogEntry("widgets.outbrain.com")).toMatchObject({
+      entry: {
+        entity: "Outbrain",
+        category: "advertising",
+        defaultAction: "block",
+      },
+    });
+  });
+
+  it("blocks confirmed adtech and collection endpoints", () => {
+    const confirmedEndpoints = [
+      ["securepubads.g.doubleclick.net", "Google", "advertising"],
+      ["www.googletagservices.com", "Google", "advertising"],
+      ["aax.amazon-adsystem.com", "Amazon", "advertising"],
+      ["pixel.adsafeprotected.com", "Integral Ad Science", "advertising"],
+      ["metrics.omtrdc.net", "Adobe", "analytics"],
+      ["example.2o7.net", "Adobe", "analytics"],
+      ["dpm.demdex.net", "Adobe", "advertising"],
+      ["cm.everesttech.net", "Adobe", "advertising"],
+      ["cdn.permutive.com", "Permutive", "advertising"],
+      ["static.cloudflareinsights.com", "Cloudflare", "analytics"],
+      ["connect.facebook.net", "Meta", "social"],
+      ["cdn.segment.com", "Twilio Segment", "analytics"],
+      ["api.segment.io", "Twilio Segment", "analytics"],
+      ["api2.amplitude.com", "Amplitude", "analytics"],
+      ["api-js.mixpanel.com", "Mixpanel", "analytics"],
+      ["data.pendo.io", "Pendo", "analytics"],
+    ] as const;
+
+    for (const [domain, entity, category] of confirmedEndpoints) {
+      expect(lookupTrackerCatalogEntry(domain)).toMatchObject({
+        entry: {
+          entity,
+          category,
+          defaultAction: "block",
+        },
+      });
+    }
+  });
+
+  it("does not block broad product or integration domains by default", () => {
+    for (const domain of [
+      "googletagmanager.com",
+      "facebook.net",
+      "segment.io",
+      "amplitude.com",
+      "mixpanel.com",
+      "pendo.io",
+    ]) {
+      expect(lookupTrackerCatalogEntry(domain)).toBeNull();
+    }
+  });
+
+  it("keeps functional service categories allowed", () => {
+    for (const domain of [
+      "js.stripe.com",
+      "www.paypal.com",
+      "newassets.hcaptcha.com",
+      "www.cloudflare.com",
+      "cdnjs.cloudflare.com",
+    ]) {
+      expect(lookupTrackerCatalogEntry(domain)).toMatchObject({
+        entry: {
+          defaultAction: "allow",
+        },
+      });
+    }
+  });
+
+  it("keeps block entries in intentionally blockable categories", () => {
+    const blockableCategories = new Set([
+      "advertising",
+      "analytics",
+      "session-replay",
+      "social",
+    ]);
+
+    for (const entry of TRACKER_CATALOG) {
+      if (entry.defaultAction === "block") {
+        expect(blockableCategories.has(entry.category)).toBe(true);
+      }
+    }
   });
 
   it("keeps explanations concise and local", () => {

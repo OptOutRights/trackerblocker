@@ -9,6 +9,42 @@
     "explanation": "This domain is commonly used to deliver ads and measure ad interactions across sites."
   },
   {
+    "id": "google-adsense",
+    "matchType": "suffix",
+    "domain": "googlesyndication.com",
+    "entity": "Google",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used to deliver ads and measure ad impressions across sites."
+  },
+  {
+    "id": "google-ad-services",
+    "matchType": "suffix",
+    "domain": "googleadservices.com",
+    "entity": "Google",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for ad clicks, conversions, and campaign measurement."
+  },
+  {
+    "id": "google-adservice",
+    "matchType": "suffix",
+    "domain": "adservice.google.com",
+    "entity": "Google",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used for Google ad delivery and measurement."
+  },
+  {
+    "id": "google-tag-services",
+    "matchType": "suffix",
+    "domain": "googletagservices.com",
+    "entity": "Google",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for ad serving, ad slots, and advertising measurement."
+  },
+  {
     "id": "google-analytics",
     "matchType": "suffix",
     "domain": "google-analytics.com",
@@ -18,13 +54,112 @@
     "explanation": "This domain is commonly used to measure visits, page views, and user interactions."
   },
   {
-    "id": "google-tag-manager",
+    "id": "meta-facebook-connect",
     "matchType": "suffix",
-    "domain": "googletagmanager.com",
-    "entity": "Google",
-    "category": "analytics",
+    "domain": "connect.facebook.net",
+    "entity": "Meta",
+    "category": "social",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used to load site tags that can include analytics or advertising tools."
+    "explanation": "This hostname is commonly used to load social widgets, login helpers, or social advertising tools."
+  },
+  {
+    "id": "twitter-analytics",
+    "matchType": "suffix",
+    "domain": "analytics.twitter.com",
+    "entity": "X",
+    "category": "social",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used to measure Twitter or X ad and audience activity."
+  },
+  {
+    "id": "twitter-ads-static",
+    "matchType": "suffix",
+    "domain": "static.ads-twitter.com",
+    "entity": "X",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used to load Twitter or X advertising and tracking scripts."
+  },
+  {
+    "id": "linkedin-ads",
+    "matchType": "suffix",
+    "domain": "ads.linkedin.com",
+    "entity": "LinkedIn",
+    "category": "social",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used for LinkedIn advertising and conversion measurement."
+  },
+  {
+    "id": "linkedin-pixel",
+    "matchType": "suffix",
+    "domain": "px.ads.linkedin.com",
+    "entity": "LinkedIn",
+    "category": "social",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used for LinkedIn ad pixels and conversion measurement."
+  },
+  {
+    "id": "linkedin-insight",
+    "matchType": "suffix",
+    "domain": "snap.licdn.com",
+    "entity": "LinkedIn",
+    "category": "social",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used to load LinkedIn Insight tracking scripts."
+  },
+  {
+    "id": "snap-pixel-static",
+    "matchType": "suffix",
+    "domain": "sc-static.net",
+    "entity": "Snap",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used to load Snap advertising and tracking scripts."
+  },
+  {
+    "id": "snap-pixel",
+    "matchType": "suffix",
+    "domain": "tr.snapchat.com",
+    "entity": "Snap",
+    "category": "social",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used for Snap pixel tracking and ad measurement."
+  },
+  {
+    "id": "tiktok-analytics",
+    "matchType": "suffix",
+    "domain": "analytics.tiktok.com",
+    "entity": "TikTok",
+    "category": "social",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used for TikTok analytics and ad measurement."
+  },
+  {
+    "id": "tiktok-ads",
+    "matchType": "suffix",
+    "domain": "ads.tiktok.com",
+    "entity": "TikTok",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used for TikTok advertising and conversion measurement."
+  },
+  {
+    "id": "tiktok-business-api",
+    "matchType": "suffix",
+    "domain": "business-api.tiktok.com",
+    "entity": "TikTok",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used for TikTok business and advertising measurement."
+  },
+  {
+    "id": "microsoft-bing-ads",
+    "matchType": "suffix",
+    "domain": "bat.bing.com",
+    "entity": "Microsoft",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used for Microsoft Advertising conversion tracking."
   },
   {
     "id": "hotjar",
@@ -36,13 +171,517 @@
     "explanation": "This domain is commonly used for behavior analytics such as heatmaps, recordings, and feedback tools."
   },
   {
-    "id": "meta-facebook-connect",
+    "id": "hotjar-io",
     "matchType": "suffix",
-    "domain": "facebook.net",
-    "entity": "Meta",
-    "category": "social",
+    "domain": "hotjar.io",
+    "entity": "Hotjar",
+    "category": "session-replay",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used to load social widgets, login helpers, or social advertising tools."
+    "explanation": "This domain is commonly used for Hotjar behavior analytics and session recording services."
+  },
+  {
+    "id": "fullstory",
+    "matchType": "suffix",
+    "domain": "fullstory.com",
+    "entity": "Fullstory",
+    "category": "session-replay",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for session replay and behavior analytics."
+  },
+  {
+    "id": "mouseflow",
+    "matchType": "suffix",
+    "domain": "mouseflow.com",
+    "entity": "Mouseflow",
+    "category": "session-replay",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for heatmaps, recordings, and behavior analytics."
+  },
+  {
+    "id": "inspectlet",
+    "matchType": "suffix",
+    "domain": "inspectlet.com",
+    "entity": "Inspectlet",
+    "category": "session-replay",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for session replay, heatmaps, and visitor analytics."
+  },
+  {
+    "id": "smartlook",
+    "matchType": "suffix",
+    "domain": "smartlook.com",
+    "entity": "Smartlook",
+    "category": "session-replay",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for session recordings and behavior analytics."
+  },
+  {
+    "id": "microsoft-clarity",
+    "matchType": "suffix",
+    "domain": "clarity.ms",
+    "entity": "Microsoft",
+    "category": "session-replay",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for heatmaps, recordings, and behavior analytics."
+  },
+  {
+    "id": "contentsquare",
+    "matchType": "suffix",
+    "domain": "contentsquare.net",
+    "entity": "Contentsquare",
+    "category": "session-replay",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for digital experience analytics and session replay."
+  },
+  {
+    "id": "lucky-orange",
+    "matchType": "suffix",
+    "domain": "luckyorange.com",
+    "entity": "Lucky Orange",
+    "category": "session-replay",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for visitor recordings, heatmaps, and behavior analytics."
+  },
+  {
+    "id": "logrocket",
+    "matchType": "suffix",
+    "domain": "logrocket.com",
+    "entity": "LogRocket",
+    "category": "session-replay",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for session replay and frontend behavior analytics."
+  },
+  {
+    "id": "segment-cdn",
+    "matchType": "suffix",
+    "domain": "cdn.segment.com",
+    "entity": "Twilio Segment",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used to load Segment analytics collection scripts."
+  },
+  {
+    "id": "segment-api",
+    "matchType": "suffix",
+    "domain": "api.segment.io",
+    "entity": "Twilio Segment",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used to send analytics events to Segment."
+  },
+  {
+    "id": "amplitude-api",
+    "matchType": "suffix",
+    "domain": "api2.amplitude.com",
+    "entity": "Amplitude",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used to send product analytics events to Amplitude."
+  },
+  {
+    "id": "mixpanel-js",
+    "matchType": "suffix",
+    "domain": "api-js.mixpanel.com",
+    "entity": "Mixpanel",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used to load Mixpanel analytics collection scripts."
+  },
+  {
+    "id": "heap-analytics",
+    "matchType": "suffix",
+    "domain": "heapanalytics.com",
+    "entity": "Heap",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for product analytics and event measurement."
+  },
+  {
+    "id": "pendo-data",
+    "matchType": "suffix",
+    "domain": "data.pendo.io",
+    "entity": "Pendo",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This hostname is commonly used to collect Pendo product analytics and in-app behavior events."
+  },
+  {
+    "id": "comscore-scorecardresearch",
+    "matchType": "suffix",
+    "domain": "scorecardresearch.com",
+    "entity": "Comscore",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for audience measurement and cross-site analytics."
+  },
+  {
+    "id": "quantcast",
+    "matchType": "suffix",
+    "domain": "quantserve.com",
+    "entity": "Quantcast",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for audience measurement and advertising analytics."
+  },
+  {
+    "id": "comscore",
+    "matchType": "suffix",
+    "domain": "comscore.com",
+    "entity": "Comscore",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for audience measurement and analytics services."
+  },
+  {
+    "id": "oracle-moatads",
+    "matchType": "suffix",
+    "domain": "moatads.com",
+    "entity": "Oracle Moat",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for ad viewability and advertising measurement."
+  },
+  {
+    "id": "oracle-moat",
+    "matchType": "suffix",
+    "domain": "moat.com",
+    "entity": "Oracle Moat",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for ad viewability and advertising measurement."
+  },
+  {
+    "id": "integral-ad-science",
+    "matchType": "suffix",
+    "domain": "adsafeprotected.com",
+    "entity": "Integral Ad Science",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for ad verification, fraud detection, and viewability measurement."
+  },
+  {
+    "id": "infillion-mathtag",
+    "matchType": "suffix",
+    "domain": "mathtag.com",
+    "entity": "Infillion",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for advertising tags and audience measurement."
+  },
+  {
+    "id": "criteo",
+    "matchType": "suffix",
+    "domain": "criteo.com",
+    "entity": "Criteo",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for retargeting, advertising, and conversion measurement."
+  },
+  {
+    "id": "criteo-net",
+    "matchType": "suffix",
+    "domain": "criteo.net",
+    "entity": "Criteo",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for retargeting, advertising, and conversion measurement."
+  },
+  {
+    "id": "trade-desk",
+    "matchType": "suffix",
+    "domain": "adsrvr.org",
+    "entity": "The Trade Desk",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for programmatic advertising and ad measurement."
+  },
+  {
+    "id": "microsoft-adnxs",
+    "matchType": "suffix",
+    "domain": "adnxs.com",
+    "entity": "Microsoft Advertising",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for programmatic advertising and ad measurement."
+  },
+  {
+    "id": "amazon-adsystem",
+    "matchType": "suffix",
+    "domain": "amazon-adsystem.com",
+    "entity": "Amazon",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for Amazon advertising, ad delivery, and campaign measurement."
+  },
+  {
+    "id": "magnite-rubicon",
+    "matchType": "suffix",
+    "domain": "rubiconproject.com",
+    "entity": "Magnite",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for programmatic advertising and ad exchange services."
+  },
+  {
+    "id": "pubmatic",
+    "matchType": "suffix",
+    "domain": "pubmatic.com",
+    "entity": "PubMatic",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for programmatic advertising and ad exchange services."
+  },
+  {
+    "id": "openx",
+    "matchType": "suffix",
+    "domain": "openx.net",
+    "entity": "OpenX",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for programmatic advertising and ad exchange services."
+  },
+  {
+    "id": "liveramp",
+    "matchType": "suffix",
+    "domain": "rlcdn.com",
+    "entity": "LiveRamp",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for advertising identity resolution and audience matching."
+  },
+  {
+    "id": "bidswitch",
+    "matchType": "suffix",
+    "domain": "bidswitch.net",
+    "entity": "Criteo",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for programmatic advertising bid routing."
+  },
+  {
+    "id": "index-exchange",
+    "matchType": "suffix",
+    "domain": "casalemedia.com",
+    "entity": "Index Exchange",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for programmatic advertising and ad exchange services."
+  },
+  {
+    "id": "media-net",
+    "matchType": "suffix",
+    "domain": "media.net",
+    "entity": "Media.net",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for contextual advertising and ad measurement."
+  },
+  {
+    "id": "smaato",
+    "matchType": "suffix",
+    "domain": "smaato.net",
+    "entity": "Smaato",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for mobile advertising and ad exchange services."
+  },
+  {
+    "id": "yieldmo",
+    "matchType": "suffix",
+    "domain": "yieldmo.com",
+    "entity": "Yieldmo",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for digital advertising and ad measurement."
+  },
+  {
+    "id": "sovrn-lijit",
+    "matchType": "suffix",
+    "domain": "lijit.com",
+    "entity": "Sovrn",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for publisher advertising and audience measurement."
+  },
+  {
+    "id": "sharethrough",
+    "matchType": "suffix",
+    "domain": "sharethrough.com",
+    "entity": "Sharethrough",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for native advertising and ad measurement."
+  },
+  {
+    "id": "magnite-spotx",
+    "matchType": "suffix",
+    "domain": "spotxchange.com",
+    "entity": "Magnite",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for video advertising and ad exchange services."
+  },
+  {
+    "id": "advertising-com",
+    "matchType": "suffix",
+    "domain": "advertising.com",
+    "entity": "Ad.com",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for digital advertising and ad measurement."
+  },
+  {
+    "id": "adform",
+    "matchType": "suffix",
+    "domain": "adform.net",
+    "entity": "Adform",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for advertising technology and campaign measurement."
+  },
+  {
+    "id": "adroll",
+    "matchType": "suffix",
+    "domain": "adroll.com",
+    "entity": "NextRoll",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for retargeting, advertising, and conversion measurement."
+  },
+  {
+    "id": "tapad",
+    "matchType": "suffix",
+    "domain": "tapad.com",
+    "entity": "Tapad",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for cross-device advertising and audience matching."
+  },
+  {
+    "id": "turn",
+    "matchType": "suffix",
+    "domain": "turn.com",
+    "entity": "Nexxen",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for programmatic advertising and ad measurement."
+  },
+  {
+    "id": "adobe-demdex",
+    "matchType": "suffix",
+    "domain": "demdex.net",
+    "entity": "Adobe",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for audience management and advertising identity matching."
+  },
+  {
+    "id": "adobe-omtrdc",
+    "matchType": "suffix",
+    "domain": "omtrdc.net",
+    "entity": "Adobe",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for Adobe Analytics data collection and visitor measurement."
+  },
+  {
+    "id": "adobe-2o7",
+    "matchType": "suffix",
+    "domain": "2o7.net",
+    "entity": "Adobe",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for Adobe analytics collection and visitor measurement."
+  },
+  {
+    "id": "adobe-everesttech",
+    "matchType": "suffix",
+    "domain": "everesttech.net",
+    "entity": "Adobe",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for Adobe advertising measurement, attribution, and audience services."
+  },
+  {
+    "id": "permutive",
+    "matchType": "suffix",
+    "domain": "permutive.com",
+    "entity": "Permutive",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for audience segmentation, publisher advertising, and ad measurement."
+  },
+  {
+    "id": "taboola",
+    "matchType": "suffix",
+    "domain": "taboola.com",
+    "entity": "Taboola",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for content recommendation ads and ad measurement."
+  },
+  {
+    "id": "taboola-syndication",
+    "matchType": "suffix",
+    "domain": "taboolasyndication.com",
+    "entity": "Taboola",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for content recommendation ads and ad syndication."
+  },
+  {
+    "id": "outbrain",
+    "matchType": "suffix",
+    "domain": "outbrain.com",
+    "entity": "Outbrain",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for content recommendation ads and ad measurement."
+  },
+  {
+    "id": "outbrain-images",
+    "matchType": "suffix",
+    "domain": "outbrainimg.com",
+    "entity": "Outbrain",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for content recommendation ad assets and tracking."
+  },
+  {
+    "id": "zemanta",
+    "matchType": "suffix",
+    "domain": "zemanta.com",
+    "entity": "Outbrain",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for native advertising and content promotion measurement."
+  },
+  {
+    "id": "mgid",
+    "matchType": "suffix",
+    "domain": "mgid.com",
+    "entity": "MGID",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for native advertising and content recommendation tracking."
+  },
+  {
+    "id": "revcontent",
+    "matchType": "suffix",
+    "domain": "revcontent.com",
+    "entity": "Revcontent",
+    "category": "advertising",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for native advertising and content recommendation tracking."
+  },
+  {
+    "id": "cloudflare-insights",
+    "matchType": "suffix",
+    "domain": "cloudflareinsights.com",
+    "entity": "Cloudflare",
+    "category": "analytics",
+    "defaultAction": "block",
+    "explanation": "This domain is commonly used for Cloudflare Web Analytics and site measurement."
   },
   {
     "id": "stripe",
