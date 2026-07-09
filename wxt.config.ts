@@ -33,8 +33,22 @@ export default defineConfig({
     version: "0.0.0",
     permissions: ["activeTab", "storage", "webRequest", "webRequestBlocking"],
     host_permissions: ["<all_urls>"],
+    icons: {
+      16: "icon/16.png",
+      32: "icon/32.png",
+      48: "icon/48.png",
+      96: "icon/96.png",
+      128: "icon/128.png",
+    },
     action: {
       default_title: "TrackerBlocker",
+      default_icon: {
+        16: "icon/16.png",
+        32: "icon/32.png",
+        48: "icon/48.png",
+        96: "icon/96.png",
+        128: "icon/128.png",
+      },
     },
     browser_specific_settings: {
       gecko: {
