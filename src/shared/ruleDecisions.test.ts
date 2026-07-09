@@ -15,6 +15,7 @@ describe("decideRule", () => {
       status: "allowed-paused",
       source: "site-paused",
       shouldBlock: false,
+      shouldRestrictHeaders: false,
     });
   });
 
@@ -29,6 +30,7 @@ describe("decideRule", () => {
       status: "blocked",
       source: "blocked-by-user",
       shouldBlock: true,
+      shouldRestrictHeaders: false,
     });
   });
 
@@ -43,6 +45,7 @@ describe("decideRule", () => {
       status: "allowed",
       source: "allowed-by-user",
       shouldBlock: false,
+      shouldRestrictHeaders: false,
     });
   });
 
@@ -56,6 +59,21 @@ describe("decideRule", () => {
       status: "blocked",
       source: "automatic",
       shouldBlock: true,
+      shouldRestrictHeaders: false,
+    });
+  });
+
+  it("restricts third parties when the catalog default is restrict", () => {
+    expect(
+      decideRule({
+        relationship: "third-party",
+        catalogDefaultAction: "restrict",
+      }),
+    ).toEqual({
+      status: "restricted",
+      source: "automatic",
+      shouldBlock: false,
+      shouldRestrictHeaders: true,
     });
   });
 
@@ -69,6 +87,7 @@ describe("decideRule", () => {
       status: "allowed",
       source: "automatic",
       shouldBlock: false,
+      shouldRestrictHeaders: false,
     });
   });
 
@@ -82,6 +101,7 @@ describe("decideRule", () => {
       status: "allowed",
       source: "automatic",
       shouldBlock: false,
+      shouldRestrictHeaders: false,
     });
   });
 
@@ -95,6 +115,7 @@ describe("decideRule", () => {
       status: "allowed",
       source: "automatic",
       shouldBlock: false,
+      shouldRestrictHeaders: false,
     });
   });
 
@@ -108,6 +129,7 @@ describe("decideRule", () => {
       status: "allowed",
       source: "automatic",
       shouldBlock: false,
+      shouldRestrictHeaders: false,
     });
   });
 });

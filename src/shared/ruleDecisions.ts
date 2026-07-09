@@ -1,6 +1,10 @@
 import type { CatalogDefaultAction } from "./trackerCatalog";
 
-export type RuleDecisionStatus = "blocked" | "allowed" | "allowed-paused";
+export type RuleDecisionStatus =
+  | "blocked"
+  | "restricted"
+  | "allowed"
+  | "allowed-paused";
 export type RuleDecisionSource =
   | "automatic"
   | "blocked-by-user"
@@ -23,6 +27,7 @@ export interface RuleDecision {
   status: RuleDecisionStatus;
   source: RuleDecisionSource;
   shouldBlock: boolean;
+  shouldRestrictHeaders: boolean;
 }
 
 export function decideRule(input: RuleDecisionInput): RuleDecision {
@@ -31,6 +36,7 @@ export function decideRule(input: RuleDecisionInput): RuleDecision {
       status: "allowed-paused",
       source: "site-paused",
       shouldBlock: false,
+      shouldRestrictHeaders: false,
     };
   }
 
@@ -39,6 +45,7 @@ export function decideRule(input: RuleDecisionInput): RuleDecision {
       status: "blocked",
       source: "blocked-by-user",
       shouldBlock: true,
+      shouldRestrictHeaders: false,
     };
   }
 
@@ -47,6 +54,7 @@ export function decideRule(input: RuleDecisionInput): RuleDecision {
       status: "allowed",
       source: "allowed-by-user",
       shouldBlock: false,
+      shouldRestrictHeaders: false,
     };
   }
 
@@ -55,6 +63,7 @@ export function decideRule(input: RuleDecisionInput): RuleDecision {
       status: "allowed",
       source: "automatic",
       shouldBlock: false,
+      shouldRestrictHeaders: false,
     };
   }
 
@@ -63,6 +72,7 @@ export function decideRule(input: RuleDecisionInput): RuleDecision {
       status: "allowed",
       source: "automatic",
       shouldBlock: false,
+      shouldRestrictHeaders: false,
     };
   }
 
@@ -71,6 +81,16 @@ export function decideRule(input: RuleDecisionInput): RuleDecision {
       status: "blocked",
       source: "automatic",
       shouldBlock: true,
+      shouldRestrictHeaders: false,
+    };
+  }
+
+  if (input.catalogDefaultAction === "restrict") {
+    return {
+      status: "restricted",
+      source: "automatic",
+      shouldBlock: false,
+      shouldRestrictHeaders: true,
     };
   }
 
@@ -79,6 +99,7 @@ export function decideRule(input: RuleDecisionInput): RuleDecision {
       status: "allowed",
       source: "automatic",
       shouldBlock: false,
+      shouldRestrictHeaders: false,
     };
   }
 
@@ -86,5 +107,6 @@ export function decideRule(input: RuleDecisionInput): RuleDecision {
     status: "allowed",
     source: "automatic",
     shouldBlock: false,
+    shouldRestrictHeaders: false,
   };
 }

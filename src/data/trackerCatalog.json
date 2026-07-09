@@ -6,7 +6,10 @@
     "entity": "Google",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used to deliver ads and measure ad interactions across sites."
+    "explanation": "This domain is commonly used to deliver ads and measure ad interactions across sites.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "google-adsense",
@@ -15,7 +18,10 @@
     "entity": "Google",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used to deliver ads and measure ad impressions across sites."
+    "explanation": "This domain is commonly used to deliver ads and measure ad impressions across sites.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "google-ad-services",
@@ -24,7 +30,10 @@
     "entity": "Google",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for ad clicks, conversions, and campaign measurement."
+    "explanation": "This domain is commonly used for ad clicks, conversions, and campaign measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "google-adservice",
@@ -33,7 +42,10 @@
     "entity": "Google",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used for Google ad delivery and measurement."
+    "explanation": "This hostname is commonly used for Google ad delivery and measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "google-tag-services",
@@ -42,7 +54,10 @@
     "entity": "Google",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for ad serving, ad slots, and advertising measurement."
+    "explanation": "This domain is commonly used for ad serving, ad slots, and advertising measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "google-analytics",
@@ -51,7 +66,10 @@
     "entity": "Google",
     "category": "analytics",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used to measure visits, page views, and user interactions."
+    "explanation": "This domain is commonly used to measure visits, page views, and user interactions.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "meta-facebook-connect",
@@ -60,7 +78,10 @@
     "entity": "Meta",
     "category": "social",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used to load social widgets, login helpers, or social advertising tools."
+    "explanation": "This hostname is commonly used to load social widgets, login helpers, or social advertising tools.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "twitter-analytics",
@@ -69,7 +90,10 @@
     "entity": "X",
     "category": "social",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used to measure Twitter or X ad and audience activity."
+    "explanation": "This hostname is commonly used to measure Twitter or X ad and audience activity.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "twitter-ads-static",
@@ -78,7 +102,10 @@
     "entity": "X",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used to load Twitter or X advertising and tracking scripts."
+    "explanation": "This hostname is commonly used to load Twitter or X advertising and tracking scripts.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "linkedin-ads",
@@ -87,7 +114,10 @@
     "entity": "LinkedIn",
     "category": "social",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used for LinkedIn advertising and conversion measurement."
+    "explanation": "This hostname is commonly used for LinkedIn advertising and conversion measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "linkedin-pixel",
@@ -96,7 +126,10 @@
     "entity": "LinkedIn",
     "category": "social",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used for LinkedIn ad pixels and conversion measurement."
+    "explanation": "This hostname is commonly used for LinkedIn ad pixels and conversion measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "linkedin-insight",
@@ -105,7 +138,10 @@
     "entity": "LinkedIn",
     "category": "social",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used to load LinkedIn Insight tracking scripts."
+    "explanation": "This hostname is commonly used to load LinkedIn Insight tracking scripts.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "snap-pixel-static",
@@ -114,7 +150,10 @@
     "entity": "Snap",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used to load Snap advertising and tracking scripts."
+    "explanation": "This domain is commonly used to load Snap advertising and tracking scripts.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "snap-pixel",
@@ -123,7 +162,10 @@
     "entity": "Snap",
     "category": "social",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used for Snap pixel tracking and ad measurement."
+    "explanation": "This hostname is commonly used for Snap pixel tracking and ad measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "tiktok-analytics",
@@ -132,7 +174,10 @@
     "entity": "TikTok",
     "category": "social",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used for TikTok analytics and ad measurement."
+    "explanation": "This hostname is commonly used for TikTok analytics and ad measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "tiktok-ads",
@@ -141,7 +186,10 @@
     "entity": "TikTok",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used for TikTok advertising and conversion measurement."
+    "explanation": "This hostname is commonly used for TikTok advertising and conversion measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "tiktok-business-api",
@@ -150,7 +198,10 @@
     "entity": "TikTok",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used for TikTok business and advertising measurement."
+    "explanation": "This hostname is commonly used for TikTok business and advertising measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "microsoft-bing-ads",
@@ -159,7 +210,10 @@
     "entity": "Microsoft",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used for Microsoft Advertising conversion tracking."
+    "explanation": "This hostname is commonly used for Microsoft Advertising conversion tracking.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "hotjar",
@@ -168,7 +222,10 @@
     "entity": "Hotjar",
     "category": "session-replay",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for behavior analytics such as heatmaps, recordings, and feedback tools."
+    "explanation": "This domain is commonly used for behavior analytics such as heatmaps, recordings, and feedback tools.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "low"
   },
   {
     "id": "hotjar-io",
@@ -177,7 +234,10 @@
     "entity": "Hotjar",
     "category": "session-replay",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for Hotjar behavior analytics and session recording services."
+    "explanation": "This domain is commonly used for Hotjar behavior analytics and session recording services.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "low"
   },
   {
     "id": "fullstory",
@@ -186,7 +246,10 @@
     "entity": "Fullstory",
     "category": "session-replay",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for session replay and behavior analytics."
+    "explanation": "This domain is commonly used for session replay and behavior analytics.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "low"
   },
   {
     "id": "mouseflow",
@@ -195,7 +258,10 @@
     "entity": "Mouseflow",
     "category": "session-replay",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for heatmaps, recordings, and behavior analytics."
+    "explanation": "This domain is commonly used for heatmaps, recordings, and behavior analytics.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "low"
   },
   {
     "id": "inspectlet",
@@ -204,7 +270,10 @@
     "entity": "Inspectlet",
     "category": "session-replay",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for session replay, heatmaps, and visitor analytics."
+    "explanation": "This domain is commonly used for session replay, heatmaps, and visitor analytics.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "low"
   },
   {
     "id": "smartlook",
@@ -213,7 +282,10 @@
     "entity": "Smartlook",
     "category": "session-replay",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for session recordings and behavior analytics."
+    "explanation": "This domain is commonly used for session recordings and behavior analytics.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "low"
   },
   {
     "id": "microsoft-clarity",
@@ -222,7 +294,10 @@
     "entity": "Microsoft",
     "category": "session-replay",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for heatmaps, recordings, and behavior analytics."
+    "explanation": "This domain is commonly used for heatmaps, recordings, and behavior analytics.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "low"
   },
   {
     "id": "contentsquare",
@@ -231,7 +306,10 @@
     "entity": "Contentsquare",
     "category": "session-replay",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for digital experience analytics and session replay."
+    "explanation": "This domain is commonly used for digital experience analytics and session replay.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "low"
   },
   {
     "id": "lucky-orange",
@@ -240,7 +318,10 @@
     "entity": "Lucky Orange",
     "category": "session-replay",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for visitor recordings, heatmaps, and behavior analytics."
+    "explanation": "This domain is commonly used for visitor recordings, heatmaps, and behavior analytics.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "low"
   },
   {
     "id": "logrocket",
@@ -249,7 +330,10 @@
     "entity": "LogRocket",
     "category": "session-replay",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for session replay and frontend behavior analytics."
+    "explanation": "This domain is commonly used for session replay and frontend behavior analytics.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "low"
   },
   {
     "id": "segment-cdn",
@@ -258,7 +342,10 @@
     "entity": "Twilio Segment",
     "category": "analytics",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used to load Segment analytics collection scripts."
+    "explanation": "This hostname is commonly used to load Segment analytics collection scripts.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "segment-api",
@@ -267,7 +354,10 @@
     "entity": "Twilio Segment",
     "category": "analytics",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used to send analytics events to Segment."
+    "explanation": "This hostname is commonly used to send analytics events to Segment.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "amplitude-api",
@@ -276,7 +366,10 @@
     "entity": "Amplitude",
     "category": "analytics",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used to send product analytics events to Amplitude."
+    "explanation": "This hostname is commonly used to send product analytics events to Amplitude.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "mixpanel-js",
@@ -285,7 +378,10 @@
     "entity": "Mixpanel",
     "category": "analytics",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used to load Mixpanel analytics collection scripts."
+    "explanation": "This hostname is commonly used to load Mixpanel analytics collection scripts.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "heap-analytics",
@@ -294,7 +390,10 @@
     "entity": "Heap",
     "category": "analytics",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for product analytics and event measurement."
+    "explanation": "This domain is commonly used for product analytics and event measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "pendo-data",
@@ -303,7 +402,10 @@
     "entity": "Pendo",
     "category": "analytics",
     "defaultAction": "block",
-    "explanation": "This hostname is commonly used to collect Pendo product analytics and in-app behavior events."
+    "explanation": "This hostname is commonly used to collect Pendo product analytics and in-app behavior events.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "comscore-scorecardresearch",
@@ -312,7 +414,10 @@
     "entity": "Comscore",
     "category": "analytics",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for audience measurement and cross-site analytics."
+    "explanation": "This domain is commonly used for audience measurement and cross-site analytics.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "quantcast",
@@ -321,7 +426,10 @@
     "entity": "Quantcast",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for audience measurement and advertising analytics."
+    "explanation": "This domain is commonly used for audience measurement and advertising analytics.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "comscore",
@@ -330,7 +438,10 @@
     "entity": "Comscore",
     "category": "analytics",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for audience measurement and analytics services."
+    "explanation": "This domain is commonly used for audience measurement and analytics services.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "oracle-moatads",
@@ -339,7 +450,10 @@
     "entity": "Oracle Moat",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for ad viewability and advertising measurement."
+    "explanation": "This domain is commonly used for ad viewability and advertising measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "oracle-moat",
@@ -348,7 +462,10 @@
     "entity": "Oracle Moat",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for ad viewability and advertising measurement."
+    "explanation": "This domain is commonly used for ad viewability and advertising measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "integral-ad-science",
@@ -357,7 +474,10 @@
     "entity": "Integral Ad Science",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for ad verification, fraud detection, and viewability measurement."
+    "explanation": "This domain is commonly used for ad verification, fraud detection, and viewability measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "infillion-mathtag",
@@ -366,7 +486,10 @@
     "entity": "Infillion",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for advertising tags and audience measurement."
+    "explanation": "This domain is commonly used for advertising tags and audience measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "criteo",
@@ -375,7 +498,10 @@
     "entity": "Criteo",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for retargeting, advertising, and conversion measurement."
+    "explanation": "This domain is commonly used for retargeting, advertising, and conversion measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "criteo-net",
@@ -384,7 +510,10 @@
     "entity": "Criteo",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for retargeting, advertising, and conversion measurement."
+    "explanation": "This domain is commonly used for retargeting, advertising, and conversion measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "trade-desk",
@@ -393,7 +522,10 @@
     "entity": "The Trade Desk",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for programmatic advertising and ad measurement."
+    "explanation": "This domain is commonly used for programmatic advertising and ad measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "microsoft-adnxs",
@@ -402,7 +534,10 @@
     "entity": "Microsoft Advertising",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for programmatic advertising and ad measurement."
+    "explanation": "This domain is commonly used for programmatic advertising and ad measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "amazon-adsystem",
@@ -411,7 +546,10 @@
     "entity": "Amazon",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for Amazon advertising, ad delivery, and campaign measurement."
+    "explanation": "This domain is commonly used for Amazon advertising, ad delivery, and campaign measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "magnite-rubicon",
@@ -420,7 +558,10 @@
     "entity": "Magnite",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for programmatic advertising and ad exchange services."
+    "explanation": "This domain is commonly used for programmatic advertising and ad exchange services.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "pubmatic",
@@ -429,7 +570,10 @@
     "entity": "PubMatic",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for programmatic advertising and ad exchange services."
+    "explanation": "This domain is commonly used for programmatic advertising and ad exchange services.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "openx",
@@ -438,7 +582,10 @@
     "entity": "OpenX",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for programmatic advertising and ad exchange services."
+    "explanation": "This domain is commonly used for programmatic advertising and ad exchange services.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "liveramp",
@@ -447,7 +594,10 @@
     "entity": "LiveRamp",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for advertising identity resolution and audience matching."
+    "explanation": "This domain is commonly used for advertising identity resolution and audience matching.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "bidswitch",
@@ -456,7 +606,10 @@
     "entity": "Criteo",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for programmatic advertising bid routing."
+    "explanation": "This domain is commonly used for programmatic advertising bid routing.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "index-exchange",
@@ -465,7 +618,10 @@
     "entity": "Index Exchange",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for programmatic advertising and ad exchange services."
+    "explanation": "This domain is commonly used for programmatic advertising and ad exchange services.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "media-net",
@@ -474,7 +630,10 @@
     "entity": "Media.net",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for contextual advertising and ad measurement."
+    "explanation": "This domain is commonly used for contextual advertising and ad measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "smaato",
@@ -483,7 +642,10 @@
     "entity": "Smaato",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for mobile advertising and ad exchange services."
+    "explanation": "This domain is commonly used for mobile advertising and ad exchange services.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "yieldmo",
@@ -492,7 +654,10 @@
     "entity": "Yieldmo",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for digital advertising and ad measurement."
+    "explanation": "This domain is commonly used for digital advertising and ad measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "sovrn-lijit",
@@ -501,7 +666,10 @@
     "entity": "Sovrn",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for publisher advertising and audience measurement."
+    "explanation": "This domain is commonly used for publisher advertising and audience measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "sharethrough",
@@ -510,7 +678,10 @@
     "entity": "Sharethrough",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for native advertising and ad measurement."
+    "explanation": "This domain is commonly used for native advertising and ad measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "magnite-spotx",
@@ -519,7 +690,10 @@
     "entity": "Magnite",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for video advertising and ad exchange services."
+    "explanation": "This domain is commonly used for video advertising and ad exchange services.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "advertising-com",
@@ -528,7 +702,10 @@
     "entity": "Ad.com",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for digital advertising and ad measurement."
+    "explanation": "This domain is commonly used for digital advertising and ad measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "adform",
@@ -537,7 +714,10 @@
     "entity": "Adform",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for advertising technology and campaign measurement."
+    "explanation": "This domain is commonly used for advertising technology and campaign measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "adroll",
@@ -546,7 +726,10 @@
     "entity": "NextRoll",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for retargeting, advertising, and conversion measurement."
+    "explanation": "This domain is commonly used for retargeting, advertising, and conversion measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "tapad",
@@ -555,7 +738,10 @@
     "entity": "Tapad",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for cross-device advertising and audience matching."
+    "explanation": "This domain is commonly used for cross-device advertising and audience matching.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "turn",
@@ -564,7 +750,10 @@
     "entity": "Nexxen",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for programmatic advertising and ad measurement."
+    "explanation": "This domain is commonly used for programmatic advertising and ad measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "adobe-demdex",
@@ -573,7 +762,10 @@
     "entity": "Adobe",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for audience management and advertising identity matching."
+    "explanation": "This domain is commonly used for audience management and advertising identity matching.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "adobe-omtrdc",
@@ -582,7 +774,10 @@
     "entity": "Adobe",
     "category": "analytics",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for Adobe Analytics data collection and visitor measurement."
+    "explanation": "This domain is commonly used for Adobe Analytics data collection and visitor measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "adobe-2o7",
@@ -591,7 +786,10 @@
     "entity": "Adobe",
     "category": "analytics",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for Adobe analytics collection and visitor measurement."
+    "explanation": "This domain is commonly used for Adobe analytics collection and visitor measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "adobe-everesttech",
@@ -600,7 +798,10 @@
     "entity": "Adobe",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for Adobe advertising measurement, attribution, and audience services."
+    "explanation": "This domain is commonly used for Adobe advertising measurement, attribution, and audience services.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "permutive",
@@ -609,7 +810,10 @@
     "entity": "Permutive",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for audience segmentation, publisher advertising, and ad measurement."
+    "explanation": "This domain is commonly used for audience segmentation, publisher advertising, and ad measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "taboola",
@@ -618,7 +822,10 @@
     "entity": "Taboola",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for content recommendation ads and ad measurement."
+    "explanation": "This domain is commonly used for content recommendation ads and ad measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "taboola-syndication",
@@ -627,7 +834,10 @@
     "entity": "Taboola",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for content recommendation ads and ad syndication."
+    "explanation": "This domain is commonly used for content recommendation ads and ad syndication.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "outbrain",
@@ -636,7 +846,10 @@
     "entity": "Outbrain",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for content recommendation ads and ad measurement."
+    "explanation": "This domain is commonly used for content recommendation ads and ad measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "outbrain-images",
@@ -645,7 +858,10 @@
     "entity": "Outbrain",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for content recommendation ad assets and tracking."
+    "explanation": "This domain is commonly used for content recommendation ad assets and tracking.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "zemanta",
@@ -654,7 +870,10 @@
     "entity": "Outbrain",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for native advertising and content promotion measurement."
+    "explanation": "This domain is commonly used for native advertising and content promotion measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "mgid",
@@ -663,7 +882,10 @@
     "entity": "MGID",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for native advertising and content recommendation tracking."
+    "explanation": "This domain is commonly used for native advertising and content recommendation tracking.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "revcontent",
@@ -672,7 +894,10 @@
     "entity": "Revcontent",
     "category": "advertising",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for native advertising and content recommendation tracking."
+    "explanation": "This domain is commonly used for native advertising and content recommendation tracking.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "cloudflare-insights",
@@ -681,7 +906,10 @@
     "entity": "Cloudflare",
     "category": "analytics",
     "defaultAction": "block",
-    "explanation": "This domain is commonly used for Cloudflare Web Analytics and site measurement."
+    "explanation": "This domain is commonly used for Cloudflare Web Analytics and site measurement.",
+    "source": "curated-local-review",
+    "confidence": "high",
+    "breakageRisk": "medium"
   },
   {
     "id": "stripe",
@@ -727,5 +955,18 @@
     "category": "cdn",
     "defaultAction": "allow",
     "explanation": "This domain is commonly used to load shared JavaScript or CSS libraries from a CDN."
+  },
+  {
+    "id": "sentry",
+    "matchType": "suffix",
+    "domain": "sentry.io",
+    "entity": "Sentry",
+    "category": "observability",
+    "defaultAction": "restrict",
+    "explanation": "This domain is commonly used for developer error reporting and observability.",
+    "source": "curated-local-review",
+    "confidence": "medium",
+    "breakageRisk": "low",
+    "notes": "Restricted instead of blocked because error reporting may be functional for site teams."
   }
 ]

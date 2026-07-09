@@ -118,6 +118,17 @@ describe("TRACKER_CATALOG", () => {
     }
   });
 
+  it("uses restrict for reviewed observability services instead of blocking", () => {
+    expect(lookupTrackerCatalogEntry("o123.ingest.sentry.io")).toMatchObject({
+      entry: {
+        entity: "Sentry",
+        category: "observability",
+        defaultAction: "restrict",
+      },
+      action: "restrict",
+    });
+  });
+
   it("keeps block entries in intentionally blockable categories", () => {
     const blockableCategories = new Set([
       "advertising",
@@ -129,6 +140,16 @@ describe("TRACKER_CATALOG", () => {
     for (const entry of TRACKER_CATALOG) {
       if (entry.defaultAction === "block") {
         expect(blockableCategories.has(entry.category)).toBe(true);
+      }
+    }
+  });
+
+  it("requires review metadata for packaged block entries", () => {
+    for (const entry of TRACKER_CATALOG) {
+      if (entry.defaultAction === "block") {
+        expect(entry.source).toBeTruthy();
+        expect(entry.confidence).toMatch(/^(high|medium|low)$/);
+        expect(entry.breakageRisk).toMatch(/^(low|medium|high)$/);
       }
     }
   });
@@ -160,6 +181,9 @@ describe("lookupTrackerCatalogEntry", () => {
       category: "analytics",
       defaultAction: "block",
       explanation: "This domain is commonly used for analytics.",
+      source: "test-fixture",
+      confidence: "high",
+      breakageRisk: "low",
     },
     {
       id: "specific-cdn",
@@ -169,6 +193,15 @@ describe("lookupTrackerCatalogEntry", () => {
       category: "cdn",
       defaultAction: "allow",
       explanation: "This domain is commonly used to deliver site assets.",
+      rules: [
+        {
+          id: "collect-endpoint",
+          matchType: "path-prefix",
+          value: "/collect",
+          action: "block",
+          explanation: "This path is a confirmed collection endpoint.",
+        },
+      ],
     },
   ];
 
@@ -180,6 +213,27 @@ describe("lookupTrackerCatalogEntry", () => {
         defaultAction: "block",
       },
       matchedDomain: "google-analytics.com",
+      action: "block",
+      matchedRule: null,
+    });
+  });
+
+  it("lets precise path rules override broad host defaults", () => {
+    expect(
+      lookupTrackerCatalogEntry(
+        "cdn.example.com",
+        catalog,
+        "https://cdn.example.com/collect/pixel.gif?user=123",
+      ),
+    ).toMatchObject({
+      entry: {
+        id: "specific-cdn",
+        defaultAction: "allow",
+      },
+      action: "block",
+      matchedRule: {
+        id: "collect-endpoint",
+      },
     });
   });
 
@@ -233,9 +287,25 @@ describe("loadTrackerCatalog", () => {
           category: "tracking",
           defaultAction: "block",
           explanation: "This domain is commonly used for analytics.",
+          source: "test-fixture",
+          confidence: "high",
+          breakageRisk: "low",
         },
       ]),
     ).toThrow("invalid category");
+    expect(() =>
+      loadTrackerCatalog([
+        {
+          id: "missing-review",
+          matchType: "suffix",
+          domain: "example.com",
+          entity: "Example",
+          category: "analytics",
+          defaultAction: "block",
+          explanation: "This domain is commonly used for analytics.",
+        },
+      ]),
+    ).toThrow("needs source, confidence, and breakageRisk");
   });
 
   it("rejects duplicate ids", () => {
@@ -247,6 +317,9 @@ describe("loadTrackerCatalog", () => {
       category: "analytics",
       defaultAction: "block",
       explanation: "This domain is commonly used for analytics.",
+      source: "test-fixture",
+      confidence: "high",
+      breakageRisk: "low",
     };
 
     expect(() => loadTrackerCatalog([validEntry, validEntry])).toThrow(

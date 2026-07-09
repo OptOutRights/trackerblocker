@@ -138,6 +138,36 @@ describe("request observation aggregation", () => {
     });
   });
 
+  it("summarizes restricted catalog rows separately from blocked and allowed rows", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://o123.ingest.sentry.io/api/1/envelope/",
+      requestType: "xmlhttprequest",
+      timestamp: 100,
+    });
+
+    expect(summarizeTabObservation(state)).toMatchObject({
+      blockedCount: 0,
+      restrictedCount: 1,
+      allowedCount: 0,
+      rows: [
+        {
+          displayName: "o123.ingest.sentry.io",
+          category: "observability",
+          entity: "Sentry",
+          catalogDefaultAction: "restrict",
+          catalogSource: "curated-local-review",
+          catalogConfidence: "medium",
+          catalogBreakageRisk: "low",
+          status: "restricted",
+        },
+      ],
+    });
+  });
+
   it("applies per-domain allow overrides to catalog-blocked rows", () => {
     const state = createTabObservationState(1, "https://example.com");
 

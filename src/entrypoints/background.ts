@@ -30,7 +30,12 @@ import {
   summarizeTabObservation,
   type TabObservationState,
 } from "../shared/requestObservation";
-import { formatUrlHost } from "../shared/domains";
+import {
+  classifyRequestSiteRelationship,
+  formatUrlHost,
+} from "../shared/domains";
+import { decideRule } from "../shared/ruleDecisions";
+import { lookupTrackerCatalogEntry } from "../shared/trackerCatalog";
 import {
   normalizeSettings,
   normalizeSettingsKey,
@@ -243,6 +248,42 @@ export default defineBackground(() => {
       { urls: ["<all_urls>"] },
     );
 
+    browser.webRequest.onBeforeSendHeaders.addListener(
+      (details) => {
+        if (details.tabId < 0) {
+          return undefined;
+        }
+
+        const state = tabObservations.get(details.tabId);
+        const requestDocumentUrl = getRequestDocumentUrl(details);
+        const pageUrl = state?.pageUrl ?? requestDocumentUrl;
+        const sitePauseStatus = getSitePauseStatus(
+          temporarySitePauses,
+          details.tabId,
+          pageUrl,
+          settingsCache,
+        );
+        const decision = decideHeaderRestriction({
+          pageUrl,
+          requestUrl: details.url,
+          sitePaused: sitePauseStatus !== "active",
+          settings: settingsCache,
+        });
+
+        if (!decision.shouldRestrictHeaders || !details.requestHeaders) {
+          return undefined;
+        }
+
+        const requestHeaders = stripTrackingRequestHeaders(
+          details.requestHeaders,
+        );
+
+        return { requestHeaders };
+      },
+      { urls: ["<all_urls>"] },
+      ["blocking", "requestHeaders"],
+    );
+
     browser.webRequest.onCompleted.addListener(
       (details) => {
         if (details.tabId < 0) {
@@ -380,6 +421,54 @@ function clearTemporaryPauseForNavigation(
   if (normalizeSiteFromUrl(nextUrl) !== pausedSite) {
     temporarySitePauses.delete(tabId);
   }
+}
+
+function decideHeaderRestriction({
+  pageUrl,
+  requestUrl,
+  settings,
+  sitePaused,
+}: {
+  pageUrl?: string | null;
+  requestUrl?: string | null;
+  settings: TrackerBlockerSettings;
+  sitePaused: boolean;
+}) {
+  const classification = classifyRequestSiteRelationship({
+    pageUrl,
+    requestUrl,
+  });
+
+  if (classification.status !== "third-party") {
+    return decideRule({
+      relationship:
+        classification.status === "same-site" ? "first-party" : "unknown",
+      sitePaused,
+    });
+  }
+
+  const catalogMatch = lookupTrackerCatalogEntry(
+    classification.requestHost,
+    undefined,
+    requestUrl,
+  );
+
+  return decideRule({
+    relationship: "third-party",
+    catalogDefaultAction: catalogMatch?.action ?? null,
+    domainOverride: settings.domainOverrides[classification.requestHost] ?? null,
+    sitePaused,
+  });
+}
+
+function stripTrackingRequestHeaders<
+  T extends { name: string; value?: string },
+>(requestHeaders: T[]): T[] {
+  return requestHeaders.filter((header) => {
+    const name = header.name.toLowerCase();
+
+    return name !== "cookie" && name !== "referer";
+  });
 }
 
 function normalizeSiteFromUrl(url: string | null | undefined): string | null {

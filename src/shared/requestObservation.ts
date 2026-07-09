@@ -105,6 +105,11 @@ export interface ObservedRequestRow {
   entity: string | null;
   explanation: string;
   catalogDefaultAction: CatalogDefaultAction | null;
+  catalogSource: string | null;
+  catalogConfidence: string | null;
+  catalogBreakageRisk: string | null;
+  catalogRuleId: string | null;
+  catalogNotes: string | null;
   status: RuleDecisionStatus;
   ruleSource: RuleDecisionSource;
   requestCount: number;
@@ -125,6 +130,7 @@ export interface TabRequestSummary {
   unknownCount: number;
   firstPartyCount: number;
   blockedCount: number;
+  restrictedCount: number;
   allowedCount: number;
   rows: ObservedRequestRow[];
 }
@@ -257,7 +263,7 @@ export function recordObservedRequest(
 
   const id = `${rowSeed.relationship}:${rowSeed.key}`;
   const existing = state.rows.get(id);
-  const catalogFields = getCatalogFields(rowSeed);
+  const catalogFields = getCatalogFields(rowSeed, evidence.requestUrl);
   const decision = decideRule({
     relationship: rowSeed.relationship,
     catalogDefaultAction: catalogFields.catalogDefaultAction,
@@ -457,6 +463,7 @@ export function summarizeTabObservation(
     firstPartyCount: rows.filter((row) => row.relationship === "first-party")
       .length,
     blockedCount: rows.filter((row) => row.status === "blocked").length,
+    restrictedCount: rows.filter((row) => row.status === "restricted").length,
     allowedCount: rows.filter(
       (row) => row.status === "allowed" || row.status === "allowed-paused",
     ).length,
@@ -492,9 +499,17 @@ export function isUnknownRow(row: ObservedRequestRow): boolean {
 function getCatalogFields(rowSeed: {
   relationship: RequestRelationship;
   displayName: string;
-}): Pick<
+}, requestUrl?: string | null): Pick<
   ObservedRequestRow,
-  "category" | "entity" | "explanation" | "catalogDefaultAction"
+  | "category"
+  | "entity"
+  | "explanation"
+  | "catalogDefaultAction"
+  | "catalogSource"
+  | "catalogConfidence"
+  | "catalogBreakageRisk"
+  | "catalogRuleId"
+  | "catalogNotes"
 > {
   if (rowSeed.relationship === "first-party") {
     return {
@@ -502,6 +517,11 @@ function getCatalogFields(rowSeed: {
       entity: null,
       explanation: FIRST_PARTY_EXPLANATION,
       catalogDefaultAction: null,
+      catalogSource: null,
+      catalogConfidence: null,
+      catalogBreakageRisk: null,
+      catalogRuleId: null,
+      catalogNotes: null,
     };
   }
 
@@ -511,17 +531,33 @@ function getCatalogFields(rowSeed: {
       entity: null,
       explanation: UNKNOWN_REQUEST_EXPLANATION,
       catalogDefaultAction: null,
+      catalogSource: null,
+      catalogConfidence: null,
+      catalogBreakageRisk: null,
+      catalogRuleId: null,
+      catalogNotes: null,
     };
   }
 
-  const catalogMatch = lookupTrackerCatalogEntry(rowSeed.displayName);
+  const catalogMatch = lookupTrackerCatalogEntry(
+    rowSeed.displayName,
+    undefined,
+    requestUrl,
+  );
 
   return {
     category: catalogMatch?.entry.category ?? "unknown",
     entity: catalogMatch?.entry.entity ?? null,
     explanation:
-      catalogMatch?.entry.explanation ?? UNKNOWN_THIRD_PARTY_EXPLANATION,
-    catalogDefaultAction: catalogMatch?.entry.defaultAction ?? null,
+      catalogMatch?.matchedRule?.explanation ??
+      catalogMatch?.entry.explanation ??
+      UNKNOWN_THIRD_PARTY_EXPLANATION,
+    catalogDefaultAction: catalogMatch?.action ?? null,
+    catalogSource: catalogMatch?.entry.source ?? null,
+    catalogConfidence: catalogMatch?.entry.confidence ?? null,
+    catalogBreakageRisk: catalogMatch?.entry.breakageRisk ?? null,
+    catalogRuleId: catalogMatch?.matchedRule?.id ?? null,
+    catalogNotes: catalogMatch?.entry.notes ?? null,
   };
 }
 

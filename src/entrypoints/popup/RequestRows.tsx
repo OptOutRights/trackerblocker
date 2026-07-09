@@ -217,6 +217,8 @@ function formatCategory(category: ObservedRequestRow["category"]): string {
       return "likely session replay";
     case "social":
       return "likely social";
+    case "observability":
+      return "likely observability";
     case "payment":
       return "likely payment";
     case "security":
@@ -247,6 +249,8 @@ function formatStatus(status: ObservedRequestRow["status"]): string {
       return "blocked";
     case "allowed":
       return "allowed";
+    case "restricted":
+      return "restricted";
     case "allowed-paused":
       return "paused";
   }
@@ -258,6 +262,8 @@ function requestRowClass(status: ObservedRequestRow["status"]): string {
   switch (status) {
     case "blocked":
       return `${base} is-blocked`;
+    case "restricted":
+      return `${base} is-restricted`;
     case "allowed":
       return `${base} is-allowed`;
     case "allowed-paused":
@@ -272,6 +278,8 @@ function statusBadgeClass(status: ObservedRequestRow["status"]): string {
   switch (status) {
     case "blocked":
       return `${base} border-[#5db7dd] bg-[#dff5ff] text-zinc-950`;
+    case "restricted":
+      return `${base} border-[#d6c3a4] bg-[#fff8eb] text-[#6b4d21]`;
     case "allowed":
       return `${base} border-zinc-200 bg-white text-zinc-700`;
     case "allowed-paused":
