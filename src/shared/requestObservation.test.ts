@@ -24,7 +24,7 @@ describe("mapRequestType", () => {
 });
 
 describe("request observation aggregation", () => {
-  it("aggregates repeated third-party requests by registrable domain", () => {
+  it("aggregates third-party requests by hostname while preserving site metadata", () => {
     const state = createTabObservationState(1, "https://example.com");
 
     recordObservedRequest(state, {
@@ -43,20 +43,189 @@ describe("request observation aggregation", () => {
     });
 
     expect(summarizeTabObservation(state)).toMatchObject({
-      thirdPartyCount: 1,
-      unknownCount: 0,
+      thirdPartyCount: 2,
+      unknownCount: 2,
       firstPartyCount: 0,
       blockedCount: 0,
-      allowedCount: 1,
+      allowedCount: 2,
       totalRequests: 2,
       rows: [
         {
-          displayName: "tracker.test",
+          host: "cdn.tracker.test",
+          siteDomain: "tracker.test",
+          displayName: "cdn.tracker.test",
           relationship: "third-party",
-          requestCount: 2,
-          requestTypes: ["image", "script"],
-          status: "allowed",
+          requestCount: 1,
+          requestTypes: ["script"],
           category: "unknown",
+          entity: null,
+          catalogDefaultAction: null,
+          ruleSource: "automatic",
+          status: "allowed",
+        },
+        {
+          host: "img.tracker.test",
+          siteDomain: "tracker.test",
+          displayName: "img.tracker.test",
+          relationship: "third-party",
+          requestCount: 1,
+          requestTypes: ["image"],
+          category: "unknown",
+          entity: null,
+          catalogDefaultAction: null,
+          ruleSource: "automatic",
+          status: "allowed",
+        },
+      ],
+    });
+  });
+
+  it("adds local catalog details to known third-party rows", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://www.google-analytics.com/analytics.js",
+      requestType: "script",
+      timestamp: 100,
+    });
+
+    expect(summarizeTabObservation(state)).toMatchObject({
+      thirdPartyCount: 1,
+      rows: [
+        {
+          host: "www.google-analytics.com",
+          siteDomain: "google-analytics.com",
+          displayName: "www.google-analytics.com",
+          relationship: "third-party",
+          category: "analytics",
+          entity: "Google",
+          catalogDefaultAction: "block",
+          explanation:
+            "This domain is commonly used to measure visits, page views, and user interactions.",
+          ruleSource: "automatic",
+          status: "blocked",
+        },
+      ],
+    });
+  });
+
+  it("applies per-domain allow overrides to catalog-blocked rows", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://www.google-analytics.com/analytics.js",
+      requestType: "script",
+      timestamp: 100,
+      domainOverrides: {
+        "www.google-analytics.com": "allow",
+      },
+    });
+
+    expect(
+      summarizeTabObservation(state, {
+        domainOverrides: {
+          "www.google-analytics.com": "allow",
+        },
+      }),
+    ).toMatchObject({
+      blockedCount: 0,
+      allowedCount: 1,
+      rows: [
+        {
+          displayName: "www.google-analytics.com",
+          ruleSource: "allowed-by-user",
+          status: "allowed",
+        },
+      ],
+    });
+  });
+
+  it("lets site pause allow catalog-blocked rows", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://www.google-analytics.com/analytics.js",
+      requestType: "script",
+      timestamp: 100,
+      sitePaused: true,
+    });
+
+    expect(
+      summarizeTabObservation(state, {
+        sitePaused: true,
+      }),
+    ).toMatchObject({
+      blockedCount: 0,
+      allowedCount: 1,
+      rows: [
+        {
+          displayName: "www.google-analytics.com",
+          ruleSource: "site-paused",
+          status: "allowed-paused",
+        },
+      ],
+    });
+  });
+
+  it("recomputes summary decisions with current settings", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://www.google-analytics.com/analytics.js",
+      requestType: "script",
+      timestamp: 100,
+    });
+
+    expect(
+      summarizeTabObservation(state, {
+        domainOverrides: {
+          "www.google-analytics.com": "allow",
+        },
+      }),
+    ).toMatchObject({
+      blockedCount: 0,
+      allowedCount: 1,
+      rows: [
+        {
+          displayName: "www.google-analytics.com",
+          ruleSource: "allowed-by-user",
+          status: "allowed",
+        },
+      ],
+    });
+  });
+
+  it("uses the most specific local catalog match for host-level rows", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://cdnjs.cloudflare.com/ajax/libs/app.js",
+      requestType: "script",
+      timestamp: 100,
+    });
+
+    expect(summarizeTabObservation(state)).toMatchObject({
+      allowedCount: 1,
+      rows: [
+        {
+          displayName: "cdnjs.cloudflare.com",
+          siteDomain: "cloudflare.com",
+          category: "cdn",
+          entity: "Cloudflare",
+          catalogDefaultAction: "allow",
+          explanation:
+            "This domain is commonly used to load shared JavaScript or CSS libraries from a CDN.",
+          status: "allowed",
         },
       ],
     });
@@ -105,10 +274,14 @@ describe("request observation aggregation", () => {
 
     expect(summarizeTabObservation(state)).toMatchObject({
       thirdPartyCount: 0,
+      unknownCount: 0,
       firstPartyCount: 1,
+      allowedCount: 1,
       rows: [
         {
-          displayName: "example.co.uk",
+          host: "cdn.example.co.uk",
+          siteDomain: "example.co.uk",
+          displayName: "cdn.example.co.uk",
           relationship: "first-party",
         },
       ],
@@ -132,7 +305,9 @@ describe("request observation aggregation", () => {
       firstPartyCount: 0,
       rows: [
         {
-          displayName: "tracker.test",
+          host: "frame.tracker.test",
+          siteDomain: "tracker.test",
+          displayName: "frame.tracker.test",
           relationship: "third-party",
         },
       ],
@@ -154,7 +329,9 @@ describe("request observation aggregation", () => {
       thirdPartyCount: 1,
       rows: [
         {
-          displayName: "tracker.test",
+          host: "events.tracker.test",
+          siteDomain: "tracker.test",
+          displayName: "events.tracker.test",
           relationship: "third-party",
           requestTypes: ["other"],
         },
@@ -183,10 +360,12 @@ describe("request observation aggregation", () => {
     expect(summarizeTabObservation(state)).toMatchObject({
       unknownCount: 1,
       blockedCount: 0,
+      allowedCount: 1,
       rows: [
         {
           displayName: "Unclassifiable request",
           relationship: "unknown",
+          status: "allowed",
           requestCount: 2,
           requestTypes: ["script", "xhr"],
         },
@@ -207,10 +386,12 @@ describe("request observation aggregation", () => {
 
     expect(summarizeTabObservation(state)).toMatchObject({
       unknownCount: 1,
+      allowedCount: 1,
       rows: [
         {
           displayName: "moz-extension:extension-id",
           relationship: "unknown",
+          status: "allowed",
         },
       ],
     });

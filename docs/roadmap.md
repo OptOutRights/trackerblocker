@@ -8,7 +8,7 @@ The MVP should become useful in three loops:
 
 1. **Observe** third-party requests and show them in the popup.
 2. **Explain** known third parties using packaged local catalog data.
-3. **Control** behavior with local blocking, per-domain overrides, and site pause.
+3. **Control** behavior with local blocking, per-hostname overrides, and site pause.
 
 Keep each loop shippable on its own. Avoid mixing blocking, catalog authoring, options UI, and popup polish in the same branch unless a small glue change demands it.
 
@@ -119,7 +119,7 @@ TODO: implementation details
 
 ### Phase 2: Request Observation
 
-Goal: the popup shows real third-party domains observed on the active tab, without blocking anything yet.
+Goal: the popup shows real third-party hostnames observed on the active tab, without blocking anything yet.
 
 Work:
 
@@ -128,13 +128,13 @@ Work:
 - Define request type categories used by the popup.
 - Add a background request observer using `browser.webRequest` listeners.
 - Track top-level tab URL changes and clear or reset per-tab observations at sensible navigation boundaries.
-- Aggregate requests by normalized third-party domain for each tab using the Phase 1 classifier.
+- Aggregate requests by normalized third-party hostname for each tab using the Phase 1 classifier.
 - Add a popup message to fetch the active tab's request summary.
 - Replace the scaffold popup body with site status, summary counts, and a simple third-party list.
 
 Acceptance:
 
-- Visiting a site with third-party resources shows third-party domains in the popup.
+- Visiting a site with third-party resources shows third-party hostnames in the popup.
 - Refreshing or navigating does not mix old-page observations into the new page.
 - Unknown third parties are shown as unknown, allowed, and not overclaimed.
 - Unit tests cover aggregation and request evidence normalization.
@@ -152,7 +152,7 @@ TODO: implementation details
 
 - Permissions added: `webRequest` plus `<all_urls>` host permissions; no blocking permission or request cancellation.
 - Listener strategy: `browser.webRequest.onBeforeRequest` records passive request evidence relative to the top-level tab page; `tabs.onUpdated` and `main_frame` requests reset tab state; `tabs.onRemoved` clears memory.
-- Background state shape: short-lived in-memory tab summaries aggregate rows by relationship, normalized display name, request count, request types, and last-seen timestamp.
+- Background state shape: short-lived in-memory tab summaries aggregate rows by normalized request hostname, relationship, request count, request types, and last-seen timestamp; registrable site domains are retained as metadata for classification/grouping.
 - Popup message contract: `trackerblocker.getTabRequestSummary` returns active-tab counts and rows ordered as third-party, unknown/unclassifiable, then first-party; the popup refreshes while open.
 - Test coverage: request type mapping, aggregation, ordering, top-level-page-relative frame requests, WebSocket requests, public-suffix-aware first-party handling, unknown/unclassifiable handling, resets, empty summaries, and message guards.
 
@@ -185,7 +185,12 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: catalog file paths, schema shape, lookup API, seed data scope, validation tests, and wording rules for explanations.
+- Catalog data lives in `src/data/trackerCatalog.json` and is imported through `src/shared/trackerCatalog.ts`.
+- Catalog entries include `id`, `matchType`, `domain`, `entity`, `category`, `defaultAction`, and one-sentence `explanation`.
+- `lookupTrackerCatalogEntry()` normalizes domains, matches exact/suffix entries on label boundaries, and chooses the longest most-specific match.
+- Seed data covers advertising, analytics, session replay, social, payment, security, and CDN examples, with block defaults only for tracking-oriented categories.
+- `src/shared/trackerCatalog.test.ts` validates packaged data, malformed catalog rejection, suffix boundaries, exact matches, longest-match behavior, and cautious unknown fallback wording.
+- Request observation enriches third-party rows with local catalog category, entity, explanation, and catalog default action; uncataloged third parties use the local unknown explanation.
 
 ### Phase 4: Decision Engine
 
@@ -220,7 +225,12 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: decision input/output types, precedence behavior, rule source names, test matrix, and known limitations.
+- Decision logic lives in `src/shared/ruleDecisions.ts` and stays browser-independent.
+- `decideRule()` returns `status`, `source`, and `shouldBlock` from relationship, catalog default action, optional hostname override, and optional site pause.
+- Precedence is site pause, per-hostname block/allow override, first-party allow, unclassifiable/unknown visibility, catalog default, then unknown third-party allowed by default.
+- Rule sources are `automatic`, `blocked-by-user`, `allowed-by-user`, and `site-paused`; statuses are `blocked`, `allowed`, and `allowed-paused`.
+- Request observation now applies automatic decisions to row summaries before actual request cancellation exists.
+- `src/shared/ruleDecisions.test.ts` covers precedence, catalog defaults, unknowns, and first-party behavior.
 
 ### Phase 5: Local Storage And Overrides
 
@@ -229,7 +239,7 @@ Goal: settings are stable before controls write to them.
 Work:
 
 - Define storage keys and schema versions.
-- Implement storage accessors for site pauses and per-domain overrides.
+- Implement storage accessors for site pauses and per-hostname overrides.
 - Add migration hooks even if version 1 has no migration yet.
 - Add reset helpers for settings.
 - Add background message handlers for reading and updating settings.
@@ -251,7 +261,12 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: storage keys, schema version, migration behavior, accessor APIs, reset behavior, and message handlers.
+- Settings live under the `trackerblocker:settings` key in `browser.storage.local` with schema version `1`.
+- `src/storage/settings.ts` stores only always-paused sites and per-hostname overrides; observed request summaries and pause-once state remain short-lived background memory.
+- Storage accessors normalize settings, migrate unversioned local shapes, drop unknown future schema versions conservatively, and expose reset/update helpers.
+- Background messages can read settings, update site pauses, set/reset hostname overrides, and reset local settings.
+- Storage message failures return `trackerblocker.settingsErrorResponse` with `storage-unavailable` instead of hanging the popup/options request.
+- `src/storage/settings.test.ts` and `src/messaging/settings.test.ts` cover defaults, normalization, migration, reads/writes, reset behavior, and message guards.
 
 ### Phase 6: Blocking
 
@@ -261,7 +276,7 @@ Work:
 
 - Add request cancellation for decisions that resolve to blocked.
 - Ensure blocked attempts are still recorded for the popup.
-- Ensure site pause and per-domain allow override prevent cancellation.
+- Ensure site pause and per-hostname allow override prevent cancellation.
 - Be careful with listener registration: Firefox MV3 event pages need listeners registered at top level.
 - Add manual test cases for broken-site recovery.
 
@@ -284,7 +299,12 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: cancellation listener details, required permissions, blocked-request recording path, recovery behavior, and manual QA sites.
+- `browser.webRequest.onBeforeRequest` now registers with `["blocking"]` and returns `{ cancel: true }` for rows whose local decision is `blocked`.
+- The manifest includes `webRequestBlocking`; `npm run lint:firefox` validates the built Firefox MV3 output with zero errors and one bundled popup warning.
+- Blocking decisions use an in-memory settings cache loaded from `browser.storage.local`, so the blocking listener stays synchronous while settings remain local.
+- Blocked attempts are recorded through `recordObservedRequest()` before cancellation, so the popup summary includes attempted requests.
+- Pause once, always pause, and per-hostname allow override feed the same decision path and prevent cancellation.
+- Request observation tests cover catalog-blocked rows, allow overrides, and site-pause recovery; manual Firefox checks remain part of Phase 9 QA.
 
 ### Phase 7: Popup Controls And Expanded Rows
 
@@ -293,9 +313,9 @@ Goal: the popup becomes the primary MVP surface described in `docs/mvp.md`.
 Work:
 
 - Add summary counts: total third parties, blocked, allowed, unknown.
-- Add rows with domain, request count, category, and status.
+- Add rows with hostname, request count, category, and status.
 - Add expanded row details: entity, explanation, request types, rule source.
-- Add Auto, Block, Allow controls per domain.
+- Add Auto, Block, Allow controls per hostname.
 - Add site pause toggle for the current site.
 - Keep language careful: "third parties" by default, "likely" categories for catalog entries.
 
@@ -317,7 +337,14 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: component structure, popup message/update flow, control behavior, row expansion state, accessibility notes, and smoke/manual QA coverage.
+- Popup UI remains in `src/entrypoints/popup/App.tsx` and uses the existing compact Preact/Tailwind structure.
+- The default view shows current site, active/paused protection status, observed request total, and summary filters for third parties, blocked, allowed, and uncataloged/unclassifiable rows.
+- Popup protection controls support active, paused once, and paused always states. Pause once is tab-scoped and survives refresh on the same site, while always pause is stored locally.
+- Rows expand in-place to show entity, local explanation, request types, rule source, and per-hostname Auto/Block/Allow controls for third-party rows.
+- The site pause button writes through `trackerblocker.updateSitePause`; row controls write through `trackerblocker.setDomainOverride`, then refresh the summary from background state.
+- Summary responses recompute row decisions from the current settings cache so controls update visible decisions immediately.
+- Accessibility basics include real buttons, `aria-pressed` on filter/control buttons, and `aria-expanded` on expandable rows.
+- No Playwright harness exists yet; Phase 7 verification used Vitest, TypeScript, and Firefox build, with manual browser smoke checks left for Phase 9.
 
 ### Phase 8: Options Page
 
@@ -326,8 +353,8 @@ Goal: users can review and reset local controls outside the popup.
 Work:
 
 - Add WXT options entrypoint.
-- List paused sites with remove controls.
-- List per-domain overrides with reset-to-Auto controls.
+- List always-paused sites with remove controls.
+- List per-hostname overrides with reset-to-Auto controls.
 - Add reset local settings control.
 - State that settings and learned data stay on device.
 
@@ -348,7 +375,12 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: options entrypoint files, storage access patterns, reset/remove flows, privacy copy, and test coverage.
+- The options page entrypoint lives in `src/entrypoints/options/` and WXT builds it as `options.html`.
+- Options reads settings through `trackerblocker.getSettings` and uses the same background message handlers as the popup.
+- Always-paused sites can be resumed, hostname overrides can be reset to Auto, and all local settings can be reset.
+- Empty, loading, and storage-unavailable states are handled with compact inline UI.
+- The page states that settings and learned data stay on device and that the MVP does not use telemetry, accounts, sync, remote classification, or runtime explanation fetches.
+- Verification used Vitest, TypeScript, and Firefox build; options UI browser smoke checks remain part of Phase 9 QA.
 
 ### Phase 9: MVP QA And Packaging
 
@@ -379,7 +411,12 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Fill in after completion: QA checklist results, representative sites tested, build/lint/zip commands run, known warnings, and release-readiness notes.
+- QA notes live in `docs/qa.md`.
+- Final verification ran `npm test`, `npm run typecheck`, `npm run lint:firefox`, and `npm run zip:firefox`.
+- `web-ext run` installed the built `.output/firefox-mv3` extension as a temporary add-on in headless Firefox during a bounded runtime smoke.
+- Firefox lint reports 0 errors, 0 notices, and 1 bundled-code `UNSAFE_VAR_ASSIGNMENT` warning; source search found no `innerHTML` or `dangerouslySetInnerHTML` usage.
+- Zip output is available at `.output/trackerblocker-0.0.0-firefox.zip`; source zip is available at `.output/trackerblocker-0.0.0-sources.zip`.
+- Manual browser checks for representative sites, pause recovery, overrides, options reset, and empty states are listed in `docs/qa.md`.
 
 ## Recommended Work Order
 
@@ -437,10 +474,10 @@ For risky branches like blocking, prefer:
 The MVP is done when:
 
 - The extension observes current-tab third-party requests.
-- The popup shows third-party domains, counts, categories, statuses, and explanations.
+- The popup shows third-party hostnames, counts, categories, statuses, and explanations.
 - Known block categories are blocked by default.
 - Unknown third parties are allowed by default and shown clearly.
-- Site pause and per-domain overrides work.
+- Pause once, always pause, and per-hostname overrides work.
 - Options page can review and reset local controls.
 - Settings stay in `browser.storage.local`.
 - Catalog and explanations are packaged local data.

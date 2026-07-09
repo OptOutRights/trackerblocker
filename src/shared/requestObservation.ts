@@ -2,6 +2,18 @@ import {
   classifyRequestSiteRelationship,
   formatUrlHost,
 } from "./domains";
+import {
+  lookupTrackerCatalogEntry,
+  UNKNOWN_THIRD_PARTY_EXPLANATION,
+  type CatalogCategory,
+  type CatalogDefaultAction,
+} from "./trackerCatalog";
+import {
+  decideRule,
+  type DomainOverrideAction,
+  type RuleDecisionSource,
+  type RuleDecisionStatus,
+} from "./ruleDecisions";
 
 export type RequestTypeCategory =
   | "script"
@@ -21,14 +33,22 @@ export interface RequestEvidence {
   requestUrl?: string | null;
   requestType?: string | null;
   timestamp: number;
+  sitePaused?: boolean;
+  domainOverrides?: Record<string, DomainOverrideAction>;
 }
 
 export interface ObservedRequestRow {
   id: string;
+  host: string | null;
+  siteDomain: string | null;
   displayName: string;
   relationship: RequestRelationship;
-  category: "unknown";
-  status: "allowed";
+  category: CatalogCategory | "unknown";
+  entity: string | null;
+  explanation: string;
+  catalogDefaultAction: CatalogDefaultAction | null;
+  status: RuleDecisionStatus;
+  ruleSource: RuleDecisionSource;
   requestCount: number;
   requestTypes: RequestTypeCategory[];
   lastSeen: number;
@@ -42,7 +62,7 @@ export interface TabRequestSummary {
   thirdPartyCount: number;
   unknownCount: number;
   firstPartyCount: number;
-  blockedCount: 0;
+  blockedCount: number;
   allowedCount: number;
   rows: ObservedRequestRow[];
 }
@@ -53,6 +73,15 @@ export interface TabObservationState {
   rows: Map<string, ObservedRequestRow>;
 }
 
+export interface SummaryDecisionOptions {
+  sitePaused?: boolean;
+  domainOverrides?: Record<string, DomainOverrideAction>;
+}
+
+const FIRST_PARTY_EXPLANATION =
+  "This request appears to belong to the current site.";
+const UNKNOWN_REQUEST_EXPLANATION =
+  "This request was observed, but TrackerBlocker could not classify its site relationship.";
 const RELATIONSHIP_ORDER: Record<RequestRelationship, number> = {
   "third-party": 0,
   unknown: 1,
@@ -104,7 +133,7 @@ export function mapRequestType(
 export function recordObservedRequest(
   state: TabObservationState,
   evidence: RequestEvidence,
-): void {
+): ObservedRequestRow {
   const pageUrl = state.pageUrl ?? evidence.pageUrl;
   const classification = classifyRequestSiteRelationship({
     pageUrl,
@@ -115,6 +144,8 @@ export function recordObservedRequest(
   const rowSeed: {
     relationship: RequestRelationship;
     key: string;
+    host: string | null;
+    siteDomain: string | null;
     displayName: string;
   } =
     classification.status === "third-party" ||
@@ -124,44 +155,67 @@ export function recordObservedRequest(
             classification.status === "third-party"
               ? "third-party"
               : "first-party",
-          key: classification.requestSite,
-          displayName: classification.requestSite,
+          key: classification.requestHost,
+          host: classification.requestHost,
+          siteDomain: classification.requestSite,
+          displayName: classification.requestHost,
         }
       : {
           relationship: "unknown",
           key: getUnknownRequestKey(evidence.requestUrl),
+          host: null,
+          siteDomain: null,
           displayName: getUnknownRequestDisplayName(evidence.requestUrl),
         };
 
   const id = `${rowSeed.relationship}:${rowSeed.key}`;
   const existing = state.rows.get(id);
+  const catalogFields = getCatalogFields(rowSeed);
+  const decision = decideRule({
+    relationship: rowSeed.relationship,
+    catalogDefaultAction: catalogFields.catalogDefaultAction,
+    domainOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
+    sitePaused: evidence.sitePaused,
+  });
 
   if (!existing) {
-    state.rows.set(id, {
+    const row: ObservedRequestRow = {
       id,
+      host: rowSeed.host,
+      siteDomain: rowSeed.siteDomain,
       displayName: rowSeed.displayName,
       relationship: rowSeed.relationship,
-      category: "unknown",
-      status: "allowed",
+      ...catalogFields,
+      status: decision.status,
+      ruleSource: decision.source,
       requestCount: 1,
       requestTypes: [requestType],
       lastSeen: evidence.timestamp,
-    });
-    return;
+    };
+
+    state.rows.set(id, row);
+    return row;
   }
 
   existing.requestCount += 1;
   existing.lastSeen = Math.max(existing.lastSeen, evidence.timestamp);
+  existing.status = decision.status;
+  existing.ruleSource = decision.source;
 
   if (!existing.requestTypes.includes(requestType)) {
     existing.requestTypes = [...existing.requestTypes, requestType].sort();
   }
+
+  return existing;
 }
 
 export function summarizeTabObservation(
   state: TabObservationState,
+  decisionOptions: SummaryDecisionOptions = {},
 ): TabRequestSummary {
-  const rows = [...state.rows.values()].sort(compareObservedRows);
+  const rows = [...state.rows.values()]
+    .map((row) => applyRowDecision(row, decisionOptions))
+    .sort(compareObservedRows);
 
   return {
     tabId: state.tabId,
@@ -170,13 +224,89 @@ export function summarizeTabObservation(
     totalRequests: rows.reduce((sum, row) => sum + row.requestCount, 0),
     thirdPartyCount: rows.filter((row) => row.relationship === "third-party")
       .length,
-    unknownCount: rows.filter((row) => row.relationship === "unknown").length,
+    unknownCount: rows.filter(isUnknownRow).length,
     firstPartyCount: rows.filter((row) => row.relationship === "first-party")
       .length,
-    blockedCount: 0,
-    allowedCount: rows.length,
+    blockedCount: rows.filter((row) => row.status === "blocked").length,
+    allowedCount: rows.filter(
+      (row) => row.status === "allowed" || row.status === "allowed-paused",
+    ).length,
     rows,
   };
+}
+
+function applyRowDecision(
+  row: ObservedRequestRow,
+  decisionOptions: SummaryDecisionOptions,
+): ObservedRequestRow {
+  const decision = decideRule({
+    relationship: row.relationship,
+    catalogDefaultAction: row.catalogDefaultAction,
+    domainOverride: getDomainOverride(row, decisionOptions.domainOverrides),
+    sitePaused: decisionOptions.sitePaused,
+  });
+
+  return {
+    ...row,
+    status: decision.status,
+    ruleSource: decision.source,
+  };
+}
+
+export function isUnknownRow(row: ObservedRequestRow): boolean {
+  return (
+    row.relationship === "unknown" ||
+    (row.relationship === "third-party" && row.category === "unknown")
+  );
+}
+
+function getCatalogFields(rowSeed: {
+  relationship: RequestRelationship;
+  displayName: string;
+}): Pick<
+  ObservedRequestRow,
+  "category" | "entity" | "explanation" | "catalogDefaultAction"
+> {
+  if (rowSeed.relationship === "first-party") {
+    return {
+      category: "unknown",
+      entity: null,
+      explanation: FIRST_PARTY_EXPLANATION,
+      catalogDefaultAction: null,
+    };
+  }
+
+  if (rowSeed.relationship === "unknown") {
+    return {
+      category: "unknown",
+      entity: null,
+      explanation: UNKNOWN_REQUEST_EXPLANATION,
+      catalogDefaultAction: null,
+    };
+  }
+
+  const catalogMatch = lookupTrackerCatalogEntry(rowSeed.displayName);
+
+  return {
+    category: catalogMatch?.entry.category ?? "unknown",
+    entity: catalogMatch?.entry.entity ?? null,
+    explanation:
+      catalogMatch?.entry.explanation ?? UNKNOWN_THIRD_PARTY_EXPLANATION,
+    catalogDefaultAction: catalogMatch?.entry.defaultAction ?? null,
+  };
+}
+
+function getDomainOverride(
+  row: ObservedRequestRow,
+  domainOverrides: Record<string, DomainOverrideAction> | undefined,
+): DomainOverrideAction | null {
+  if (!domainOverrides) {
+    return null;
+  }
+
+  const overrideKey = row.host ?? row.displayName;
+
+  return domainOverrides[overrideKey] ?? null;
 }
 
 function compareObservedRows(
