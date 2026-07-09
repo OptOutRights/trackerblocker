@@ -4,6 +4,9 @@ import {
   createTabObservationState,
   mapRequestType,
   recordObservedRequest,
+  recordRequestCompleted,
+  recordRequestFailed,
+  recordRequestRedirect,
   resetTabObservationState,
   summarizeTabObservation,
 } from "./requestObservation";
@@ -17,8 +20,15 @@ describe("mapRequestType", () => {
     expect(mapRequestType("beacon")).toBe("beacon");
     expect(mapRequestType("ping")).toBe("beacon");
     expect(mapRequestType("stylesheet")).toBe("stylesheet");
-    expect(mapRequestType("websocket")).toBe("other");
-    expect(mapRequestType("font")).toBe("other");
+    expect(mapRequestType("websocket")).toBe("websocket");
+    expect(mapRequestType("font")).toBe("font");
+    expect(mapRequestType("media")).toBe("media");
+    expect(mapRequestType("object")).toBe("object");
+    expect(mapRequestType("object_subrequest")).toBe("object");
+    expect(mapRequestType("manifest")).toBe("manifest");
+    expect(mapRequestType("speculative")).toBe("prefetch");
+    expect(mapRequestType("preload")).toBe("prefetch");
+    expect(mapRequestType("prefetch")).toBe("prefetch");
     expect(mapRequestType()).toBe("other");
   });
 });
@@ -62,6 +72,23 @@ describe("request observation aggregation", () => {
           catalogDefaultAction: null,
           ruleSource: "automatic",
           status: "allowed",
+          firstSeen: 100,
+          lastSeen: 100,
+          lifecycle: {
+            started: 1,
+            completed: 0,
+            blocked: 0,
+            failed: 0,
+            redirected: 0,
+          },
+          context: {
+            frameIds: [0],
+            documentHosts: [],
+            initiatorHosts: [],
+            pathHints: [],
+            visibilityNotes: ["visible-request"],
+          },
+          redirectHops: [],
         },
         {
           host: "img.tracker.test",
@@ -333,10 +360,158 @@ describe("request observation aggregation", () => {
           siteDomain: "tracker.test",
           displayName: "events.tracker.test",
           relationship: "third-party",
-          requestTypes: ["other"],
+          requestTypes: ["websocket"],
+          context: {
+            visibilityNotes: [
+              "visible-request",
+              "websocket-frames-not-classified",
+            ],
+          },
         },
       ],
     });
+  });
+
+  it("collects local evidence without storing request query strings", () => {
+    const state = createTabObservationState(1, "https://example.com/page");
+
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 3,
+      parentFrameId: 0,
+      pageUrl: "https://example.com/page",
+      documentUrl: "https://widgets.example-frame.test/embed",
+      originUrl: "https://example.com/page",
+      initiator: "https://widgets.example-frame.test/embed",
+      requestUrl:
+        "https://analytics.tracker.test/v1/collect/pixel?email=user@example.com",
+      requestType: "xmlhttprequest",
+      timestamp: 100,
+    });
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 3,
+      pageUrl: "https://example.com/page",
+      documentUrl: "https://widgets.example-frame.test/embed",
+      originUrl: "https://example.com/page",
+      requestUrl: "https://analytics.tracker.test/v1/events",
+      requestType: "beacon",
+      timestamp: 200,
+    });
+
+    expect(summarizeTabObservation(state)).toMatchObject({
+      thirdPartyCount: 1,
+      totalRequests: 2,
+      rows: [
+        {
+          displayName: "analytics.tracker.test",
+          firstSeen: 100,
+          lastSeen: 200,
+          requestTypes: ["beacon", "xhr"],
+          lifecycle: {
+            started: 2,
+            completed: 0,
+            blocked: 0,
+            failed: 0,
+            redirected: 0,
+          },
+          context: {
+            frameIds: [3],
+            documentHosts: ["example.com", "widgets.example-frame.test"],
+            initiatorHosts: ["example.com", "widgets.example-frame.test"],
+            pathHints: ["collect", "event", "events", "pixel"],
+            visibilityNotes: [
+              "exit-beacon-may-be-missed",
+              "frame-ancestry-limited",
+              "headers-not-inspected",
+              "visible-request",
+            ],
+          },
+        },
+      ],
+    });
+
+    const row = summarizeTabObservation(state).rows[0];
+    expect(JSON.stringify(row)).not.toContain("user@example.com");
+  });
+
+  it("tracks request lifecycle by request id", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      requestId: "request-1",
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://tracker.test/script.js",
+      requestType: "script",
+      timestamp: 100,
+    });
+    recordRequestCompleted(state, {
+      requestId: "request-1",
+      timestamp: 150,
+    });
+    recordRequestFailed(state, {
+      requestId: "request-1",
+      timestamp: 200,
+    });
+
+    expect(summarizeTabObservation(state)).toMatchObject({
+      rows: [
+        {
+          displayName: "tracker.test",
+          lastSeen: 150,
+          lifecycle: {
+            started: 1,
+            completed: 1,
+            blocked: 0,
+            failed: 0,
+            redirected: 0,
+          },
+        },
+      ],
+    });
+  });
+
+  it("records sanitized redirect hops without full URLs", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      requestId: "redirecting-request",
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://ads.example.test/click?id=user-123",
+      requestType: "main_frame",
+      timestamp: 100,
+    });
+    recordRequestRedirect(state, {
+      requestId: "redirecting-request",
+      fromUrl: "https://ads.example.test/click?id=user-123",
+      redirectUrl: "https://measure.example.test/next?email=user@example.com",
+      statusCode: 302,
+      timestamp: 125,
+    });
+
+    const row = summarizeTabObservation(state).rows[0];
+
+    expect(row).toMatchObject({
+      lifecycle: {
+        started: 1,
+        completed: 0,
+        blocked: 0,
+        failed: 0,
+        redirected: 1,
+      },
+      redirectHops: [
+        {
+          fromHost: "ads.example.test",
+          toHost: "measure.example.test",
+          statusCode: 302,
+          timestamp: 125,
+        },
+      ],
+    });
+    expect(JSON.stringify(row)).not.toContain("user@example.com");
+    expect(JSON.stringify(row)).not.toContain("user-123");
   });
 
   it("keeps unclassifiable requests in the unknown bucket", () => {
