@@ -5,7 +5,7 @@ import { RequestRows } from "./RequestRows";
 
 export type BackgroundStatus = "checking" | "ready" | "unavailable";
 export type SettingsStatus = "ready" | "unavailable";
-export type RequestView = "summary" | "blocked" | "all";
+export type RequestView = "summary" | "blocked" | "review" | "all";
 
 export function PopupDashboard({
   activeHost,
@@ -40,9 +40,12 @@ export function PopupDashboard({
   sitePauseStatus: SitePauseStatus;
 }) {
   const blockedRows = filterRows(rows, "blocked");
+  const reviewRows = filterRows(rows, "review");
   const visibleRows =
     requestView === "blocked"
       ? blockedRows
+      : requestView === "review"
+        ? reviewRows
       : requestView === "all"
         ? rows
         : [];
@@ -58,7 +61,7 @@ export function PopupDashboard({
           status={sitePauseStatus}
         />
 
-        <ProtectionSummary blockedDomainCount={blockedRows.length} />
+        <ProtectionSummary rows={rows} />
 
         <PauseControls
           activeTabId={activeTabId}
@@ -70,6 +73,7 @@ export function PopupDashboard({
         <RequestActions
           blockedCount={blockedRows.length}
           currentView={requestView}
+          reviewCount={reviewRows.length}
           totalCount={rows.length}
           onChange={onChangeRequestView}
         />
@@ -122,11 +126,15 @@ function DashboardHeader({
   );
 }
 
-function ProtectionSummary({
-  blockedDomainCount,
-}: {
-  blockedDomainCount: number;
-}) {
+function ProtectionSummary({ rows }: { rows: ObservedRequestRow[] }) {
+  const blockedDomainCount = rows.filter((row) => row.status === "blocked").length;
+  const restrictedDomainCount = rows.filter(
+    (row) => row.status === "restricted",
+  ).length;
+  const uncatalogedCount = rows.filter(
+    (row) => row.relationship === "third-party" && row.category === "unknown",
+  ).length;
+
   return (
     <section class="tb-metric-panel mt-5" aria-label="Protection summary">
       <p class="tb-block-summary">
@@ -135,6 +143,10 @@ function ProtectionSummary({
           potential {blockedDomainCount === 1 ? "tracker" : "trackers"}{" "}
           <span class="tb-underlined-word">blocked</span>
         </span>
+      </p>
+      <p class="mt-2 text-xs leading-snug text-zinc-500">
+        {restrictedDomainCount} restricted, {uncatalogedCount} uncataloged,{" "}
+        {rows.length} observed locally.
       </p>
     </section>
   );
@@ -212,11 +224,13 @@ function RequestActions({
   blockedCount,
   currentView,
   onChange,
+  reviewCount,
   totalCount,
 }: {
   blockedCount: number;
   currentView: RequestView;
   onChange: (view: RequestView) => void;
+  reviewCount: number;
   totalCount: number;
 }) {
   return (
@@ -228,6 +242,12 @@ function RequestActions({
         onSelect={() =>
           onChange(currentView === "blocked" ? "summary" : "blocked")
         }
+      />
+      <RequestActionButton
+        count={reviewCount}
+        isSelected={currentView === "review"}
+        label="Review"
+        onSelect={() => onChange(currentView === "review" ? "summary" : "review")}
       />
       <RequestActionButton
         count={totalCount}
@@ -288,6 +308,20 @@ function filterRows(
 
   if (filter === "blocked") {
     return rows.filter((row) => row.status === "blocked");
+  }
+
+  if (filter === "review") {
+    return rows.filter((row) => {
+      const visibilityIsWeak = row.context.visibilityNotes.some(
+        (note) => note !== "visible-request",
+      );
+
+      return (
+        row.status === "restricted" ||
+        (row.relationship === "third-party" && row.category === "unknown") ||
+        visibilityIsWeak
+      );
+    });
   }
 
   return rows;

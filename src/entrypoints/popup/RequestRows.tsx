@@ -27,11 +27,15 @@ export function RequestRows({
         <p class="text-sm font-medium text-zinc-800">
           {view === "blocked"
             ? "No blocked sites on this page yet."
+            : view === "review"
+              ? "No review-worthy evidence on this page yet."
             : "No sites observed for this tab yet."}
         </p>
         <p class="mt-1 text-xs leading-snug text-zinc-500">
           {view === "blocked"
             ? "Open all sites to inspect allowed or uncataloged activity."
+            : view === "review"
+              ? "Restricted, uncataloged, and weak-visibility rows appear here."
             : "Refresh the page to capture current requests."}
         </p>
       </div>
@@ -111,10 +115,17 @@ function RequestRow({
               label="Request types"
               value={row.requestTypes.join(", ")}
             />
+            <DetailRow label="Lifecycle" value={formatLifecycle(row)} />
+            <DetailRow label="Visibility" value={formatVisibilityNotes(row)} />
+            <DetailRow label="Context" value={formatContextEvidence(row)} />
+            <DetailRow label="Frames" value={formatFrameContexts(row)} />
+            <DetailRow label="Path hints" value={formatPathHints(row)} />
+            <DetailRow label="Redirects" value={formatRedirects(row)} />
             <DetailRow
               label="Rule source"
               value={formatRuleSource(row.ruleSource)}
             />
+            <DetailRow label="Review" value={formatCatalogReview(row)} />
           </dl>
 
           {canOverride && (
@@ -155,6 +166,88 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <dd class="text-zinc-800">{value}</dd>
     </div>
   );
+}
+
+function formatLifecycle(row: ObservedRequestRow): string {
+  const parts = [
+    `${row.lifecycle.started} started`,
+    `${row.lifecycle.completed} completed`,
+    `${row.lifecycle.redirected} redirects`,
+    `${row.lifecycle.failed} failed`,
+    `${row.lifecycle.blocked} blocked`,
+  ];
+
+  return parts.join(", ");
+}
+
+function formatVisibilityNotes(row: ObservedRequestRow): string {
+  return row.context.visibilityNotes.map(formatVisibilityNote).join(", ");
+}
+
+function formatContextEvidence(row: ObservedRequestRow): string {
+  const parts = [
+    row.context.documentHosts.length
+      ? `documents: ${row.context.documentHosts.join(", ")}`
+      : null,
+    row.context.initiatorHosts.length
+      ? `initiators: ${row.context.initiatorHosts.join(", ")}`
+      : null,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.length ? parts.join("; ") : "No document or initiator host exposed.";
+}
+
+function formatFrameContexts(row: ObservedRequestRow): string {
+  if (row.context.frameContexts.length === 0) {
+    return "No frame context exposed.";
+  }
+
+  return row.context.frameContexts
+    .map((context) => {
+      const parent =
+        context.parentFrameId === null ? "unknown parent" : `parent ${context.parentFrameId}`;
+      const host = context.frameHost ?? context.documentHost ?? "unknown host";
+
+      return `frame ${context.frameId} (${parent}, ${host})`;
+    })
+    .join("; ");
+}
+
+function formatPathHints(row: ObservedRequestRow): string {
+  return row.context.pathHints.length
+    ? row.context.pathHints.join(", ")
+    : "No common collection path hints.";
+}
+
+function formatRedirects(row: ObservedRequestRow): string {
+  if (row.redirectHops.length === 0) {
+    return "No redirect hops captured.";
+  }
+
+  return row.redirectHops
+    .map((hop) => {
+      const status = hop.statusCode === null ? "redirect" : String(hop.statusCode);
+
+      return `${hop.fromHost ?? "unknown"} -> ${hop.toHost ?? "unknown"} (${status})`;
+    })
+    .join("; ");
+}
+
+function formatCatalogReview(row: ObservedRequestRow): string {
+  if (!row.catalogSource && !row.catalogRuleId) {
+    return row.relationship === "third-party"
+      ? "Uncataloged third party; allowed by default."
+      : "No catalog review applies.";
+  }
+
+  return [
+    row.catalogRuleId ? `rule ${row.catalogRuleId}` : null,
+    row.catalogConfidence ? `${row.catalogConfidence} confidence` : null,
+    row.catalogBreakageRisk ? `${row.catalogBreakageRisk} breakage risk` : null,
+    row.catalogSource ? `source: ${row.catalogSource}` : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(", ");
 }
 
 function OverrideButton({
@@ -240,6 +333,29 @@ function formatRuleSource(source: ObservedRequestRow["ruleSource"]): string {
       return "Allowed by user";
     case "site-paused":
       return "Allowed because site is paused";
+  }
+}
+
+function formatVisibilityNote(
+  note: ObservedRequestRow["context"]["visibilityNotes"][number],
+): string {
+  switch (note) {
+    case "visible-request":
+      return "visible request";
+    case "exit-beacon-may-be-missed":
+      return "exit beacons can be missed";
+    case "websocket-frames-not-classified":
+      return "WebSocket frames are not classified";
+    case "frame-ancestry-limited":
+      return "frame ancestry is limited";
+    case "browser-cache-may-hide-requests":
+      return "browser cache may hide requests";
+    case "dns-or-preconnect-not-visible":
+      return "DNS/preconnect may not appear as requests";
+    case "headers-not-inspected":
+      return "headers are not inspected by default";
+    case "non-web-or-unclassifiable":
+      return "non-web or unclassifiable";
   }
 }
 
