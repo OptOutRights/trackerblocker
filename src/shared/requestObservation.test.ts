@@ -321,7 +321,9 @@ describe("request observation aggregation", () => {
     recordObservedRequest(state, {
       tabId: 1,
       frameId: 12,
+      parentFrameId: 0,
       pageUrl: "https://frame.tracker.test/embed",
+      documentUrl: "https://frame.tracker.test/embed",
       requestUrl: "https://frame.tracker.test/app.js",
       requestType: "script",
       timestamp: 100,
@@ -336,6 +338,78 @@ describe("request observation aggregation", () => {
           siteDomain: "tracker.test",
           displayName: "frame.tracker.test",
           relationship: "third-party",
+          context: {
+            frameContexts: [
+              {
+                frameId: 12,
+                parentFrameId: 0,
+                frameHost: "frame.tracker.test",
+                documentHost: "frame.tracker.test",
+                relationship: "third-party",
+              },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("preserves frame ancestry for embedded documents and their requests", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 4,
+      parentFrameId: 0,
+      pageUrl: "https://example.com",
+      documentUrl: "https://example.com",
+      requestUrl: "https://pay.example-payments.test/checkout",
+      requestType: "sub_frame",
+      timestamp: 100,
+    });
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 4,
+      parentFrameId: 0,
+      pageUrl: "https://example.com",
+      documentUrl: "https://pay.example-payments.test/checkout",
+      requestUrl: "https://cdn.example-payments.test/sdk.js",
+      requestType: "script",
+      timestamp: 120,
+    });
+
+    expect(summarizeTabObservation(state)).toMatchObject({
+      thirdPartyCount: 2,
+      rows: [
+        {
+          displayName: "cdn.example-payments.test",
+          context: {
+            frameContexts: [
+              {
+                frameId: 4,
+                parentFrameId: 0,
+                frameHost: "pay.example-payments.test",
+                documentHost: "pay.example-payments.test",
+                relationship: "third-party",
+              },
+            ],
+            visibilityNotes: ["frame-ancestry-limited", "visible-request"],
+          },
+        },
+        {
+          displayName: "pay.example-payments.test",
+          requestTypes: ["iframe"],
+          context: {
+            frameContexts: [
+              {
+                frameId: 4,
+                parentFrameId: 0,
+                frameHost: "pay.example-payments.test",
+                documentHost: "example.com",
+                relationship: "third-party",
+              },
+            ],
+          },
         },
       ],
     });

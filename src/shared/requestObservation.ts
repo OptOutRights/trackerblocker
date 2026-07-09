@@ -57,10 +57,19 @@ export interface RequestLifecycleCounts {
 
 export interface RequestContextEvidence {
   frameIds: number[];
+  frameContexts: RequestFrameContext[];
   documentHosts: string[];
   initiatorHosts: string[];
   pathHints: string[];
   visibilityNotes: VisibilityNote[];
+}
+
+export interface RequestFrameContext {
+  frameId: number;
+  parentFrameId: number | null;
+  frameHost: string | null;
+  documentHost: string | null;
+  relationship: RequestRelationship;
 }
 
 export interface RequestRedirectHop {
@@ -544,6 +553,18 @@ function buildRequestContextEvidence(
 ): RequestContextEvidence {
   return {
     frameIds: [evidence.frameId],
+    frameContexts: [
+      {
+        frameId: evidence.frameId,
+        parentFrameId:
+          typeof evidence.parentFrameId === "number"
+            ? evidence.parentFrameId
+            : null,
+        frameHost: getFrameHost(evidence),
+        documentHost: formatUrlHost(evidence.documentUrl),
+        relationship,
+      },
+    ],
     documentHosts: collectHosts(evidence.documentUrl, evidence.pageUrl),
     initiatorHosts: collectHosts(evidence.initiator, evidence.originUrl),
     pathHints: collectPathHints(evidence.requestUrl),
@@ -557,6 +578,10 @@ function mergeRequestContextEvidence(
 ): RequestContextEvidence {
   return {
     frameIds: mergeSortedNumbers(current.frameIds, update.frameIds),
+    frameContexts: mergeFrameContexts(
+      current.frameContexts,
+      update.frameContexts,
+    ),
     documentHosts: mergeSortedStrings(current.documentHosts, update.documentHosts),
     initiatorHosts: mergeSortedStrings(current.initiatorHosts, update.initiatorHosts),
     pathHints: mergeSortedStrings(current.pathHints, update.pathHints),
@@ -565,6 +590,42 @@ function mergeRequestContextEvidence(
       update.visibilityNotes,
     ) as VisibilityNote[],
   };
+}
+
+function getFrameHost(evidence: RequestEvidence): string | null {
+  if (evidence.requestType === "sub_frame") {
+    return formatUrlHost(evidence.requestUrl);
+  }
+
+  return formatUrlHost(evidence.documentUrl);
+}
+
+function mergeFrameContexts(
+  current: readonly RequestFrameContext[],
+  update: readonly RequestFrameContext[],
+): RequestFrameContext[] {
+  const contextsByKey = new Map<string, RequestFrameContext>();
+
+  for (const context of [...current, ...update]) {
+    contextsByKey.set(formatFrameContextKey(context), context);
+  }
+
+  return [...contextsByKey.values()].sort(
+    (left, right) =>
+      left.frameId - right.frameId ||
+      (left.parentFrameId ?? -1) - (right.parentFrameId ?? -1) ||
+      (left.frameHost ?? "").localeCompare(right.frameHost ?? ""),
+  );
+}
+
+function formatFrameContextKey(context: RequestFrameContext): string {
+  return [
+    context.frameId,
+    context.parentFrameId ?? "",
+    context.frameHost ?? "",
+    context.documentHost ?? "",
+    context.relationship,
+  ].join("|");
 }
 
 function inferVisibilityNotes(
