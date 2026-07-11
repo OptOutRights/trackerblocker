@@ -35,6 +35,10 @@ export default defineConfig({
     host_permissions: ["<all_urls>"],
     action: {
       default_title: "TrackerBlocker",
+      default_icon: {
+        16: "icon-16.png",
+        32: "icon-32.png",
+      },
     },
     browser_specific_settings: {
       gecko: {
