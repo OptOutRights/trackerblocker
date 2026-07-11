@@ -27,15 +27,11 @@ export function RequestRows({
         <p class="text-sm font-medium text-zinc-800">
           {view === "blocked"
             ? "No blocked sites on this page yet."
-            : view === "review"
-              ? "No review-worthy evidence on this page yet."
             : "No sites observed for this tab yet."}
         </p>
         <p class="mt-1 text-xs leading-snug text-zinc-500">
           {view === "blocked"
             ? "Open all sites to inspect allowed or uncataloged activity."
-            : view === "review"
-              ? "Restricted, uncataloged, and weak-visibility rows appear here."
             : "Refresh the page to capture current requests."}
         </p>
       </div>
@@ -125,7 +121,7 @@ function RequestRow({
               label="Rule source"
               value={formatRuleSource(row.ruleSource)}
             />
-            <DetailRow label="Review" value={formatCatalogReview(row)} />
+            <DetailRow label="Catalog basis" value={formatCatalogBasis(row)} />
           </dl>
 
           {canOverride && (
@@ -233,11 +229,11 @@ function formatRedirects(row: ObservedRequestRow): string {
     .join("; ");
 }
 
-function formatCatalogReview(row: ObservedRequestRow): string {
+function formatCatalogBasis(row: ObservedRequestRow): string {
   if (!row.catalogSource && !row.catalogRuleId) {
     return row.relationship === "third-party"
       ? "Uncataloged third party; allowed by default."
-      : "No catalog review applies.";
+      : "No catalog entry applies.";
   }
 
   return [

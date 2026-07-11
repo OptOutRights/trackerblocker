@@ -5,7 +5,7 @@ import { RequestRows } from "./RequestRows";
 
 export type BackgroundStatus = "checking" | "ready" | "unavailable";
 export type SettingsStatus = "ready" | "unavailable";
-export type RequestView = "summary" | "blocked" | "review" | "all";
+export type RequestView = "summary" | "blocked" | "all";
 
 export function PopupDashboard({
   activeHost,
@@ -40,12 +40,9 @@ export function PopupDashboard({
   sitePauseStatus: SitePauseStatus;
 }) {
   const blockedRows = filterRows(rows, "blocked");
-  const reviewRows = filterRows(rows, "review");
   const visibleRows =
     requestView === "blocked"
       ? blockedRows
-      : requestView === "review"
-        ? reviewRows
       : requestView === "all"
         ? rows
         : [];
@@ -73,7 +70,6 @@ export function PopupDashboard({
         <RequestActions
           blockedCount={blockedRows.length}
           currentView={requestView}
-          reviewCount={reviewRows.length}
           totalCount={rows.length}
           onChange={onChangeRequestView}
         />
@@ -224,13 +220,11 @@ function RequestActions({
   blockedCount,
   currentView,
   onChange,
-  reviewCount,
   totalCount,
 }: {
   blockedCount: number;
   currentView: RequestView;
   onChange: (view: RequestView) => void;
-  reviewCount: number;
   totalCount: number;
 }) {
   return (
@@ -242,12 +236,6 @@ function RequestActions({
         onSelect={() =>
           onChange(currentView === "blocked" ? "summary" : "blocked")
         }
-      />
-      <RequestActionButton
-        count={reviewCount}
-        isSelected={currentView === "review"}
-        label="Review"
-        onSelect={() => onChange(currentView === "review" ? "summary" : "review")}
       />
       <RequestActionButton
         count={totalCount}
@@ -308,20 +296,6 @@ function filterRows(
 
   if (filter === "blocked") {
     return rows.filter((row) => row.status === "blocked");
-  }
-
-  if (filter === "review") {
-    return rows.filter((row) => {
-      const visibilityIsWeak = row.context.visibilityNotes.some(
-        (note) => note !== "visible-request",
-      );
-
-      return (
-        row.status === "restricted" ||
-        (row.relationship === "third-party" && row.category === "unknown") ||
-        visibilityIsWeak
-      );
-    });
   }
 
   return rows;
