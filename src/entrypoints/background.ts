@@ -21,6 +21,13 @@ import {
   type SettingsResponse,
 } from "../messaging/settings";
 import {
+  formatActionBadge,
+} from "../shared/actionBadge";
+import {
+  classifyRequestSiteRelationship,
+  formatUrlHost,
+} from "../shared/domains";
+import {
   createTabObservationState,
   recordObservedRequest,
   recordRequestCompleted,
@@ -30,10 +37,6 @@ import {
   summarizeTabObservation,
   type TabObservationState,
 } from "../shared/requestObservation";
-import {
-  classifyRequestSiteRelationship,
-  formatUrlHost,
-} from "../shared/domains";
 import { decideRule } from "../shared/ruleDecisions";
 import { lookupTrackerCatalogEntry } from "../shared/trackerCatalog";
 import {
@@ -49,10 +52,13 @@ import {
 export default defineBackground(() => {
   const startedAt = new Date().toISOString();
   const tabObservations = new Map<number, TabObservationState>();
+  const actionBadgeCountByTab = new Map<number, number>();
   const temporarySitePauses = new Map<number, string>();
   let settingsCache = normalizeSettings(undefined);
 
   const registerListeners = () => {
+    void initializeActionBadge();
+
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (isHealthCheckMessage(message)) {
         const response: HealthCheckResponse = {
@@ -97,6 +103,12 @@ export default defineBackground(() => {
           sendResponse,
           (settings) => {
             settingsCache = settings;
+            void updateObservedActionBadges(
+              tabObservations,
+              temporarySitePauses,
+              settingsCache,
+              actionBadgeCountByTab,
+            );
           },
         );
         return true;
@@ -116,6 +128,12 @@ export default defineBackground(() => {
                   message.site,
                 );
               }
+              void updateObservedActionBadges(
+                tabObservations,
+                temporarySitePauses,
+                settingsCache,
+                actionBadgeCountByTab,
+              );
             },
           );
           return true;
@@ -137,6 +155,12 @@ export default defineBackground(() => {
             ) {
               temporarySitePauses.delete(message.tabId);
             }
+            void updateObservedActionBadges(
+              tabObservations,
+              temporarySitePauses,
+              settingsCache,
+              actionBadgeCountByTab,
+            );
           },
         );
         return true;
@@ -153,6 +177,12 @@ export default defineBackground(() => {
           sendResponse,
           (settings) => {
             settingsCache = settings;
+            void updateObservedActionBadges(
+              tabObservations,
+              temporarySitePauses,
+              settingsCache,
+              actionBadgeCountByTab,
+            );
           },
         );
         return true;
@@ -165,6 +195,12 @@ export default defineBackground(() => {
           (settings) => {
             settingsCache = settings;
             temporarySitePauses.clear();
+            void updateObservedActionBadges(
+              tabObservations,
+              temporarySitePauses,
+              settingsCache,
+              actionBadgeCountByTab,
+            );
           },
         );
         return true;
@@ -193,6 +229,12 @@ export default defineBackground(() => {
             details.url,
           );
           resetTabObservationState(state, details.url);
+          void updateActionBadgeForTab(
+            state,
+            temporarySitePauses,
+            settingsCache,
+            actionBadgeCountByTab,
+          );
           return undefined;
         }
 
@@ -218,6 +260,12 @@ export default defineBackground(() => {
           sitePaused: sitePauseStatus !== "active",
           domainOverrides: settingsCache.domainOverrides,
         });
+        void updateActionBadgeForTab(
+          state,
+          temporarySitePauses,
+          settingsCache,
+          actionBadgeCountByTab,
+        );
 
         return result.shouldBlock ? { cancel: true } : undefined;
       },
@@ -244,6 +292,12 @@ export default defineBackground(() => {
           statusCode: details.statusCode,
           timestamp: details.timeStamp,
         });
+        void updateActionBadgeForTab(
+          state,
+          temporarySitePauses,
+          settingsCache,
+          actionBadgeCountByTab,
+        );
       },
       { urls: ["<all_urls>"] },
     );
@@ -300,6 +354,12 @@ export default defineBackground(() => {
           requestId: details.requestId,
           timestamp: details.timeStamp,
         });
+        void updateActionBadgeForTab(
+          state,
+          temporarySitePauses,
+          settingsCache,
+          actionBadgeCountByTab,
+        );
       },
       { urls: ["<all_urls>"] },
     );
@@ -320,6 +380,12 @@ export default defineBackground(() => {
           requestId: details.requestId,
           timestamp: details.timeStamp,
         });
+        void updateActionBadgeForTab(
+          state,
+          temporarySitePauses,
+          settingsCache,
+          actionBadgeCountByTab,
+        );
       },
       { urls: ["<all_urls>"] },
     );
@@ -337,11 +403,18 @@ export default defineBackground(() => {
       }
 
       resetTabObservationState(state, changeInfo.url);
+      void updateActionBadgeForTab(
+        state,
+        temporarySitePauses,
+        settingsCache,
+        actionBadgeCountByTab,
+      );
     });
 
     browser.tabs.onRemoved.addListener((tabId) => {
       tabObservations.delete(tabId);
       temporarySitePauses.delete(tabId);
+      actionBadgeCountByTab.delete(tabId);
     });
 
     console.info(`[TrackerBlocker] Background ready at ${startedAt}`);
@@ -469,6 +542,84 @@ function stripTrackingRequestHeaders<
 
     return name !== "cookie" && name !== "referer";
   });
+}
+
+async function initializeActionBadge(): Promise<void> {
+  await Promise.all([
+    safelyUpdateActionBadge(
+      () => browser.action.setBadgeBackgroundColor({ color: "#f59e0b" }),
+    ),
+    safelyUpdateActionBadge(
+      () => browser.action.setBadgeTextColor({ color: "#111827" }),
+    ),
+  ]);
+}
+
+async function updateObservedActionBadges(
+  tabObservations: Map<number, TabObservationState>,
+  temporarySitePauses: Map<number, string>,
+  settings: TrackerBlockerSettings,
+  actionBadgeCountByTab: Map<number, number>,
+): Promise<void> {
+  await Promise.all(
+    [...tabObservations.values()].map((state) =>
+      updateActionBadgeForTab(
+        state,
+        temporarySitePauses,
+        settings,
+        actionBadgeCountByTab,
+      ),
+    ),
+  );
+}
+
+async function updateActionBadgeForTab(
+  state: TabObservationState,
+  temporarySitePauses: Map<number, string>,
+  settings: TrackerBlockerSettings,
+  actionBadgeCountByTab: Map<number, number>,
+): Promise<void> {
+  const sitePauseStatus = getSitePauseStatus(
+    temporarySitePauses,
+    state.tabId,
+    state.pageUrl,
+    settings,
+  );
+  const summary = summarizeTabObservation(state, {
+    sitePaused: sitePauseStatus !== "active",
+    domainOverrides: settings.domainOverrides,
+  });
+  const badge = formatActionBadge(summary.blockedCount);
+
+  if (actionBadgeCountByTab.get(state.tabId) === summary.blockedCount) {
+    return;
+  }
+
+  await Promise.all([
+    safelyUpdateActionBadge(
+      () => browser.action.setBadgeText({
+        tabId: state.tabId,
+        text: badge.text,
+      }),
+    ),
+    safelyUpdateActionBadge(
+      () => browser.action.setTitle({
+        tabId: state.tabId,
+        title: badge.title,
+      }),
+    ),
+  ]);
+  actionBadgeCountByTab.set(state.tabId, summary.blockedCount);
+}
+
+async function safelyUpdateActionBadge(
+  actionUpdate: () => Promise<void>,
+): Promise<void> {
+  try {
+    await actionUpdate();
+  } catch {
+    // Badge UI is helpful but should never interfere with request blocking.
+  }
 }
 
 function normalizeSiteFromUrl(url: string | null | undefined): string | null {
