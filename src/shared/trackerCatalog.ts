@@ -197,9 +197,18 @@ function validateTrackerCatalogEntry(
     throw new Error(`Tracker catalog entry ${index} has an invalid domain.`);
   }
 
-  if (defaultAction === "block" && (!source || !confidence || !breakageRisk)) {
+  if (
+    (defaultAction === "block" || defaultAction === "restrict") &&
+    !breakageRisk
+  ) {
     throw new Error(
-      `Tracker catalog entry ${index} needs source, confidence, and breakageRisk for block defaults.`,
+      `Tracker catalog entry ${index} needs breakageRisk for block or restrict defaults.`,
+    );
+  }
+
+  if (Boolean(source) !== Boolean(confidence)) {
+    throw new Error(
+      `Tracker catalog entry ${index} needs both source and confidence when either is provided.`,
     );
   }
 

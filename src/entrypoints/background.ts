@@ -203,7 +203,7 @@ export default defineBackground(() => {
           settingsCache,
         );
 
-        const row = recordObservedRequest(state, {
+        const result = recordObservedRequest(state, {
           requestId: details.requestId,
           tabId: details.tabId,
           frameId: details.frameId,
@@ -219,7 +219,7 @@ export default defineBackground(() => {
           domainOverrides: settingsCache.domainOverrides,
         });
 
-        return row.status === "blocked" ? { cancel: true } : undefined;
+        return result.shouldBlock ? { cancel: true } : undefined;
       },
       { urls: ["<all_urls>"] },
       ["blocking"],

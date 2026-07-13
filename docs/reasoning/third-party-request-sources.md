@@ -401,6 +401,6 @@ Implemented. Popup/options messages read summaries and settings, update site pau
 3. Partially done: rows preserve browser-exposed initiator/document/frame ancestry, but not full script-level causality.
 4. Done: request type mapping includes `font`, `media`, `websocket`, `object`, `manifest`, `prefetch`, and fallback `other`.
 5. Done: catalog entries can define precise `path-prefix` and `url-prefix` rules.
-6. Done: catalog entries support local source, confidence, breakage risk, and notes metadata.
+6. Done: catalog entries support optional specific source/confidence provenance plus breakage risk and notes; generic review labels are not presented as evidence.
 7. Done: expanded popup rows surface restricted, uncataloged, and weak-visibility local evidence without remote submission.
 8. Ongoing: unobservable or weakly observable areas remain labeled: CNAME cloaking, service-worker cache hits, DNS prefetch, preconnect, browser-owned requests, response-header state, and page storage writes.

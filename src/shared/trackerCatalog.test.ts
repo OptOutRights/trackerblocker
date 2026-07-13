@@ -118,7 +118,7 @@ describe("TRACKER_CATALOG", () => {
     }
   });
 
-  it("uses restrict for reviewed observability services instead of blocking", () => {
+  it("uses restrict for observability services instead of blocking", () => {
     expect(lookupTrackerCatalogEntry("o123.ingest.sentry.io")).toMatchObject({
       entry: {
         entity: "Sentry",
@@ -144,13 +144,14 @@ describe("TRACKER_CATALOG", () => {
     }
   });
 
-  it("requires review metadata for packaged block entries", () => {
+  it("requires breakage risk without inventing evidence provenance", () => {
     for (const entry of TRACKER_CATALOG) {
       if (entry.defaultAction === "block") {
-        expect(entry.source).toBeTruthy();
-        expect(entry.confidence).toMatch(/^(high|medium|low)$/);
         expect(entry.breakageRisk).toMatch(/^(low|medium|high)$/);
       }
+
+      expect(entry.source).not.toBe("curated-local-review");
+      expect(Boolean(entry.source)).toBe(Boolean(entry.confidence));
     }
   });
 
@@ -305,7 +306,34 @@ describe("loadTrackerCatalog", () => {
           explanation: "This domain is commonly used for analytics.",
         },
       ]),
-    ).toThrow("needs source, confidence, and breakageRisk");
+    ).toThrow("needs breakageRisk");
+    expect(() =>
+      loadTrackerCatalog([
+        {
+          id: "missing-restrict-risk",
+          matchType: "suffix",
+          domain: "errors.example.com",
+          entity: "Example",
+          category: "observability",
+          defaultAction: "restrict",
+          explanation: "This domain is commonly used for error reporting.",
+        },
+      ]),
+    ).toThrow("needs breakageRisk");
+    expect(() =>
+      loadTrackerCatalog([
+        {
+          id: "incomplete-provenance",
+          matchType: "suffix",
+          domain: "example.com",
+          entity: "Example",
+          category: "cdn",
+          defaultAction: "allow",
+          explanation: "This domain is commonly used to deliver assets.",
+          source: "specific-source",
+        },
+      ]),
+    ).toThrow("needs both source and confidence");
   });
 
   it("rejects duplicate ids", () => {

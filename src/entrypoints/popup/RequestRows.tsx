@@ -229,15 +229,18 @@ function formatRedirects(row: ObservedRequestRow): string {
     .join("; ");
 }
 
-function formatCatalogBasis(row: ObservedRequestRow): string {
-  if (!row.catalogSource && !row.catalogRuleId) {
+export function formatCatalogBasis(row: ObservedRequestRow): string {
+  if (!row.catalogDefaultAction) {
     return row.relationship === "third-party"
       ? "Uncataloged third party; allowed by default."
       : "No catalog entry applies.";
   }
 
   return [
-    row.catalogRuleId ? `rule ${row.catalogRuleId}` : null,
+    `packaged ${row.catalogDefaultAction} rule`,
+    row.catalogRuleIds.length
+      ? `rules: ${row.catalogRuleIds.join(", ")}`
+      : null,
     row.catalogConfidence ? `${row.catalogConfidence} confidence` : null,
     row.catalogBreakageRisk ? `${row.catalogBreakageRisk} breakage risk` : null,
     row.catalogSource ? `source: ${row.catalogSource}` : null,

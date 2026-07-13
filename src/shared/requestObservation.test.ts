@@ -10,6 +10,7 @@ import {
   resetTabObservationState,
   summarizeTabObservation,
 } from "./requestObservation";
+import type { TrackerCatalogEntry } from "./trackerCatalog";
 
 describe("mapRequestType", () => {
   it("maps WebExtension request types to popup categories", () => {
@@ -159,8 +160,8 @@ describe("request observation aggregation", () => {
           category: "observability",
           entity: "Sentry",
           catalogDefaultAction: "restrict",
-          catalogSource: "curated-local-review",
-          catalogConfidence: "medium",
+          catalogSource: null,
+          catalogConfidence: null,
           catalogBreakageRisk: "low",
           status: "restricted",
         },
@@ -573,6 +574,119 @@ describe("request observation aggregation", () => {
           },
         },
       ],
+    });
+  });
+
+  it("keeps terminal failures tied to the individual request decision", () => {
+    const state = createTabObservationState(1, "https://example.com");
+    const requestUrl = "https://www.google-analytics.com/analytics.js";
+
+    recordObservedRequest(state, {
+      requestId: "blocked-request",
+      tabId: 1,
+      frameId: 0,
+      requestUrl,
+      requestType: "script",
+      timestamp: 100,
+    });
+    recordRequestFailed(state, {
+      requestId: "blocked-request",
+      timestamp: 110,
+    });
+    recordObservedRequest(state, {
+      requestId: "allowed-request",
+      tabId: 1,
+      frameId: 0,
+      requestUrl,
+      requestType: "script",
+      timestamp: 120,
+      domainOverrides: {
+        "www.google-analytics.com": "allow",
+      },
+    });
+    recordRequestFailed(state, {
+      requestId: "allowed-request",
+      timestamp: 130,
+    });
+
+    expect(summarizeTabObservation(state).rows[0].lifecycle).toMatchObject({
+      started: 2,
+      blocked: 1,
+      failed: 1,
+    });
+  });
+
+  it("aggregates path actions without changing the current request decision", () => {
+    const state = createTabObservationState(1, "https://example.com");
+    const catalog: TrackerCatalogEntry[] = [
+      {
+        id: "mixed-cdn",
+        matchType: "domain",
+        domain: "cdn.example.test",
+        entity: "Example CDN",
+        category: "cdn",
+        defaultAction: "allow",
+        explanation: "This domain is commonly used to deliver site assets.",
+        rules: [
+          {
+            id: "collect-endpoint",
+            matchType: "path-prefix",
+            value: "/collect",
+            action: "block",
+            explanation: "This path is a confirmed collection endpoint.",
+          },
+        ],
+      },
+    ];
+
+    const firstAllowed = recordObservedRequest(
+      state,
+      {
+        requestId: "asset-1",
+        tabId: 1,
+        frameId: 0,
+        requestUrl: "https://cdn.example.test/app.js",
+        requestType: "script",
+        timestamp: 100,
+      },
+      { catalog },
+    );
+    const blocked = recordObservedRequest(
+      state,
+      {
+        requestId: "collect-1",
+        tabId: 1,
+        frameId: 0,
+        requestUrl: "https://cdn.example.test/collect/event",
+        requestType: "beacon",
+        timestamp: 110,
+      },
+      { catalog },
+    );
+    const laterAllowed = recordObservedRequest(
+      state,
+      {
+        requestId: "asset-2",
+        tabId: 1,
+        frameId: 0,
+        requestUrl: "https://cdn.example.test/image.png",
+        requestType: "image",
+        timestamp: 120,
+      },
+      { catalog },
+    );
+
+    expect(firstAllowed.shouldBlock).toBe(false);
+    expect(blocked.shouldBlock).toBe(true);
+    expect(laterAllowed.shouldBlock).toBe(false);
+    expect(summarizeTabObservation(state).rows[0]).toMatchObject({
+      catalogDefaultAction: "block",
+      catalogRuleIds: ["collect-endpoint"],
+      status: "blocked",
+      lifecycle: {
+        started: 3,
+        blocked: 1,
+      },
     });
   });
 

@@ -7,6 +7,7 @@ import {
   UNKNOWN_THIRD_PARTY_EXPLANATION,
   type CatalogCategory,
   type CatalogDefaultAction,
+  type TrackerCatalogEntry,
 } from "./trackerCatalog";
 import {
   decideRule,
@@ -108,7 +109,7 @@ export interface ObservedRequestRow {
   catalogSource: string | null;
   catalogConfidence: string | null;
   catalogBreakageRisk: string | null;
-  catalogRuleId: string | null;
+  catalogRuleIds: string[];
   catalogNotes: string | null;
   status: RuleDecisionStatus;
   ruleSource: RuleDecisionSource;
@@ -139,7 +140,21 @@ export interface TabObservationState {
   tabId: number;
   pageUrl: string | null;
   rows: Map<string, ObservedRequestRow>;
-  requestRows: Map<string, string>;
+  requestRows: Map<string, RequestRowReference>;
+}
+
+interface RequestRowReference {
+  rowId: string;
+  wasBlocked: boolean;
+}
+
+export interface RecordRequestOptions {
+  catalog?: readonly TrackerCatalogEntry[];
+}
+
+export interface RecordedRequest {
+  row: ObservedRequestRow;
+  shouldBlock: boolean;
 }
 
 export interface SummaryDecisionOptions {
@@ -162,6 +177,11 @@ const RELATIONSHIP_ORDER: Record<RequestRelationship, number> = {
   "third-party": 0,
   unknown: 1,
   "first-party": 2,
+};
+const CATALOG_ACTION_PRIORITY: Record<CatalogDefaultAction, number> = {
+  allow: 0,
+  restrict: 1,
+  block: 2,
 };
 const EMPTY_WEB_AUTHORITY_PATTERN = /^(?:https?|wss?):\/\/[/?#]/i;
 
@@ -226,7 +246,8 @@ export function mapRequestType(
 export function recordObservedRequest(
   state: TabObservationState,
   evidence: RequestEvidence,
-): ObservedRequestRow {
+  options: RecordRequestOptions = {},
+): RecordedRequest {
   const pageUrl = state.pageUrl ?? evidence.pageUrl;
   const classification = classifyRequestSiteRelationship({
     pageUrl,
@@ -263,7 +284,11 @@ export function recordObservedRequest(
 
   const id = `${rowSeed.relationship}:${rowSeed.key}`;
   const existing = state.rows.get(id);
-  const catalogFields = getCatalogFields(rowSeed, evidence.requestUrl);
+  const catalogFields = getCatalogFields(
+    rowSeed,
+    evidence.requestUrl,
+    options.catalog,
+  );
   const decision = decideRule({
     relationship: rowSeed.relationship,
     catalogDefaultAction: catalogFields.catalogDefaultAction,
@@ -297,14 +322,21 @@ export function recordObservedRequest(
     };
 
     state.rows.set(id, row);
-    rememberRequestRow(state, evidence.requestId, id);
-    return row;
+    rememberRequestRow(state, evidence.requestId, id, decision.shouldBlock);
+    return { row, shouldBlock: decision.shouldBlock };
   }
 
   existing.requestCount += 1;
   existing.lastSeen = Math.max(existing.lastSeen, evidence.timestamp);
-  existing.status = decision.status;
-  existing.ruleSource = decision.source;
+  mergeCatalogFields(existing, catalogFields);
+  const aggregateDecision = decideRule({
+    relationship: rowSeed.relationship,
+    catalogDefaultAction: existing.catalogDefaultAction,
+    domainOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
+    sitePaused: evidence.sitePaused,
+  });
+  existing.status = aggregateDecision.status;
+  existing.ruleSource = aggregateDecision.source;
   existing.lifecycle = mergeLifecycleCounts(
     existing.lifecycle,
     lifecycleUpdate,
@@ -318,8 +350,8 @@ export function recordObservedRequest(
     existing.requestTypes = [...existing.requestTypes, requestType].sort();
   }
 
-  rememberRequestRow(state, evidence.requestId, id);
-  return existing;
+  rememberRequestRow(state, evidence.requestId, id, decision.shouldBlock);
+  return { row: existing, shouldBlock: decision.shouldBlock };
 }
 
 export interface RequestRedirectEvidence {
@@ -379,14 +411,15 @@ function recordLifecycleTerminalState(
   evidence: RequestCompletionEvidence,
   lifecycleStatus: Extract<RequestLifecycleStatus, "completed" | "failed">,
 ): ObservedRequestRow | null {
-  const row = getRowForRequestId(state, evidence.requestId);
+  const reference = getRequestRowReference(state, evidence.requestId);
+  const row = reference ? state.rows.get(reference.rowId) ?? null : null;
 
-  if (!row) {
+  if (!row || !reference) {
     return null;
   }
 
   row.lastSeen = Math.max(row.lastSeen, evidence.timestamp);
-  if (!(lifecycleStatus === "failed" && row.lifecycle.blocked > 0)) {
+  if (!(lifecycleStatus === "failed" && reference.wasBlocked)) {
     row.lifecycle = mergeLifecycleCounts(row.lifecycle, {
       [lifecycleStatus]: 1,
     });
@@ -416,10 +449,18 @@ function rememberRequestRow(
   state: TabObservationState,
   requestId: string | null | undefined,
   rowId: string,
+  wasBlocked: boolean,
 ): void {
   if (requestId) {
-    state.requestRows.set(requestId, rowId);
+    state.requestRows.set(requestId, { rowId, wasBlocked });
   }
+}
+
+function getRequestRowReference(
+  state: TabObservationState,
+  requestId: string | null | undefined,
+): RequestRowReference | null {
+  return requestId ? state.requestRows.get(requestId) ?? null : null;
 }
 
 function getRowForRequestId(
@@ -430,9 +471,9 @@ function getRowForRequestId(
     return null;
   }
 
-  const rowId = state.requestRows.get(requestId);
+  const reference = state.requestRows.get(requestId);
 
-  return rowId ? state.rows.get(rowId) ?? null : null;
+  return reference ? state.rows.get(reference.rowId) ?? null : null;
 }
 
 function appendRedirectHop(
@@ -496,10 +537,7 @@ export function isUnknownRow(row: ObservedRequestRow): boolean {
   );
 }
 
-function getCatalogFields(rowSeed: {
-  relationship: RequestRelationship;
-  displayName: string;
-}, requestUrl?: string | null): Pick<
+type CatalogFields = Pick<
   ObservedRequestRow,
   | "category"
   | "entity"
@@ -508,9 +546,18 @@ function getCatalogFields(rowSeed: {
   | "catalogSource"
   | "catalogConfidence"
   | "catalogBreakageRisk"
-  | "catalogRuleId"
+  | "catalogRuleIds"
   | "catalogNotes"
-> {
+>;
+
+function getCatalogFields(
+  rowSeed: {
+    relationship: RequestRelationship;
+    displayName: string;
+  },
+  requestUrl?: string | null,
+  catalog?: readonly TrackerCatalogEntry[],
+): CatalogFields {
   if (rowSeed.relationship === "first-party") {
     return {
       category: "unknown",
@@ -520,7 +567,7 @@ function getCatalogFields(rowSeed: {
       catalogSource: null,
       catalogConfidence: null,
       catalogBreakageRisk: null,
-      catalogRuleId: null,
+      catalogRuleIds: [],
       catalogNotes: null,
     };
   }
@@ -534,14 +581,14 @@ function getCatalogFields(rowSeed: {
       catalogSource: null,
       catalogConfidence: null,
       catalogBreakageRisk: null,
-      catalogRuleId: null,
+      catalogRuleIds: [],
       catalogNotes: null,
     };
   }
 
   const catalogMatch = lookupTrackerCatalogEntry(
     rowSeed.displayName,
-    undefined,
+    catalog,
     requestUrl,
   );
 
@@ -556,9 +603,46 @@ function getCatalogFields(rowSeed: {
     catalogSource: catalogMatch?.entry.source ?? null,
     catalogConfidence: catalogMatch?.entry.confidence ?? null,
     catalogBreakageRisk: catalogMatch?.entry.breakageRisk ?? null,
-    catalogRuleId: catalogMatch?.matchedRule?.id ?? null,
+    catalogRuleIds: catalogMatch?.matchedRule
+      ? [catalogMatch.matchedRule.id]
+      : [],
     catalogNotes: catalogMatch?.entry.notes ?? null,
   };
+}
+
+function mergeCatalogFields(
+  row: ObservedRequestRow,
+  update: CatalogFields,
+): void {
+  const currentPriority = row.catalogDefaultAction
+    ? CATALOG_ACTION_PRIORITY[row.catalogDefaultAction]
+    : -1;
+  const updatePriority = update.catalogDefaultAction
+    ? CATALOG_ACTION_PRIORITY[update.catalogDefaultAction]
+    : -1;
+  const shouldUseUpdate =
+    updatePriority > currentPriority ||
+    (updatePriority === currentPriority &&
+      row.catalogRuleIds.length === 0 &&
+      update.catalogRuleIds.length > 0);
+
+  row.catalogRuleIds = mergeSortedStrings(
+    row.catalogRuleIds,
+    update.catalogRuleIds,
+  );
+
+  if (!shouldUseUpdate) {
+    return;
+  }
+
+  row.category = update.category;
+  row.entity = update.entity;
+  row.explanation = update.explanation;
+  row.catalogDefaultAction = update.catalogDefaultAction;
+  row.catalogSource = update.catalogSource;
+  row.catalogConfidence = update.catalogConfidence;
+  row.catalogBreakageRisk = update.catalogBreakageRisk;
+  row.catalogNotes = update.catalogNotes;
 }
 
 function getDomainOverride(
