@@ -23,10 +23,7 @@ import {
 import {
   ActionBadgeUpdateQueue,
 } from "../shared/actionBadge";
-import {
-  classifyRequestSiteRelationship,
-  formatUrlHost,
-} from "../shared/domains";
+import { formatUrlHost } from "../shared/domains";
 import {
   createTabObservationState,
   recordObservedRequest,
@@ -37,8 +34,10 @@ import {
   summarizeTabObservation,
   type TabObservationState,
 } from "../shared/requestObservation";
-import { decideRule } from "../shared/ruleDecisions";
-import { lookupTrackerCatalogEntry } from "../shared/trackerCatalog";
+import {
+  decideHeaderRestriction,
+  stripTrackingRequestHeaders,
+} from "../shared/requestRestriction";
 import {
   normalizeSettings,
   normalizeSettingsKey,
@@ -321,7 +320,7 @@ export default defineBackground(() => {
           pageUrl,
           requestUrl: details.url,
           sitePaused: sitePauseStatus !== "active",
-          settings: settingsCache,
+          domainOverrides: settingsCache.domainOverrides,
         });
 
         if (!decision.shouldRestrictHeaders || !details.requestHeaders) {
@@ -494,54 +493,6 @@ function clearTemporaryPauseForNavigation(
   if (normalizeSiteFromUrl(nextUrl) !== pausedSite) {
     temporarySitePauses.delete(tabId);
   }
-}
-
-function decideHeaderRestriction({
-  pageUrl,
-  requestUrl,
-  settings,
-  sitePaused,
-}: {
-  pageUrl?: string | null;
-  requestUrl?: string | null;
-  settings: TrackerBlockerSettings;
-  sitePaused: boolean;
-}) {
-  const classification = classifyRequestSiteRelationship({
-    pageUrl,
-    requestUrl,
-  });
-
-  if (classification.status !== "third-party") {
-    return decideRule({
-      relationship:
-        classification.status === "same-site" ? "first-party" : "unknown",
-      sitePaused,
-    });
-  }
-
-  const catalogMatch = lookupTrackerCatalogEntry(
-    classification.requestHost,
-    undefined,
-    requestUrl,
-  );
-
-  return decideRule({
-    relationship: "third-party",
-    catalogDefaultAction: catalogMatch?.action ?? null,
-    domainOverride: settings.domainOverrides[classification.requestHost] ?? null,
-    sitePaused,
-  });
-}
-
-function stripTrackingRequestHeaders<
-  T extends { name: string; value?: string },
->(requestHeaders: T[]): T[] {
-  return requestHeaders.filter((header) => {
-    const name = header.name.toLowerCase();
-
-    return name !== "cookie" && name !== "referer";
-  });
 }
 
 async function initializeActionBadge(): Promise<void> {
