@@ -21,7 +21,7 @@ import {
   type SettingsResponse,
 } from "../messaging/settings";
 import {
-  formatActionBadge,
+  ActionBadgeUpdateQueue,
 } from "../shared/actionBadge";
 import {
   classifyRequestSiteRelationship,
@@ -52,7 +52,7 @@ import {
 export default defineBackground(() => {
   const startedAt = new Date().toISOString();
   const tabObservations = new Map<number, TabObservationState>();
-  const actionBadgeCountByTab = new Map<number, number>();
+  const actionBadgeUpdates = new ActionBadgeUpdateQueue();
   const temporarySitePauses = new Map<number, string>();
   let settingsCache = normalizeSettings(undefined);
 
@@ -107,7 +107,7 @@ export default defineBackground(() => {
               tabObservations,
               temporarySitePauses,
               settingsCache,
-              actionBadgeCountByTab,
+              actionBadgeUpdates,
             );
           },
         );
@@ -132,7 +132,7 @@ export default defineBackground(() => {
                 tabObservations,
                 temporarySitePauses,
                 settingsCache,
-                actionBadgeCountByTab,
+                actionBadgeUpdates,
               );
             },
           );
@@ -159,7 +159,7 @@ export default defineBackground(() => {
               tabObservations,
               temporarySitePauses,
               settingsCache,
-              actionBadgeCountByTab,
+              actionBadgeUpdates,
             );
           },
         );
@@ -181,7 +181,7 @@ export default defineBackground(() => {
               tabObservations,
               temporarySitePauses,
               settingsCache,
-              actionBadgeCountByTab,
+              actionBadgeUpdates,
             );
           },
         );
@@ -199,7 +199,7 @@ export default defineBackground(() => {
               tabObservations,
               temporarySitePauses,
               settingsCache,
-              actionBadgeCountByTab,
+              actionBadgeUpdates,
             );
           },
         );
@@ -233,7 +233,7 @@ export default defineBackground(() => {
             state,
             temporarySitePauses,
             settingsCache,
-            actionBadgeCountByTab,
+            actionBadgeUpdates,
           );
           return undefined;
         }
@@ -264,7 +264,7 @@ export default defineBackground(() => {
           state,
           temporarySitePauses,
           settingsCache,
-          actionBadgeCountByTab,
+          actionBadgeUpdates,
         );
 
         return result.shouldBlock ? { cancel: true } : undefined;
@@ -296,7 +296,7 @@ export default defineBackground(() => {
           state,
           temporarySitePauses,
           settingsCache,
-          actionBadgeCountByTab,
+          actionBadgeUpdates,
         );
       },
       { urls: ["<all_urls>"] },
@@ -358,7 +358,7 @@ export default defineBackground(() => {
           state,
           temporarySitePauses,
           settingsCache,
-          actionBadgeCountByTab,
+          actionBadgeUpdates,
         );
       },
       { urls: ["<all_urls>"] },
@@ -384,7 +384,7 @@ export default defineBackground(() => {
           state,
           temporarySitePauses,
           settingsCache,
-          actionBadgeCountByTab,
+          actionBadgeUpdates,
         );
       },
       { urls: ["<all_urls>"] },
@@ -407,14 +407,14 @@ export default defineBackground(() => {
         state,
         temporarySitePauses,
         settingsCache,
-        actionBadgeCountByTab,
+        actionBadgeUpdates,
       );
     });
 
     browser.tabs.onRemoved.addListener((tabId) => {
       tabObservations.delete(tabId);
       temporarySitePauses.delete(tabId);
-      actionBadgeCountByTab.delete(tabId);
+      actionBadgeUpdates.remove(tabId);
     });
 
     console.info(`[TrackerBlocker] Background ready at ${startedAt}`);
@@ -559,7 +559,7 @@ async function updateObservedActionBadges(
   tabObservations: Map<number, TabObservationState>,
   temporarySitePauses: Map<number, string>,
   settings: TrackerBlockerSettings,
-  actionBadgeCountByTab: Map<number, number>,
+  actionBadgeUpdates: ActionBadgeUpdateQueue,
 ): Promise<void> {
   await Promise.all(
     [...tabObservations.values()].map((state) =>
@@ -567,7 +567,7 @@ async function updateObservedActionBadges(
         state,
         temporarySitePauses,
         settings,
-        actionBadgeCountByTab,
+        actionBadgeUpdates,
       ),
     ),
   );
@@ -577,7 +577,7 @@ async function updateActionBadgeForTab(
   state: TabObservationState,
   temporarySitePauses: Map<number, string>,
   settings: TrackerBlockerSettings,
-  actionBadgeCountByTab: Map<number, number>,
+  actionBadgeUpdates: ActionBadgeUpdateQueue,
 ): Promise<void> {
   const sitePauseStatus = getSitePauseStatus(
     temporarySitePauses,
@@ -589,27 +589,26 @@ async function updateActionBadgeForTab(
     sitePaused: sitePauseStatus !== "active",
     domainOverrides: settings.domainOverrides,
   });
-  const badge = formatActionBadge(summary.blockedCount);
-
-  if (actionBadgeCountByTab.get(state.tabId) === summary.blockedCount) {
-    return;
+  try {
+    await actionBadgeUpdates.update(
+      state.tabId,
+      summary.blockedCount,
+      async (badge) => {
+        await Promise.all([
+          browser.action.setBadgeText({
+            tabId: state.tabId,
+            text: badge.text,
+          }),
+          browser.action.setTitle({
+            tabId: state.tabId,
+            title: badge.title,
+          }),
+        ]);
+      },
+    );
+  } catch {
+    // Badge UI is helpful but should never interfere with request blocking.
   }
-
-  await Promise.all([
-    safelyUpdateActionBadge(
-      () => browser.action.setBadgeText({
-        tabId: state.tabId,
-        text: badge.text,
-      }),
-    ),
-    safelyUpdateActionBadge(
-      () => browser.action.setTitle({
-        tabId: state.tabId,
-        title: badge.title,
-      }),
-    ),
-  ]);
-  actionBadgeCountByTab.set(state.tabId, summary.blockedCount);
 }
 
 async function safelyUpdateActionBadge(
