@@ -353,6 +353,8 @@ function formatVisibilityNote(
       return "DNS/preconnect may not appear as requests";
     case "headers-not-inspected":
       return "headers are not inspected by default";
+    case "evidence-truncated":
+      return "evidence samples are truncated";
     case "non-web-or-unclassifiable":
       return "non-web or unclassifiable";
   }

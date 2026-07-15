@@ -46,6 +46,7 @@ export type VisibilityNote =
   | "browser-cache-may-hide-requests"
   | "dns-or-preconnect-not-visible"
   | "headers-not-inspected"
+  | "evidence-truncated"
   | "non-web-or-unclassifiable";
 
 export interface RequestLifecycleCounts {
@@ -184,6 +185,7 @@ const CATALOG_ACTION_PRIORITY: Record<CatalogDefaultAction, number> = {
   block: 2,
 };
 const EMPTY_WEB_AUTHORITY_PATTERN = /^(?:https?|wss?):\/\/[/?#]/i;
+const MAX_REQUEST_CONTEXT_VALUES = 16;
 
 export function createTabObservationState(
   tabId: number,
@@ -696,18 +698,37 @@ function mergeRequestContextEvidence(
   current: RequestContextEvidence,
   update: RequestContextEvidence,
 ): RequestContextEvidence {
+  const frameIds = mergeSortedNumbers(current.frameIds, update.frameIds);
+  const frameContexts = mergeFrameContexts(
+    current.frameContexts,
+    update.frameContexts,
+  );
+  const documentHosts = mergeSortedStrings(
+    current.documentHosts,
+    update.documentHosts,
+  );
+  const initiatorHosts = mergeSortedStrings(
+    current.initiatorHosts,
+    update.initiatorHosts,
+  );
+  const wasTruncated = [
+    frameIds,
+    frameContexts,
+    documentHosts,
+    initiatorHosts,
+  ].some((values) => values.length > MAX_REQUEST_CONTEXT_VALUES);
+
   return {
-    frameIds: mergeSortedNumbers(current.frameIds, update.frameIds),
-    frameContexts: mergeFrameContexts(
-      current.frameContexts,
-      update.frameContexts,
-    ),
-    documentHosts: mergeSortedStrings(current.documentHosts, update.documentHosts),
-    initiatorHosts: mergeSortedStrings(current.initiatorHosts, update.initiatorHosts),
+    frameIds: frameIds.slice(0, MAX_REQUEST_CONTEXT_VALUES),
+    frameContexts: frameContexts.slice(0, MAX_REQUEST_CONTEXT_VALUES),
+    documentHosts: documentHosts.slice(0, MAX_REQUEST_CONTEXT_VALUES),
+    initiatorHosts: initiatorHosts.slice(0, MAX_REQUEST_CONTEXT_VALUES),
     pathHints: mergeSortedStrings(current.pathHints, update.pathHints),
     visibilityNotes: mergeSortedStrings(
       current.visibilityNotes,
-      update.visibilityNotes,
+      wasTruncated
+        ? [...update.visibilityNotes, "evidence-truncated"]
+        : update.visibilityNotes,
     ) as VisibilityNote[],
   };
 }

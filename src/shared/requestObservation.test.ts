@@ -732,6 +732,35 @@ describe("request observation aggregation", () => {
     expect(JSON.stringify(row)).not.toContain("user-123");
   });
 
+  it("caps explanatory context while keeping exact request totals", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    for (let index = 0; index < 20; index += 1) {
+      recordObservedRequest(state, {
+        tabId: 1,
+        frameId: index + 1,
+        parentFrameId: 0,
+        pageUrl: "https://example.com",
+        documentUrl: `https://frame-${index}.example-frame.test/embed`,
+        initiator: `https://initiator-${index}.example-frame.test/script`,
+        requestUrl: "https://analytics.tracker.test/collect",
+        requestType: "xmlhttprequest",
+        timestamp: 100 + index,
+      });
+    }
+
+    const summary = summarizeTabObservation(state);
+    const row = summary.rows[0];
+
+    expect(summary.totalRequests).toBe(20);
+    expect(row.requestCount).toBe(20);
+    expect(row.context.frameIds).toHaveLength(16);
+    expect(row.context.frameContexts).toHaveLength(16);
+    expect(row.context.documentHosts).toHaveLength(16);
+    expect(row.context.initiatorHosts).toHaveLength(16);
+    expect(row.context.visibilityNotes).toContain("evidence-truncated");
+  });
+
   it("keeps unclassifiable requests in the unknown bucket", () => {
     const state = createTabObservationState(1, "https://example.com");
 
