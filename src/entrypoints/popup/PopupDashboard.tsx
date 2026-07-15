@@ -58,7 +58,7 @@ export function PopupDashboard({
           status={sitePauseStatus}
         />
 
-        <ProtectionSummary blockedDomainCount={blockedRows.length} />
+        <ProtectionSummary rows={rows} />
 
         <PauseControls
           activeTabId={activeTabId}
@@ -122,11 +122,15 @@ function DashboardHeader({
   );
 }
 
-function ProtectionSummary({
-  blockedDomainCount,
-}: {
-  blockedDomainCount: number;
-}) {
+function ProtectionSummary({ rows }: { rows: ObservedRequestRow[] }) {
+  const blockedDomainCount = rows.filter((row) => row.status === "blocked").length;
+  const restrictedDomainCount = rows.filter(
+    (row) => row.status === "restricted",
+  ).length;
+  const uncatalogedCount = rows.filter(
+    (row) => row.relationship === "third-party" && row.category === "unknown",
+  ).length;
+
   return (
     <section class="tb-metric-panel mt-5" aria-label="Protection summary">
       <p class="tb-block-summary">
@@ -135,6 +139,10 @@ function ProtectionSummary({
           potential {blockedDomainCount === 1 ? "tracker" : "trackers"}{" "}
           <span class="tb-underlined-word">blocked</span>
         </span>
+      </p>
+      <p class="mt-2 text-xs leading-snug text-zinc-500">
+        {restrictedDomainCount} restricted, {uncatalogedCount} uncataloged,{" "}
+        {rows.length} observed locally.
       </p>
     </section>
   );

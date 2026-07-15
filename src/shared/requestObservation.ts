@@ -7,6 +7,7 @@ import {
   UNKNOWN_THIRD_PARTY_EXPLANATION,
   type CatalogCategory,
   type CatalogDefaultAction,
+  type TrackerCatalogEntry,
 } from "./trackerCatalog";
 import {
   decideRule,
@@ -22,14 +23,73 @@ export type RequestTypeCategory =
   | "xhr"
   | "beacon"
   | "stylesheet"
+  | "font"
+  | "media"
+  | "websocket"
+  | "object"
+  | "manifest"
+  | "prefetch"
   | "other";
 
 export type RequestRelationship = "third-party" | "unknown" | "first-party";
+export type RequestLifecycleStatus =
+  | "started"
+  | "completed"
+  | "blocked"
+  | "failed"
+  | "redirected";
+export type VisibilityNote =
+  | "visible-request"
+  | "exit-beacon-may-be-missed"
+  | "websocket-frames-not-classified"
+  | "frame-ancestry-limited"
+  | "browser-cache-may-hide-requests"
+  | "dns-or-preconnect-not-visible"
+  | "headers-not-inspected"
+  | "evidence-truncated"
+  | "non-web-or-unclassifiable";
+
+export interface RequestLifecycleCounts {
+  started: number;
+  completed: number;
+  blocked: number;
+  failed: number;
+  redirected: number;
+}
+
+export interface RequestContextEvidence {
+  frameIds: number[];
+  frameContexts: RequestFrameContext[];
+  documentHosts: string[];
+  initiatorHosts: string[];
+  pathHints: string[];
+  visibilityNotes: VisibilityNote[];
+}
+
+export interface RequestFrameContext {
+  frameId: number;
+  parentFrameId: number | null;
+  frameHost: string | null;
+  documentHost: string | null;
+  relationship: RequestRelationship;
+}
+
+export interface RequestRedirectHop {
+  fromHost: string | null;
+  toHost: string | null;
+  statusCode: number | null;
+  timestamp: number;
+}
 
 export interface RequestEvidence {
+  requestId?: string | null;
   tabId: number;
   frameId: number;
+  parentFrameId?: number;
   pageUrl?: string | null;
+  documentUrl?: string | null;
+  originUrl?: string | null;
+  initiator?: string | null;
   requestUrl?: string | null;
   requestType?: string | null;
   timestamp: number;
@@ -47,11 +107,20 @@ export interface ObservedRequestRow {
   entity: string | null;
   explanation: string;
   catalogDefaultAction: CatalogDefaultAction | null;
+  catalogSource: string | null;
+  catalogConfidence: string | null;
+  catalogBreakageRisk: string | null;
+  catalogRuleIds: string[];
+  catalogNotes: string | null;
   status: RuleDecisionStatus;
   ruleSource: RuleDecisionSource;
   requestCount: number;
   requestTypes: RequestTypeCategory[];
+  firstSeen: number;
   lastSeen: number;
+  lifecycle: RequestLifecycleCounts;
+  context: RequestContextEvidence;
+  redirectHops: RequestRedirectHop[];
 }
 
 export interface TabRequestSummary {
@@ -63,6 +132,7 @@ export interface TabRequestSummary {
   unknownCount: number;
   firstPartyCount: number;
   blockedCount: number;
+  restrictedCount: number;
   allowedCount: number;
   rows: ObservedRequestRow[];
 }
@@ -71,6 +141,21 @@ export interface TabObservationState {
   tabId: number;
   pageUrl: string | null;
   rows: Map<string, ObservedRequestRow>;
+  requestRows: Map<string, RequestRowReference>;
+}
+
+interface RequestRowReference {
+  rowId: string;
+  wasBlocked: boolean;
+}
+
+export interface RecordRequestOptions {
+  catalog?: readonly TrackerCatalogEntry[];
+}
+
+export interface RecordedRequest {
+  row: ObservedRequestRow;
+  shouldBlock: boolean;
 }
 
 export interface SummaryDecisionOptions {
@@ -82,12 +167,25 @@ const FIRST_PARTY_EXPLANATION =
   "This request appears to belong to the current site.";
 const UNKNOWN_REQUEST_EXPLANATION =
   "This request was observed, but TrackerBlocker could not classify its site relationship.";
+const EMPTY_LIFECYCLE_COUNTS: RequestLifecycleCounts = {
+  started: 0,
+  completed: 0,
+  blocked: 0,
+  failed: 0,
+  redirected: 0,
+};
 const RELATIONSHIP_ORDER: Record<RequestRelationship, number> = {
   "third-party": 0,
   unknown: 1,
   "first-party": 2,
 };
+const CATALOG_ACTION_PRIORITY: Record<CatalogDefaultAction, number> = {
+  allow: 0,
+  restrict: 1,
+  block: 2,
+};
 const EMPTY_WEB_AUTHORITY_PATTERN = /^(?:https?|wss?):\/\/[/?#]/i;
+const MAX_REQUEST_CONTEXT_VALUES = 16;
 
 export function createTabObservationState(
   tabId: number,
@@ -97,6 +195,7 @@ export function createTabObservationState(
     tabId,
     pageUrl: pageUrl ?? null,
     rows: new Map(),
+    requestRows: new Map(),
   };
 }
 
@@ -106,6 +205,7 @@ export function resetTabObservationState(
 ): void {
   state.pageUrl = pageUrl ?? null;
   state.rows.clear();
+  state.requestRows.clear();
 }
 
 export function mapRequestType(
@@ -125,6 +225,21 @@ export function mapRequestType(
       return "beacon";
     case "stylesheet":
       return "stylesheet";
+    case "font":
+      return "font";
+    case "media":
+      return "media";
+    case "websocket":
+      return "websocket";
+    case "object":
+    case "object_subrequest":
+      return "object";
+    case "manifest":
+      return "manifest";
+    case "speculative":
+    case "preload":
+    case "prefetch":
+      return "prefetch";
     default:
       return "other";
   }
@@ -133,7 +248,8 @@ export function mapRequestType(
 export function recordObservedRequest(
   state: TabObservationState,
   evidence: RequestEvidence,
-): ObservedRequestRow {
+  options: RecordRequestOptions = {},
+): RecordedRequest {
   const pageUrl = state.pageUrl ?? evidence.pageUrl;
   const classification = classifyRequestSiteRelationship({
     pageUrl,
@@ -170,13 +286,23 @@ export function recordObservedRequest(
 
   const id = `${rowSeed.relationship}:${rowSeed.key}`;
   const existing = state.rows.get(id);
-  const catalogFields = getCatalogFields(rowSeed);
+  const catalogFields = getCatalogFields(
+    rowSeed,
+    evidence.requestUrl,
+    options.catalog,
+  );
   const decision = decideRule({
     relationship: rowSeed.relationship,
     catalogDefaultAction: catalogFields.catalogDefaultAction,
     domainOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
     sitePaused: evidence.sitePaused,
   });
+  const contextUpdate = buildRequestContextEvidence(
+    evidence,
+    rowSeed.relationship,
+    requestType,
+  );
+  const lifecycleUpdate = createStartedLifecycle(decision.shouldBlock);
 
   if (!existing) {
     const row: ObservedRequestRow = {
@@ -190,23 +316,175 @@ export function recordObservedRequest(
       ruleSource: decision.source,
       requestCount: 1,
       requestTypes: [requestType],
+      firstSeen: evidence.timestamp,
       lastSeen: evidence.timestamp,
+      lifecycle: lifecycleUpdate,
+      context: contextUpdate,
+      redirectHops: [],
     };
 
     state.rows.set(id, row);
-    return row;
+    rememberRequestRow(state, evidence.requestId, id, decision.shouldBlock);
+    return { row, shouldBlock: decision.shouldBlock };
   }
 
   existing.requestCount += 1;
   existing.lastSeen = Math.max(existing.lastSeen, evidence.timestamp);
-  existing.status = decision.status;
-  existing.ruleSource = decision.source;
+  mergeCatalogFields(existing, catalogFields);
+  const aggregateDecision = decideRule({
+    relationship: rowSeed.relationship,
+    catalogDefaultAction: existing.catalogDefaultAction,
+    domainOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
+    sitePaused: evidence.sitePaused,
+  });
+  existing.status = aggregateDecision.status;
+  existing.ruleSource = aggregateDecision.source;
+  existing.lifecycle = mergeLifecycleCounts(
+    existing.lifecycle,
+    lifecycleUpdate,
+  );
+  existing.context = mergeRequestContextEvidence(
+    existing.context,
+    contextUpdate,
+  );
 
   if (!existing.requestTypes.includes(requestType)) {
     existing.requestTypes = [...existing.requestTypes, requestType].sort();
   }
 
-  return existing;
+  rememberRequestRow(state, evidence.requestId, id, decision.shouldBlock);
+  return { row: existing, shouldBlock: decision.shouldBlock };
+}
+
+export interface RequestRedirectEvidence {
+  requestId?: string | null;
+  fromUrl?: string | null;
+  redirectUrl?: string | null;
+  statusCode?: number | null;
+  timestamp: number;
+}
+
+export interface RequestCompletionEvidence {
+  requestId?: string | null;
+  timestamp: number;
+}
+
+export function recordRequestRedirect(
+  state: TabObservationState,
+  evidence: RequestRedirectEvidence,
+): ObservedRequestRow | null {
+  const row = getRowForRequestId(state, evidence.requestId);
+
+  if (!row) {
+    return null;
+  }
+
+  row.lastSeen = Math.max(row.lastSeen, evidence.timestamp);
+  row.lifecycle = mergeLifecycleCounts(row.lifecycle, {
+    redirected: 1,
+  });
+  row.redirectHops = appendRedirectHop(row.redirectHops, {
+    fromHost: formatUrlHost(evidence.fromUrl),
+    toHost: formatUrlHost(evidence.redirectUrl),
+    statusCode:
+      typeof evidence.statusCode === "number" ? evidence.statusCode : null,
+    timestamp: evidence.timestamp,
+  });
+
+  return row;
+}
+
+export function recordRequestCompleted(
+  state: TabObservationState,
+  evidence: RequestCompletionEvidence,
+): ObservedRequestRow | null {
+  return recordLifecycleTerminalState(state, evidence, "completed");
+}
+
+export function recordRequestFailed(
+  state: TabObservationState,
+  evidence: RequestCompletionEvidence,
+): ObservedRequestRow | null {
+  return recordLifecycleTerminalState(state, evidence, "failed");
+}
+
+function recordLifecycleTerminalState(
+  state: TabObservationState,
+  evidence: RequestCompletionEvidence,
+  lifecycleStatus: Extract<RequestLifecycleStatus, "completed" | "failed">,
+): ObservedRequestRow | null {
+  const reference = getRequestRowReference(state, evidence.requestId);
+  const row = reference ? state.rows.get(reference.rowId) ?? null : null;
+
+  if (!row || !reference) {
+    return null;
+  }
+
+  row.lastSeen = Math.max(row.lastSeen, evidence.timestamp);
+  if (!(lifecycleStatus === "failed" && reference.wasBlocked)) {
+    row.lifecycle = mergeLifecycleCounts(row.lifecycle, {
+      [lifecycleStatus]: 1,
+    });
+  }
+
+  if (evidence.requestId) {
+    state.requestRows.delete(evidence.requestId);
+  }
+
+  return row;
+}
+
+export function mergeLifecycleCounts(
+  current: RequestLifecycleCounts,
+  update: Partial<RequestLifecycleCounts>,
+): RequestLifecycleCounts {
+  return {
+    started: current.started + (update.started ?? 0),
+    completed: current.completed + (update.completed ?? 0),
+    blocked: current.blocked + (update.blocked ?? 0),
+    failed: current.failed + (update.failed ?? 0),
+    redirected: current.redirected + (update.redirected ?? 0),
+  };
+}
+
+function rememberRequestRow(
+  state: TabObservationState,
+  requestId: string | null | undefined,
+  rowId: string,
+  wasBlocked: boolean,
+): void {
+  if (requestId) {
+    state.requestRows.set(requestId, { rowId, wasBlocked });
+  }
+}
+
+function getRequestRowReference(
+  state: TabObservationState,
+  requestId: string | null | undefined,
+): RequestRowReference | null {
+  return requestId ? state.requestRows.get(requestId) ?? null : null;
+}
+
+function getRowForRequestId(
+  state: TabObservationState,
+  requestId: string | null | undefined,
+): ObservedRequestRow | null {
+  if (!requestId) {
+    return null;
+  }
+
+  const reference = state.requestRows.get(requestId);
+
+  return reference ? state.rows.get(reference.rowId) ?? null : null;
+}
+
+function appendRedirectHop(
+  current: readonly RequestRedirectHop[],
+  hop: RequestRedirectHop,
+): RequestRedirectHop[] {
+  const next = [...current, hop];
+
+  return next.slice(-8);
 }
 
 export function summarizeTabObservation(
@@ -228,6 +506,7 @@ export function summarizeTabObservation(
     firstPartyCount: rows.filter((row) => row.relationship === "first-party")
       .length,
     blockedCount: rows.filter((row) => row.status === "blocked").length,
+    restrictedCount: rows.filter((row) => row.status === "restricted").length,
     allowedCount: rows.filter(
       (row) => row.status === "allowed" || row.status === "allowed-paused",
     ).length,
@@ -260,19 +539,38 @@ export function isUnknownRow(row: ObservedRequestRow): boolean {
   );
 }
 
-function getCatalogFields(rowSeed: {
-  relationship: RequestRelationship;
-  displayName: string;
-}): Pick<
+type CatalogFields = Pick<
   ObservedRequestRow,
-  "category" | "entity" | "explanation" | "catalogDefaultAction"
-> {
+  | "category"
+  | "entity"
+  | "explanation"
+  | "catalogDefaultAction"
+  | "catalogSource"
+  | "catalogConfidence"
+  | "catalogBreakageRisk"
+  | "catalogRuleIds"
+  | "catalogNotes"
+>;
+
+function getCatalogFields(
+  rowSeed: {
+    relationship: RequestRelationship;
+    displayName: string;
+  },
+  requestUrl?: string | null,
+  catalog?: readonly TrackerCatalogEntry[],
+): CatalogFields {
   if (rowSeed.relationship === "first-party") {
     return {
       category: "unknown",
       entity: null,
       explanation: FIRST_PARTY_EXPLANATION,
       catalogDefaultAction: null,
+      catalogSource: null,
+      catalogConfidence: null,
+      catalogBreakageRisk: null,
+      catalogRuleIds: [],
+      catalogNotes: null,
     };
   }
 
@@ -282,18 +580,71 @@ function getCatalogFields(rowSeed: {
       entity: null,
       explanation: UNKNOWN_REQUEST_EXPLANATION,
       catalogDefaultAction: null,
+      catalogSource: null,
+      catalogConfidence: null,
+      catalogBreakageRisk: null,
+      catalogRuleIds: [],
+      catalogNotes: null,
     };
   }
 
-  const catalogMatch = lookupTrackerCatalogEntry(rowSeed.displayName);
+  const catalogMatch = lookupTrackerCatalogEntry(
+    rowSeed.displayName,
+    catalog,
+    requestUrl,
+  );
 
   return {
     category: catalogMatch?.entry.category ?? "unknown",
     entity: catalogMatch?.entry.entity ?? null,
     explanation:
-      catalogMatch?.entry.explanation ?? UNKNOWN_THIRD_PARTY_EXPLANATION,
-    catalogDefaultAction: catalogMatch?.entry.defaultAction ?? null,
+      catalogMatch?.matchedRule?.explanation ??
+      catalogMatch?.entry.explanation ??
+      UNKNOWN_THIRD_PARTY_EXPLANATION,
+    catalogDefaultAction: catalogMatch?.action ?? null,
+    catalogSource: catalogMatch?.entry.source ?? null,
+    catalogConfidence: catalogMatch?.entry.confidence ?? null,
+    catalogBreakageRisk: catalogMatch?.entry.breakageRisk ?? null,
+    catalogRuleIds: catalogMatch?.matchedRule
+      ? [catalogMatch.matchedRule.id]
+      : [],
+    catalogNotes: catalogMatch?.entry.notes ?? null,
   };
+}
+
+function mergeCatalogFields(
+  row: ObservedRequestRow,
+  update: CatalogFields,
+): void {
+  const currentPriority = row.catalogDefaultAction
+    ? CATALOG_ACTION_PRIORITY[row.catalogDefaultAction]
+    : -1;
+  const updatePriority = update.catalogDefaultAction
+    ? CATALOG_ACTION_PRIORITY[update.catalogDefaultAction]
+    : -1;
+  const shouldUseUpdate =
+    updatePriority > currentPriority ||
+    (updatePriority === currentPriority &&
+      row.catalogRuleIds.length === 0 &&
+      update.catalogRuleIds.length > 0);
+
+  row.catalogRuleIds = mergeSortedStrings(
+    row.catalogRuleIds,
+    update.catalogRuleIds,
+  );
+
+  if (!shouldUseUpdate) {
+    return;
+  }
+
+  row.category = update.category;
+  row.entity = update.entity;
+  row.explanation = update.explanation;
+  row.catalogDefaultAction = update.catalogDefaultAction;
+  row.catalogSource = update.catalogSource;
+  row.catalogConfidence = update.catalogConfidence;
+  row.catalogBreakageRisk = update.catalogBreakageRisk;
+  row.catalogNotes = update.catalogNotes;
 }
 
 function getDomainOverride(
@@ -307,6 +658,198 @@ function getDomainOverride(
   const overrideKey = row.host ?? row.displayName;
 
   return domainOverrides[overrideKey] ?? null;
+}
+
+function createStartedLifecycle(shouldBlock: boolean): RequestLifecycleCounts {
+  return {
+    ...EMPTY_LIFECYCLE_COUNTS,
+    started: 1,
+    blocked: shouldBlock ? 1 : 0,
+  };
+}
+
+function buildRequestContextEvidence(
+  evidence: RequestEvidence,
+  relationship: RequestRelationship,
+  requestType: RequestTypeCategory,
+): RequestContextEvidence {
+  return {
+    frameIds: [evidence.frameId],
+    frameContexts: [
+      {
+        frameId: evidence.frameId,
+        parentFrameId:
+          typeof evidence.parentFrameId === "number"
+            ? evidence.parentFrameId
+            : null,
+        frameHost: getFrameHost(evidence),
+        documentHost: formatUrlHost(evidence.documentUrl),
+        relationship,
+      },
+    ],
+    documentHosts: collectHosts(evidence.documentUrl, evidence.pageUrl),
+    initiatorHosts: collectHosts(evidence.initiator, evidence.originUrl),
+    pathHints: collectPathHints(evidence.requestUrl),
+    visibilityNotes: inferVisibilityNotes(evidence, relationship, requestType),
+  };
+}
+
+function mergeRequestContextEvidence(
+  current: RequestContextEvidence,
+  update: RequestContextEvidence,
+): RequestContextEvidence {
+  const frameIds = mergeSortedNumbers(current.frameIds, update.frameIds);
+  const frameContexts = mergeFrameContexts(
+    current.frameContexts,
+    update.frameContexts,
+  );
+  const documentHosts = mergeSortedStrings(
+    current.documentHosts,
+    update.documentHosts,
+  );
+  const initiatorHosts = mergeSortedStrings(
+    current.initiatorHosts,
+    update.initiatorHosts,
+  );
+  const wasTruncated = [
+    frameIds,
+    frameContexts,
+    documentHosts,
+    initiatorHosts,
+  ].some((values) => values.length > MAX_REQUEST_CONTEXT_VALUES);
+
+  return {
+    frameIds: frameIds.slice(0, MAX_REQUEST_CONTEXT_VALUES),
+    frameContexts: frameContexts.slice(0, MAX_REQUEST_CONTEXT_VALUES),
+    documentHosts: documentHosts.slice(0, MAX_REQUEST_CONTEXT_VALUES),
+    initiatorHosts: initiatorHosts.slice(0, MAX_REQUEST_CONTEXT_VALUES),
+    pathHints: mergeSortedStrings(current.pathHints, update.pathHints),
+    visibilityNotes: mergeSortedStrings(
+      current.visibilityNotes,
+      wasTruncated
+        ? [...update.visibilityNotes, "evidence-truncated"]
+        : update.visibilityNotes,
+    ) as VisibilityNote[],
+  };
+}
+
+function getFrameHost(evidence: RequestEvidence): string | null {
+  if (evidence.requestType === "sub_frame") {
+    return formatUrlHost(evidence.requestUrl);
+  }
+
+  return formatUrlHost(evidence.documentUrl);
+}
+
+function mergeFrameContexts(
+  current: readonly RequestFrameContext[],
+  update: readonly RequestFrameContext[],
+): RequestFrameContext[] {
+  const contextsByKey = new Map<string, RequestFrameContext>();
+
+  for (const context of [...current, ...update]) {
+    contextsByKey.set(formatFrameContextKey(context), context);
+  }
+
+  return [...contextsByKey.values()].sort(
+    (left, right) =>
+      left.frameId - right.frameId ||
+      (left.parentFrameId ?? -1) - (right.parentFrameId ?? -1) ||
+      (left.frameHost ?? "").localeCompare(right.frameHost ?? ""),
+  );
+}
+
+function formatFrameContextKey(context: RequestFrameContext): string {
+  return [
+    context.frameId,
+    context.parentFrameId ?? "",
+    context.frameHost ?? "",
+    context.documentHost ?? "",
+    context.relationship,
+  ].join("|");
+}
+
+function inferVisibilityNotes(
+  evidence: RequestEvidence,
+  relationship: RequestRelationship,
+  requestType: RequestTypeCategory,
+): VisibilityNote[] {
+  const notes: VisibilityNote[] = ["visible-request"];
+
+  if (relationship === "unknown") {
+    notes.push("non-web-or-unclassifiable");
+  }
+
+  if (requestType === "beacon") {
+    notes.push("exit-beacon-may-be-missed");
+  }
+
+  if (requestType === "websocket") {
+    notes.push("websocket-frames-not-classified");
+  }
+
+  if (requestType === "prefetch") {
+    notes.push("dns-or-preconnect-not-visible");
+  }
+
+  if (requestType === "xhr" || requestType === "beacon") {
+    notes.push("headers-not-inspected");
+  }
+
+  if (evidence.frameId !== 0 || evidence.parentFrameId !== undefined) {
+    notes.push("frame-ancestry-limited");
+  }
+
+  return mergeSortedStrings([], notes) as VisibilityNote[];
+}
+
+function collectHosts(
+  ...urls: Array<string | null | undefined>
+): string[] {
+  return mergeSortedStrings(
+    [],
+    urls.map(formatUrlHost).filter((host): host is string => Boolean(host)),
+  );
+}
+
+function collectPathHints(requestUrl?: string | null): string[] {
+  if (!requestUrl) {
+    return [];
+  }
+
+  try {
+    const path = new URL(requestUrl).pathname.toLowerCase();
+    const hints = [
+      "collect",
+      "track",
+      "tracking",
+      "event",
+      "events",
+      "beacon",
+      "pixel",
+      "conversion",
+      "analytics",
+      "telemetry",
+    ];
+
+    return hints.filter((hint) => path.includes(hint));
+  } catch {
+    return [];
+  }
+}
+
+function mergeSortedStrings<T extends string>(
+  current: readonly T[],
+  update: readonly T[],
+): T[] {
+  return [...new Set([...current, ...update])].sort();
+}
+
+function mergeSortedNumbers(
+  current: readonly number[],
+  update: readonly number[],
+): number[] {
+  return [...new Set([...current, ...update])].sort((left, right) => left - right);
 }
 
 function compareObservedRows(

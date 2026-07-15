@@ -227,6 +227,10 @@ button {
   background: #38bdf8;
 }
 
+.tb-request-row.is-restricted::before {
+  background: #d6a84f;
+}
+
 .tb-request-row.is-allowed::before {
   background: #b9c2b1;
 }

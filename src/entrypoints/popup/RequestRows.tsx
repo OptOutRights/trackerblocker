@@ -111,10 +111,17 @@ function RequestRow({
               label="Request types"
               value={row.requestTypes.join(", ")}
             />
+            <DetailRow label="Lifecycle" value={formatLifecycle(row)} />
+            <DetailRow label="Visibility" value={formatVisibilityNotes(row)} />
+            <DetailRow label="Context" value={formatContextEvidence(row)} />
+            <DetailRow label="Frames" value={formatFrameContexts(row)} />
+            <DetailRow label="Path hints" value={formatPathHints(row)} />
+            <DetailRow label="Redirects" value={formatRedirects(row)} />
             <DetailRow
               label="Rule source"
               value={formatRuleSource(row.ruleSource)}
             />
+            <DetailRow label="Catalog basis" value={formatCatalogBasis(row)} />
           </dl>
 
           {canOverride && (
@@ -155,6 +162,91 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <dd class="text-zinc-800">{value}</dd>
     </div>
   );
+}
+
+function formatLifecycle(row: ObservedRequestRow): string {
+  const parts = [
+    `${row.lifecycle.started} started`,
+    `${row.lifecycle.completed} completed`,
+    `${row.lifecycle.redirected} redirects`,
+    `${row.lifecycle.failed} failed`,
+    `${row.lifecycle.blocked} blocked`,
+  ];
+
+  return parts.join(", ");
+}
+
+function formatVisibilityNotes(row: ObservedRequestRow): string {
+  return row.context.visibilityNotes.map(formatVisibilityNote).join(", ");
+}
+
+function formatContextEvidence(row: ObservedRequestRow): string {
+  const parts = [
+    row.context.documentHosts.length
+      ? `documents: ${row.context.documentHosts.join(", ")}`
+      : null,
+    row.context.initiatorHosts.length
+      ? `initiators: ${row.context.initiatorHosts.join(", ")}`
+      : null,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.length ? parts.join("; ") : "No document or initiator host exposed.";
+}
+
+function formatFrameContexts(row: ObservedRequestRow): string {
+  if (row.context.frameContexts.length === 0) {
+    return "No frame context exposed.";
+  }
+
+  return row.context.frameContexts
+    .map((context) => {
+      const parent =
+        context.parentFrameId === null ? "unknown parent" : `parent ${context.parentFrameId}`;
+      const host = context.frameHost ?? context.documentHost ?? "unknown host";
+
+      return `frame ${context.frameId} (${parent}, ${host})`;
+    })
+    .join("; ");
+}
+
+function formatPathHints(row: ObservedRequestRow): string {
+  return row.context.pathHints.length
+    ? row.context.pathHints.join(", ")
+    : "No common collection path hints.";
+}
+
+function formatRedirects(row: ObservedRequestRow): string {
+  if (row.redirectHops.length === 0) {
+    return "No redirect hops captured.";
+  }
+
+  return row.redirectHops
+    .map((hop) => {
+      const status = hop.statusCode === null ? "redirect" : String(hop.statusCode);
+
+      return `${hop.fromHost ?? "unknown"} -> ${hop.toHost ?? "unknown"} (${status})`;
+    })
+    .join("; ");
+}
+
+export function formatCatalogBasis(row: ObservedRequestRow): string {
+  if (!row.catalogDefaultAction) {
+    return row.relationship === "third-party"
+      ? "Uncataloged third party; allowed by default."
+      : "No catalog entry applies.";
+  }
+
+  return [
+    `packaged ${row.catalogDefaultAction} rule`,
+    row.catalogRuleIds.length
+      ? `rules: ${row.catalogRuleIds.join(", ")}`
+      : null,
+    row.catalogConfidence ? `${row.catalogConfidence} confidence` : null,
+    row.catalogBreakageRisk ? `${row.catalogBreakageRisk} breakage risk` : null,
+    row.catalogSource ? `source: ${row.catalogSource}` : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(", ");
 }
 
 function OverrideButton({
@@ -217,6 +309,8 @@ function formatCategory(category: ObservedRequestRow["category"]): string {
       return "likely session replay";
     case "social":
       return "likely social";
+    case "observability":
+      return "likely observability";
     case "payment":
       return "likely payment";
     case "security":
@@ -241,12 +335,39 @@ function formatRuleSource(source: ObservedRequestRow["ruleSource"]): string {
   }
 }
 
+function formatVisibilityNote(
+  note: ObservedRequestRow["context"]["visibilityNotes"][number],
+): string {
+  switch (note) {
+    case "visible-request":
+      return "visible request";
+    case "exit-beacon-may-be-missed":
+      return "exit beacons can be missed";
+    case "websocket-frames-not-classified":
+      return "WebSocket frames are not classified";
+    case "frame-ancestry-limited":
+      return "frame ancestry is limited";
+    case "browser-cache-may-hide-requests":
+      return "browser cache may hide requests";
+    case "dns-or-preconnect-not-visible":
+      return "DNS/preconnect may not appear as requests";
+    case "headers-not-inspected":
+      return "headers are not inspected by default";
+    case "evidence-truncated":
+      return "evidence samples are truncated";
+    case "non-web-or-unclassifiable":
+      return "non-web or unclassifiable";
+  }
+}
+
 function formatStatus(status: ObservedRequestRow["status"]): string {
   switch (status) {
     case "blocked":
       return "blocked";
     case "allowed":
       return "allowed";
+    case "restricted":
+      return "restricted";
     case "allowed-paused":
       return "paused";
   }
@@ -258,6 +379,8 @@ function requestRowClass(status: ObservedRequestRow["status"]): string {
   switch (status) {
     case "blocked":
       return `${base} is-blocked`;
+    case "restricted":
+      return `${base} is-restricted`;
     case "allowed":
       return `${base} is-allowed`;
     case "allowed-paused":
@@ -272,6 +395,8 @@ function statusBadgeClass(status: ObservedRequestRow["status"]): string {
   switch (status) {
     case "blocked":
       return `${base} border-[#5db7dd] bg-[#dff5ff] text-zinc-950`;
+    case "restricted":
+      return `${base} border-[#d6c3a4] bg-[#fff8eb] text-[#6b4d21]`;
     case "allowed":
       return `${base} border-zinc-200 bg-white text-zinc-700`;
     case "allowed-paused":
