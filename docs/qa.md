@@ -33,3 +33,4 @@ Use a fresh Firefox profile with `npm run dev:firefox` or the built `.output/fir
 
 - Playwright UI smoke tests are not configured yet; runtime UI verification currently relies on WXT build, `web-ext` validation, bounded Firefox launch, and the manual checklist above.
 - The packaged catalog is intentionally conservative and endpoint-focused; broad mixed-use product domains remain out of the default block list.
+- Top-level navigations reset per-tab evidence and are not request rows, so redirect evidence covers tracked subresources rather than main-frame redirect chains.
