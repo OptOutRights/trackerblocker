@@ -63,7 +63,6 @@ export class ActionBadgeUpdateQueue {
 
   remove(tabId: number): void {
     this.appliedCounts.delete(tabId);
-    this.queues.delete(tabId);
     this.tabTokens.delete(tabId);
   }
 

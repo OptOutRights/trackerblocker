@@ -319,8 +319,8 @@ function findBestMatchingRule(
     return null;
   }
 
-  const normalizedPath = parsedUrl.pathname.toLowerCase();
-  const normalizedUrl = `${parsedUrl.protocol}//${parsedUrl.host}${parsedUrl.pathname}`.toLowerCase();
+  const normalizedPath = parsedUrl.pathname;
+  const normalizedUrl = `${parsedUrl.protocol}//${parsedUrl.host}${parsedUrl.pathname}`;
   let bestRule: TrackerCatalogRule | null = null;
 
   for (const rule of entry.rules) {
@@ -347,7 +347,7 @@ function normalizeRuleValue(
   value: string,
   matchType: CatalogRuleMatchType,
 ): string {
-  const normalized = value.trim().toLowerCase();
+  const normalized = value.trim();
 
   if (matchType === "path-prefix") {
     return normalized.startsWith("/") ? normalized : `/${normalized}`;

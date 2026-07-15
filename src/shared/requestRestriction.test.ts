@@ -82,5 +82,11 @@ describe("request restriction", () => {
         requestUrl: "https://cdn.example.test/assets/app.js",
       }).shouldRestrictHeaders,
     ).toBe(false);
+    expect(
+      decideHeaderRestriction({
+        ...baseInput,
+        requestUrl: "https://cdn.example.test/Collect/events",
+      }).shouldRestrictHeaders,
+    ).toBe(false);
   });
 });

@@ -73,11 +73,11 @@ describe("ActionBadgeUpdateQueue", () => {
       markActiveStarted = resolve;
     });
     const active = queue.update(1, 1, async (badge) => {
-      applied.push(`old:${badge.text}`);
       markActiveStarted?.();
       await new Promise<void>((resolve) => {
         releaseActive = resolve;
       });
+      applied.push(`old:${badge.text}`);
     });
 
     await activeStarted;
@@ -85,12 +85,14 @@ describe("ActionBadgeUpdateQueue", () => {
       applied.push(`stale:${badge.text}`);
     });
     queue.remove(1);
-    await queue.update(1, 3, async (badge) => {
+    const current = queue.update(1, 3, async (badge) => {
       applied.push(`new:${badge.text}`);
     });
 
+    await Promise.resolve();
+    expect(applied).toEqual([]);
     releaseActive?.();
-    await Promise.all([active, stale]);
+    await Promise.all([active, stale, current]);
 
     expect(applied).toEqual(["old:1", "new:3"]);
   });
