@@ -1,0 +1,71 @@
+{
+  "sourceUrl": "https://easylist.to/easylist/easyprivacy.txt",
+  "retrievedAt": "2026-07-16T20:23:32.501Z",
+  "upstreamVersion": "202607162010",
+  "upstreamLastModified": "16 Jul 2026 20:10 UTC",
+  "upstreamCommit": "39b3d59cef8fc3a4f82016494ff198860afeed42",
+  "sourceSha256": "438e92d56bde53de57b4ce534da5325be5521a447ad659cc53fc20ed113f421b",
+  "sourceBytes": 1489167,
+  "generator": "spikes/easyprivacy/generate-artifact.mjs",
+  "ghosteryPackageVersion": "2.18.1",
+  "engineConfiguration": {
+    "debug": false,
+    "enableCompression": true,
+    "enableHtmlFiltering": false,
+    "enableInMemoryCache": true,
+    "enableMutationObserver": false,
+    "enableOptimizations": true,
+    "enablePushInjectionsOnNavigationEvents": false,
+    "guessRequestTypeFromUrl": false,
+    "integrityCheck": true,
+    "loadCSPFilters": false,
+    "loadCosmeticFilters": false,
+    "loadExceptionFilters": true,
+    "loadExtendedSelectors": false,
+    "loadGenericCosmeticsFilters": false,
+    "loadNetworkFilters": true,
+    "loadPreprocessors": false
+  },
+  "artifactSha256": "cea9da2a5817e82b94ef87ee91214ed223ee0c8765a41ebddaaba7ad4637d4a2",
+  "artifactBytes": 1655753,
+  "deterministicSerialization": true,
+  "deserializeSerializeRoundTrip": true,
+  "totalNetworkRules": 55517,
+  "packagedNetworkRules": 55492,
+  "cosmeticRulesExcluded": 35,
+  "preprocessors": 0,
+  "networkRuleCounts": {
+    "csp": 2,
+    "redirect": 22,
+    "response-modification": 1,
+    "supported-block": 54664,
+    "supported-exception": 828
+  },
+  "ignoredLineCounts": {
+    "empty": 0,
+    "comment": 0,
+    "adguard": 0,
+    "unsupported": 3
+  },
+  "unsupportedModifierCounts": {
+    "other": 1,
+    "redirect": 2
+  },
+  "unsupportedSamples": [
+    {
+      "lineNumber": 13382,
+      "category": "redirect",
+      "filter": "||d1z2jf7jlzjs58.cloudfront.net^$rewrite=abp-resource:blank-js,domain=voici.fr"
+    },
+    {
+      "lineNumber": 17279,
+      "category": "other",
+      "filter": "||void.nicopr.fr/rec$method=POST"
+    },
+    {
+      "lineNumber": 17323,
+      "category": "redirect",
+      "filter": "@@||google-analytics.com/analytics.js$redirect-rule,script,domain=mond.how"
+    }
+  ]
+}

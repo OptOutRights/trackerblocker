@@ -1,0 +1,237 @@
+# EasyPrivacy Filtering Proposal
+
+Status: accepted; Phase 0 spike completed on July 16, 2026
+
+Reviewed against: `main` at `8772a27` on July 16, 2026, after fetching `origin` (`HEAD` and `origin/main` were equal)
+
+Phase 0 result: **go to Phase 1**, subject to the conditions in
+[`spikes/easyprivacy/RESULTS.md`](spikes/easyprivacy/RESULTS.md). The measured
+compressed cost, cold initialization, synchronous matching, Firefox build, and
+license review passed the initial gates without changing production behavior.
+
+## Decision
+
+Use the core [`@ghostery/adblocker`](https://github.com/ghostery/adblocker) package to evaluate packaged [EasyPrivacy](https://easylist.to/) network rules. Keep TrackerBlocker's existing catalog, decision policy, observations, explanations, and controls around that matcher.
+
+This makes the product useful without trying to out-maintain uBlock Origin's filter engine or Privacy Badger's learning system. The differentiator should be a local, inspectable blocking ledger: TrackerBlocker should tell the user what request was acted on, which source caused the action, why it is associated with tracking, and how narrowly the user can recover a broken site.
+
+EasyPrivacy must be generated and packaged during development or release. The installed extension must not fetch lists, classify requests remotely, send telemetry, or persist browsing history.
+
+## Current Baseline
+
+The repository already has more than a hard-coded domain check:
+
+- `src/data/trackerCatalog.json` contains 82 entries: 76 block, 5 allow, and 1 restrict. It provides entity/category explanations and breakage risk for automatic block/restrict entries.
+- `src/shared/trackerCatalog.ts` supports domain/suffix matching and optional path/URL rules, provenance, confidence, and breakage risk. The packaged JSON does not currently populate path rules or provenance.
+- `src/shared/ruleDecisions.ts` applies site pause, global hostname overrides, first-party/unknown allowance, and catalog defaults.
+- `src/entrypoints/background.ts` observes request lifecycle events, cancels blocked requests, strips `Cookie` and `Referer` for restricted requests, maintains per-tab evidence, and updates the badge.
+- `src/shared/requestObservation.ts` records bounded frame, initiator, document, path, redirect, lifecycle, and visibility evidence in memory.
+- The popup exposes per-host details, pause controls, and global Auto/Block/Allow hostname overrides. Persistent settings stay in `browser.storage.local`.
+- The runtime has no filter-list dependency and no runtime network dependency today.
+
+There are four structural limits to address before adding EasyPrivacy:
+
+1. Enforcement and presentation are aggregated by hostname. EasyPrivacy can make different decisions for different paths, request types, or source sites on the same hostname. A single strongest hostname status can therefore misstate what happened.
+2. First-party requests are automatically allowed before automatic blocking rules are considered. Explicit first-party/path-specific EasyPrivacy rules would never run under that policy.
+3. Request cancellation and header restriction currently perform separate catalog lookups. A larger matcher should produce one request decision that both listeners reuse.
+4. Background listeners are registered only after the asynchronous settings read completes. Loading a filter artifact makes synchronous listener registration and explicit initialization state more important for Firefox MV3 wakeups.
+
+The current action badge counts blocked hostname rows, while a blocker may report blocked network requests. Raw badge comparisons are therefore not an apples-to-apples coverage benchmark.
+
+## Target Architecture
+
+```mermaid
+flowchart LR
+  details["Firefox webRequest details"] --> context["Normalized request context"]
+  context --> filter["Ghostery core + packaged EasyPrivacy"]
+  context --> catalog["TrackerBlocker catalog"]
+  settings["Local pauses and overrides"] --> policy["TrackerBlocker decision policy"]
+  filter --> policy
+  catalog --> policy
+  policy --> enforce["Cancel, restrict, or allow"]
+  policy --> ledger["Per-request local decision ledger"]
+  ledger --> aggregate["Truthful per-host summaries"]
+  aggregate --> popup["Explanation and recovery UI"]
+```
+
+Use `@ghostery/adblocker`, not its WebExtension convenience wrapper. TrackerBlocker should retain its own `browser.webRequest` listeners so that pause behavior, overrides, request evidence, header restriction, and explanations remain one coherent policy.
+
+The filter adapter should be the only module that imports Ghostery types. It should accept a small, browser-independent request context and return a TrackerBlocker-owned result such as:
+
+- no match;
+- an EasyPrivacy blocking match;
+- an EasyPrivacy exception;
+- a recognized but unsupported action/modifier; or
+- unavailable/degraded engine state.
+
+Do not expose the rest of the codebase to the package's internal result shape. This keeps engine upgrades and a possible future replacement bounded.
+
+### Automatic Decision Precedence
+
+| Priority | Condition | Result |
+| --- | --- | --- |
+| 1 | Site is paused | Allow; record that pause caused it |
+| 2 | User explicitly blocked or allowed the hostname | Apply the user choice |
+| 3 | EasyPrivacy exception matches | Allow and stop automatic fallback evaluation |
+| 4 | Supported EasyPrivacy network-block rule matches | Block |
+| 5 | Existing catalog match applies | Block, restrict headers, or allow |
+| 6 | No supported rule matches | Allow |
+
+An EasyPrivacy exception must stop the catalog fallback; otherwise TrackerBlocker could re-block a request the list deliberately exempted. First-party requests remain allowed by default, but an explicit supported EasyPrivacy match may block them. The catalog should remain a third-party explanation/fallback source unless a future catalog entry deliberately defines different behavior.
+
+User choices should continue to outrank automatic sources. A later settings migration should add a narrower "Allow on this site" override, because the current global hostname allow is too broad as the default breakage-recovery tool.
+
+### Data And Privacy Boundaries
+
+- Package network-filter data with the extension. Do not enable cosmetic filtering, scriptlets, remote updates, or content injection in the first implementation.
+- Generate a serialized engine artifact ahead of time instead of parsing the full text list on every background start.
+- Commit metadata alongside the artifact: canonical source URL, retrieval time, upstream revision when available, source SHA-256, generator version, Ghostery package version, enabled capabilities, and rule counts.
+- Run the networked update command only as an explicit maintainer action. Normal builds, tests, and extension runtime must work offline from committed inputs/artifacts.
+- Keep request observations in background memory as they are today. Do not persist URLs, paths, or browsing history.
+- Store only user settings and deliberately learned/local controls in `browser.storage.local`.
+- Verify EasyPrivacy attribution and redistribution requirements, plus Ghostery dependency notices, before shipping an artifact. This is a release gate, not an assumed legal conclusion.
+
+## Implementation Phases
+
+### Phase 0: Compatibility And Cost Spike
+
+Completed on July 16, 2026. See
+[`spikes/easyprivacy/RESULTS.md`](spikes/easyprivacy/RESULTS.md) for the pinned
+inputs, supported capability report, measurements, and conditional go decision.
+
+Goal: prove the chosen engine is safe to adopt before changing blocking behavior.
+
+Work:
+
+- Add `@ghostery/adblocker` on an isolated implementation branch and pin it through the lockfile.
+- Compile a small synthetic EasyPrivacy-compatible fixture and the current EasyPrivacy network list.
+- Verify block rules, exceptions, domain/source constraints, request-type modifiers, first-party path rules, and serialization/deserialization in the WXT Firefox build.
+- Inventory rules that imply unsupported behavior such as redirects, response modification, CSP changes, HTML filtering, or parameter rewriting. Do not silently convert these into request cancellation.
+- Measure the Firefox zip delta, cold engine initialization, serialized artifact size, and request-match latency.
+- Review licenses and required notices.
+
+Initial go/no-go targets, to be adjusted after measurements:
+
+- less than 1.5 MB added to the compressed Firefox package;
+- under 100 ms cold deserialization on the development baseline;
+- under 1 ms p95 synchronous match time over representative request fixtures;
+- no new runtime request, content-script, or storage permission;
+- no runtime network access.
+
+Exit gate: record measured results and supported rule capabilities. Stop if the package cannot meet Firefox packaging, license, or synchronous matching needs without expanding the product scope.
+
+### Phase 1: Reproducible EasyPrivacy Supply Chain
+
+Goal: make the packaged filter data reviewable and reproducible.
+
+Work:
+
+- Add an explicit maintainer script such as `npm run update:easyprivacy`.
+- Download the canonical assembled EasyPrivacy list, validate its checksum/content shape, and compile only the supported network-filter capabilities.
+- Generate a serialized engine artifact plus human-readable metadata and a capability report.
+- Make generation deterministic for the same source bytes and engine version.
+- Add an offline verification command that rebuilds from a retained source input or verifies the artifact against its metadata, depending on the license review outcome.
+- Document how to review an update: source/checksum change, rule-count deltas, unsupported-rule deltas, artifact-size delta, tests, and attribution.
+
+Exit gate: a reviewer can identify exactly which list bytes and engine version produced the shipped artifact, and a normal build does not contact the network.
+
+### Phase 2: Filter Adapter And Unified Decision Model
+
+Goal: integrate the engine behind pure TrackerBlocker contracts with no default behavior change.
+
+Work:
+
+- Add a `FilterEngine` adapter that loads the packaged artifact and maps normalized request details into Ghostery requests.
+- Define one request-level `RequestDecision` containing action, source, matched exception/filter evidence, relationship, and optional header restriction.
+- Refactor catalog lookup and `decideRule()` into the same policy path used by both `onBeforeRequest` and `onBeforeSendHeaders`.
+- Cache the decision by request ID until completion/failure so later lifecycle listeners do not reclassify it inconsistently.
+- Represent engine health as loading, ready, or degraded. If loading or failed, retain current catalog behavior and surface the degraded state; never enforce a partial engine.
+- Put EasyPrivacy matching behind a local development/build flag until the accuracy phase passes.
+
+Exit gate: unit tests prove precedence and the existing catalog, pause, override, restriction, and unknown-allow behavior remain unchanged while the flag is off.
+
+### Phase 3: Request-Level Enforcement And Accurate Accounting
+
+Goal: enable EasyPrivacy without losing truthful evidence.
+
+Work:
+
+- Evaluate supported EasyPrivacy rules for HTTP(S) and WebSocket request contexts before the first-party default.
+- Honor exceptions and only cancel matches whose action is explicitly supported.
+- Register WebExtension listeners synchronously at background startup. Load settings and the filter artifact behind explicit initialization state; use current catalog behavior while the EasyPrivacy engine is not ready.
+- Change observation state from one merged hostname decision to per-request decision counts and bounded matched-rule samples.
+- Aggregate for display only after enforcement. A host may show, for example, "3 of 9 requests blocked" instead of being labeled wholly blocked because one path matched.
+- Define badge semantics explicitly. Recommended: badge text counts blocked requests; popup summary separately reports blocked hostnames. Use those exact labels.
+- Preserve lifecycle accounting, redirect evidence, pause-once behavior, global overrides, and header restriction.
+
+Exit gate: a mixed-use hostname can contain blocked and allowed requests without either action being misreported, and first-party traffic is blocked only by an explicit supported list rule or user choice.
+
+### Phase 4: Explanation And Narrow Recovery UX
+
+Goal: turn mature filter coverage into TrackerBlocker's product advantage.
+
+Work:
+
+- Explain each automatic action with its source: EasyPrivacy, packaged catalog, or default allow.
+- For EasyPrivacy matches, show a bounded normalized rule or stable rule identifier, request type, relevant path hint, and exception state. Do not require debug-mode list data if it materially inflates the package.
+- Continue enriching matched hosts with catalog entity/category explanations when available. Do not invent an entity when the catalog has none.
+- Show engine/list version and degraded state in a compact diagnostics area.
+- Add "Allow on this site" as the primary recovery action, backed by a versioned local settings migration. Keep global Allow available as an explicit advanced choice.
+- Make mixed host rows and blocked-request versus blocked-host counts visually unambiguous.
+
+Exit gate: a user can answer "what was blocked, by which rule source, why might it be tracking, and how can I fix only this site?" entirely from local data.
+
+### Phase 5: Coverage, Breakage, And Release Gate
+
+Goal: establish that the new coverage is materially better without unacceptable breakage.
+
+Work:
+
+- Build a local fixture corpus covering known block, exception, type-specific, source-site-specific, first-party path, redirect-chain, mixed-host, pause, and override cases.
+- Compare identical request fixtures, not badge numbers. Report blocked requests, blocked hosts, exceptions, unsupported rules, and false-positive regressions separately.
+- Manually smoke-test representative news, commerce, login, video, payment, social, and quiet first-party sites in a fresh Firefox profile.
+- Run `npm test`, `npm run typecheck`, `npm run lint:firefox`, and `npm run zip:firefox`.
+- Confirm the built extension makes no runtime filter-list requests and stores no request evidence in `browser.storage.local`.
+- Update `docs/qa.md`, `docs/testing.md`, and user-facing behavior documentation with measured results and recovery instructions.
+
+Exit gate: enable EasyPrivacy by default only after coverage, package cost, startup/match performance, breakage recovery, license notices, and offline/privacy checks pass.
+
+### Phase 6: Maintenance
+
+Goal: keep coverage current without turning runtime updates into a privacy or reliability dependency.
+
+Work:
+
+- Update EasyPrivacy through reviewable maintainer pull requests on a defined cadence.
+- Require metadata/checksum, capability report, size/performance checks, fixture tests, and attribution review for each update.
+- Treat Ghostery engine upgrades separately from list refreshes when possible so regressions have one likely cause.
+- Keep the prior generated artifact recoverable through version control. If a list update regresses breakage or performance, revert the artifact and metadata together.
+- Review whether the local catalog should add entity/category context for frequently matched but unexplained hosts; do not duplicate thousands of EasyPrivacy rules into it.
+
+## Suggested File Boundaries
+
+Exact names can change during the spike, but responsibilities should remain separate:
+
+- `scripts/update-easyprivacy.mjs`: explicit networked maintainer update and artifact generation.
+- `src/shared/filterEngine.ts`: Ghostery adapter and engine health state.
+- `src/shared/requestDecisions.ts`: unified, pure precedence and decision evidence.
+- `src/shared/requestObservation.ts`: request ledger and host aggregation, without filter-engine imports.
+- `public/filter-data/`: packaged serialized artifact and metadata, if WXT/Firefox asset loading validates this location.
+- `src/entrypoints/background.ts`: WebExtension listener wiring and enforcement only.
+- popup components: presentation and local recovery controls only.
+
+## Main Risks And Recovery
+
+| Risk | Mitigation | Recovery |
+| --- | --- | --- |
+| Filter artifact fails to load | Validate checksum/version and expose engine health | Continue current catalog behavior; do not enforce partial data |
+| List rule causes breakage | Honor exceptions and add site-scoped allow | Pause the site or add a local scoped exception; revert bad list update if systemic |
+| Engine/list update changes semantics | Separate adapter contract, pinned versions, fixture corpus | Revert engine or artifact independently |
+| Package/startup cost is too high | Serialize ahead of time and enforce Phase 0 budgets | Keep the catalog blocker and reconsider a smaller compiled subset |
+| Host aggregation hides mixed actions | Store request decisions before aggregation | Rebuild summaries from decision counts, not strongest host status |
+| Unsupported rule action is misapplied | Capability inventory and explicit supported-action checks | Treat unsupported actions as non-enforceable and report them |
+| Upstream or license requirements change | Record source/version/notices and review before release | Hold the update; continue shipping the last reviewed artifact |
+
+## Definition Of Done
+
+The proposal is complete when TrackerBlocker uses packaged EasyPrivacy network rules through the Ghostery core matcher, preserves local-only privacy boundaries, accurately records each request decision, explains its rule source, offers site-scoped recovery, and has measured evidence that coverage improved without exceeding agreed size, performance, breakage, or licensing limits.

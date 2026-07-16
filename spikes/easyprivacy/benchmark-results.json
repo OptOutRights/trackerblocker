@@ -1,0 +1,53 @@
+{
+  "environment": {
+    "node": "v26.4.0",
+    "platform": "darwin",
+    "architecture": "arm64"
+  },
+  "coldInitialization": {
+    "runs": 20,
+    "artifactReadMs": {
+      "min": 0.642,
+      "median": 0.744,
+      "p95": 0.815,
+      "max": 0.857,
+      "mean": 0.74
+    },
+    "deserializeMs": {
+      "min": 4.422,
+      "median": 4.871,
+      "p95": 5.752,
+      "max": 5.873,
+      "mean": 4.981
+    },
+    "processToReadyMs": {
+      "min": 39.439,
+      "median": 42.464,
+      "p95": 47.404,
+      "max": 53.068,
+      "mean": 43.067
+    }
+  },
+  "matching": {
+    "runs": 50000,
+    "fixtures": 6,
+    "cachedRequestMatches": 25001,
+    "engineMatchOnlyLatencyMs": {
+      "min": 0,
+      "median": 0.001,
+      "p95": 0.002,
+      "max": 0.143,
+      "mean": 0.001
+    },
+    "endToEndMatches": 25001,
+    "endToEndTotalDurationMs": 140.547,
+    "endToEndThroughputPerSecond": 355753.513,
+    "requestCreationAndMatchLatencyMs": {
+      "min": 0.001,
+      "median": 0.002,
+      "p95": 0.007,
+      "max": 0.304,
+      "mean": 0.003
+    }
+  }
+}

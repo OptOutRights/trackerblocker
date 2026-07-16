@@ -1,0 +1,8 @@
+{
+  "baselineZipBytes": 790,
+  "candidateZipBytes": 940422,
+  "addedZipBytes": 939632,
+  "targetBytes": 1500000,
+  "marginBytes": 560368,
+  "passes": true
+}
