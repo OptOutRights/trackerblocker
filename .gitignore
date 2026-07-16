@@ -4,3 +4,7 @@ node_modules/
 
 .DS_Store
 npm-debug.log*
+
+# EasyPrivacy spike inputs and generated binary artifacts
+spikes/easyprivacy/fixtures/easyprivacy.txt
+spikes/easyprivacy/wxt/public/filter-data/easyprivacy.engine

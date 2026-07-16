@@ -13,6 +13,15 @@
     "zip:firefox": "wxt zip -b firefox",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "spike:easyprivacy:generate": "node spikes/easyprivacy/generate-artifact.mjs",
+    "spike:easyprivacy:update": "node spikes/easyprivacy/generate-artifact.mjs --update-source",
+    "spike:easyprivacy:test": "vitest run spikes/easyprivacy/compatibility.test.mjs",
+    "spike:easyprivacy:verify-generated": "node spikes/easyprivacy/verify-generated.mjs",
+    "spike:easyprivacy:benchmark": "node spikes/easyprivacy/benchmark.mjs",
+    "spike:easyprivacy:build": "wxt build spikes/easyprivacy/wxt -b firefox --mv3",
+    "spike:easyprivacy:measure-size": "node spikes/easyprivacy/measure-package.mjs",
+    "spike:easyprivacy:zip-baseline": "wxt zip spikes/easyprivacy/wxt-baseline -b firefox --mv3",
+    "spike:easyprivacy:zip": "wxt zip spikes/easyprivacy/wxt -b firefox --mv3",
     "lint:firefox": "npm run build:firefox && web-ext lint --source-dir .output/firefox-mv3",
     "web-ext:firefox": "web-ext run --source-dir .output/firefox-mv3",
     "postinstall": "wxt prepare"
@@ -22,6 +31,7 @@
     "tldts": "^7.4.6"
   },
   "devDependencies": {
+    "@ghostery/adblocker": "2.18.1",
     "@preact/preset-vite": "^2.10.5",
     "@tailwindcss/vite": "^4.3.2",
     "tailwindcss": "^4.3.2",
