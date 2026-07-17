@@ -19,6 +19,12 @@ function extensionDevServerCors(): Plugin {
 export default defineConfig({
   srcDir: "src",
   manifestVersion: 3,
+  zip: {
+    excludeSources: [
+      "spikes/easyprivacy/fixtures/easyprivacy.txt",
+      "spikes/easyprivacy/wxt/public/filter-data/easyprivacy.engine",
+    ],
+  },
   dev: {
     server: {
       host: "127.0.0.1",

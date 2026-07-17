@@ -11,6 +11,9 @@ This project should keep tests lightweight, local-first, and focused on privacy-
 
 Current test files:
 
+- `scripts/easyprivacy/supply-chain.test.mjs`: retained-source provenance,
+  source identity checks, unsupported-rule inventory, and byte-identical
+  regeneration of the packaged EasyPrivacy outputs.
 - `src/shared/domains.test.ts`: first-party vs third-party classification, URL normalization, WebSocket requests, public suffix cases, IPs, localhost, malformed inputs, and ignored schemes.
 - `src/shared/requestObservation.test.ts`: passive request aggregation by hostname, request type mapping, row ordering, top-level page classification for frame requests, unknown/unclassifiable handling, resets, and empty summaries.
 - `src/shared/trackerCatalog.test.ts`: packaged catalog validation, lookup matching, suffix boundaries, fallback explanation wording, and malformed catalog rejection.
@@ -45,6 +48,13 @@ Run one test file:
 
 ```sh
 npx vitest run src/shared/domains.test.ts
+```
+
+Verify the committed EasyPrivacy engine from its retained source without
+contacting the network:
+
+```sh
+npm run verify:easyprivacy
 ```
 
 ### Type Checking

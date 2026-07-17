@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "sourceLines": 56327,
+  "totalNetworkRules": 55521,
+  "packagedNetworkRules": 55496,
+  "excludedNetworkRules": 25,
+  "cosmeticRulesExcluded": 35,
+  "preprocessors": 0,
+  "networkRuleCounts": {
+    "csp": 2,
+    "redirect": 22,
+    "response-modification": 1,
+    "supported-block": 54668,
+    "supported-exception": 828
+  },
+  "excludedNetworkRuleSamples": {
+    "csp": [
+      "$csp=child-src 'none'; frame-src 'self' *; worker-src 'none',domain=fileone.tv|theappguruz.com",
+      "$csp=child-src 'none'; frame-src *; worker-src 'none',domain=thepiratebay.org|vidoza.net"
+    ],
+    "redirect": [
+      "||pcoptimizedsettings.com/wp-content/plugins/koko-analytics/$important,redirect=noop.js,script",
+      "||pcoptimizedsettings.com/wp-content/uploads/breeze/google/gtag.js$important,redirect=noop.js,script",
+      "||d21y75miwcfqoq.cloudfront.net/436f3341$image,redirect=nooptext",
+      "||static.chartbeat.com/js/chartbeat.js$redirect=chartbeat.js,script",
+      "||static.chartbeat.com/js/chartbeat_mab.js$redirect=chartbeat.js,script",
+      "||acustomizedgift.com^$redirect=noopjs,script",
+      "||askdriver.com^$redirect=noopjs,script",
+      "||fishingtoolsbox.com^$redirect=noopjs,script",
+      "||fjordsand.com^$redirect=noopjs,script",
+      "||fontserif.com^$redirect=noopjs,script",
+      "||glasscoyote.com^$redirect=noopjs,script",
+      "||goddesslamps.com^$redirect=noopjs,script",
+      "||inventorycache.com^$redirect=noopjs,script",
+      "||kindhush.com^$redirect=noopjs,script",
+      "||oceancloudhosts.com^$redirect=noopjson,xmlhttprequest",
+      "||ubiquitoussea.com^$redirect=noopjs,script",
+      "||unloadyourself.com^$redirect=noopjs,script",
+      "||googletagmanager.com/gtag/js$important,redirect=googletagmanager_gtm.js,script,xmlhttprequest,domain=redstoneonline.jp",
+      "||sstats.bitdefender.com^$important,redirect=noop.txt,xmlhttprequest",
+      "||r10s.jp/com/img/home/t.gif?$image,important,redirect=1x1.gif,domain=24.rakuten.co.jp"
+    ],
+    "response-modification": [
+      "||abs.twimg.com/responsive-web/client-web/main.$script,replace=/t\\.isTrue\\(\"rweb_home_jot_context_enabled\"\\)/false/"
+    ]
+  },
+  "ignoredLineCounts": {
+    "empty": 1,
+    "comment": 766,
+    "adguard": 0,
+    "unsupported": 3
+  },
+  "unsupportedModifierCounts": {
+    "redirect": 2,
+    "request-method": 1
+  },
+  "unsupportedSamples": [
+    {
+      "lineNumber": 13384,
+      "category": "redirect",
+      "filter": "||d1z2jf7jlzjs58.cloudfront.net^$rewrite=abp-resource:blank-js,domain=voici.fr"
+    },
+    {
+      "lineNumber": 17282,
+      "category": "request-method",
+      "filter": "||void.nicopr.fr/rec$method=POST"
+    },
+    {
+      "lineNumber": 17326,
+      "category": "redirect",
+      "filter": "@@||google-analytics.com/analytics.js$redirect-rule,script,domain=mond.how"
+    }
+  ]
+}

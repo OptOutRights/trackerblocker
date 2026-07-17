@@ -9,7 +9,7 @@ import {
   compileSupportedNetworkEngine,
   createRequest,
   inventoryFilterList,
-} from "./spike-lib.mjs";
+} from "../../scripts/easyprivacy/lib.mjs";
 
 const SPIKE_DIR = dirname(fileURLToPath(import.meta.url));
 const SYNTHETIC_PATH = resolve(SPIKE_DIR, "fixtures/synthetic.txt");
