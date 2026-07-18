@@ -27,9 +27,9 @@ const packageJson = JSON.parse(packageJsonText);
 const packageLock = JSON.parse(packageLockText);
 
 assert.equal(
-  packageJson.devDependencies?.["@ghostery/adblocker"],
+  packageJson.dependencies?.["@ghostery/adblocker"],
   rebuilt.metadata.ghosteryPackageVersion,
-  "Ghostery must remain exactly pinned in package.json.",
+  "The production Ghostery dependency must remain exactly pinned in package.json.",
 );
 assert.equal(
   packageLock.packages?.["node_modules/@ghostery/adblocker"]?.version,

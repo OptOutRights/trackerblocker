@@ -30,11 +30,11 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "@ghostery/adblocker": "2.18.1",
     "preact": "^10.29.4",
     "tldts": "^7.4.6"
   },
   "devDependencies": {
-    "@ghostery/adblocker": "2.18.1",
     "@preact/preset-vite": "^2.10.5",
     "@tailwindcss/vite": "^4.3.2",
     "tailwindcss": "^4.3.2",
