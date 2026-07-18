@@ -6,22 +6,28 @@ This checklist records the current MVP verification state for local dogfooding.
 
 Last run on July 17, 2026:
 
-- `npm run generate:easyprivacy`: reproduced the versioned outputs.
 - `npm run verify:easyprivacy`: passed source provenance, byte-identical rebuild,
   deserialization, rule-count, dependency-version, and representative-match checks.
-- `npm test`: passed, 13 test files and 110 tests.
+- `npm test`: passed, 15 test files and 125 tests. Phase 2 coverage includes
+  packaged-engine validation, block and exception evidence, degraded fallback,
+  default-off precedence, header restriction, and request-cache lifecycle.
 - `npm run typecheck`: passed.
 - `npm run lint:firefox`: passed with 0 errors, 0 notices, and 1 bundled-code warning for dynamic `innerHTML`.
-- `npm run zip:firefox`: passed and produced a 1,099,641-byte Firefox zip and
-  an approximately 1.5 MB source zip. The Firefox zip includes the EasyPrivacy
+- `npm run zip:firefox`: passed and produced an approximately 1.19 MB Firefox
+  zip and 1.51 MB source zip. The Firefox zip includes the EasyPrivacy
   engine, metadata, capability report, and third-party notices; the source zip
   also includes the exact upstream source and generator.
-- The Firefox zip is 852,507 bytes larger than the 247,134-byte Phase 0
+- The Firefox zip is approximately 940 KB larger than the 247,134-byte Phase 0
   TrackerBlocker baseline, below the 1.5 MB compressed-cost gate.
-- Earlier bounded runtime smoke on July 9: `web-ext run` installed
-  `.output/firefox-mv3` as a temporary add-on in headless Firefox before the
-  smoke command was terminated. It was not repeated for the data-only Phase 1
-  change.
+- The default build embeds EasyPrivacy matching as disabled. An explicit
+  `WXT_EASYPRIVACY_MATCHING=true` build also completed for the bounded adapter
+  path, followed by a fresh default build for the final zip.
+- Source inspection found only two runtime `fetch(...)` calls, both for the
+  packaged `moz-extension:` engine and metadata. The manifest permissions and
+  settings-only `browser.storage.local` schema are unchanged.
+- A bounded Phase 2 `web-ext run` smoke installed the default `.output/firefox-mv3`
+  build as a temporary add-on in headless Firefox with automatic reload
+  disabled; the process was terminated after successful installation.
 
 `rg "innerHTML|dangerouslySetInnerHTML" src` found no source-level usage related to the lint warning.
 

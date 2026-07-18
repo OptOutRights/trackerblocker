@@ -53,9 +53,10 @@ The popup shows third-party hostnames observed on the active tab, local catalog 
 ## EasyPrivacy Data
 
 The repository includes a reproducible, supported-network-rule EasyPrivacy
-artifact for the next filtering phase. It is packaged in normal Firefox builds
-but is not yet loaded or enforced by the production background. The exact
-upstream source, checksum, capability exclusions, generator, and open-source
+artifact. The production background validates and loads the packaged artifact,
+but EasyPrivacy matching and enforcement remain disabled by default behind an
+explicit local build flag. The exact upstream source, checksum, capability
+exclusions, generator, and open-source
 [`notices`](public/THIRD-PARTY-NOTICES.txt) are versioned alongside it. See
 [`docs/easyprivacy-updates.md`](docs/easyprivacy-updates.md) for the explicit
 networked update command and offline verification workflow.

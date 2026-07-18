@@ -223,14 +223,14 @@ Worktree suitability:
 - Can proceed while storage design is being sketched once decision input types are clear.
 - Should merge before actual request cancellation.
 
-TODO: implementation details
+Implementation details
 
-- Decision logic lives in `src/shared/ruleDecisions.ts` and stays browser-independent.
-- `decideRule()` returns `status`, `source`, and `shouldBlock` from relationship, catalog default action, optional hostname override, and optional site pause.
-- Precedence is site pause, per-hostname block/allow override, first-party allow, unclassifiable/unknown visibility, catalog default, then unknown third-party allowed by default.
-- Rule sources are `automatic`, `blocked-by-user`, `allowed-by-user`, and `site-paused`; statuses are `blocked`, `allowed`, and `allowed-paused`.
-- Request observation now applies automatic decisions to row summaries before actual request cancellation exists.
-- `src/shared/ruleDecisions.test.ts` covers precedence, catalog defaults, unknowns, and first-party behavior.
+- Decision logic now lives in `src/shared/requestDecisions.ts` and stays browser-independent.
+- `RequestDecision` records action, source, relationship, EasyPrivacy evidence, catalog match, and optional header restriction.
+- Precedence is site pause, per-hostname block/allow override, EasyPrivacy exception, EasyPrivacy block, third-party catalog default, then default allow.
+- Existing popup statuses and sources are derived from the request decision without changing the stored settings or presentation schema.
+- Request observation consumes the unified decision while preserving the current host-level summary model.
+- `src/shared/requestDecisions.test.ts` covers precedence, catalog defaults, feature-off compatibility, unknowns, first-party behavior, and cache lifecycle.
 
 ### Phase 5: Local Storage And Overrides
 

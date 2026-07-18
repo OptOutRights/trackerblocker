@@ -1,6 +1,6 @@
 # EasyPrivacy Filtering Proposal
 
-Status: accepted; Phases 0 and 1 completed on July 16–17, 2026
+Status: accepted; Phases 0–2 completed on July 16–17, 2026
 
 Reviewed against: `main` at `8772a27` on July 16, 2026, after fetching `origin` (`HEAD` and `origin/main` were equal)
 
@@ -17,9 +17,16 @@ network request; production filtering behavior remains unchanged. See
 [`docs/easyprivacy-updates.md`](docs/easyprivacy-updates.md) for the implemented
 file layout and maintainer workflow.
 
-Next phase: **Phase 2 — Filter Adapter And Unified Decision Model**. The Phase 1
-artifact is present in normal Firefox builds, but production code does not load,
-match, or enforce it yet.
+Phase 2 result: production now validates and deserializes the packaged artifact
+behind a browser-independent adapter, normalizes request contexts, produces one
+request-level decision, and reuses that decision for cancellation and header
+restriction. Engine health is explicit and all unavailable states fall back to
+the catalog. EasyPrivacy matching and enforcement remain disabled by default
+behind `WXT_EASYPRIVACY_MATCHING=true`.
+
+Next phase: **Phase 3 — Request-Level Enforcement And Accurate Accounting**.
+EasyPrivacy must not be enabled by default until request-level accounting and
+truthful mixed-host presentation are implemented.
 
 ## Decision
 
@@ -35,21 +42,21 @@ The repository already has more than a hard-coded domain check:
 
 - `src/data/trackerCatalog.json` contains 82 entries: 76 block, 5 allow, and 1 restrict. It provides entity/category explanations and breakage risk for automatic block/restrict entries.
 - `src/shared/trackerCatalog.ts` supports domain/suffix matching and optional path/URL rules, provenance, confidence, and breakage risk. The packaged JSON does not currently populate path rules or provenance.
-- `src/shared/ruleDecisions.ts` applies site pause, global hostname overrides, first-party/unknown allowance, and catalog defaults.
+- `src/shared/requestDecisions.ts` owns normalized request contexts, precedence,
+  catalog evaluation, request-level evidence, header restriction, and the
+  active-request decision cache.
+- `src/shared/filterEngine.ts` is the only production Ghostery boundary. It
+  validates the packaged metadata and artifact before matching.
 - `src/entrypoints/background.ts` observes request lifecycle events, cancels blocked requests, strips `Cookie` and `Referer` for restricted requests, maintains per-tab evidence, and updates the badge.
 - `src/shared/requestObservation.ts` records bounded frame, initiator, document, path, redirect, lifecycle, and visibility evidence in memory.
 - The popup exposes per-host details, pause controls, and global Auto/Block/Allow hostname overrides. Persistent settings stay in `browser.storage.local`.
-- The packaged extension contains the Phase 1 EasyPrivacy artifact, but the
-  runtime has no active filter-engine dependency and makes no filter-list
-  network request.
+- The packaged extension loads the Phase 1 artifact and metadata from local
+  `moz-extension:` URLs. It makes no remote filter-list request.
 
-There are four structural limits to address before integrating and enabling
-EasyPrivacy at runtime:
+Two structural limits remain before enabling EasyPrivacy by default:
 
 1. Enforcement and presentation are aggregated by hostname. EasyPrivacy can make different decisions for different paths, request types, or source sites on the same hostname. A single strongest hostname status can therefore misstate what happened.
-2. First-party requests are automatically allowed before automatic blocking rules are considered. Explicit first-party/path-specific EasyPrivacy rules would never run under that policy.
-3. Request cancellation and header restriction currently perform separate catalog lookups. A larger matcher should produce one request decision that both listeners reuse.
-4. Background listeners are registered only after the asynchronous settings read completes. Loading a filter artifact makes synchronous listener registration and explicit initialization state more important for Firefox MV3 wakeups.
+2. Background listeners are registered only after the asynchronous settings read completes. Synchronous registration remains important for Firefox MV3 wakeups.
 
 The current action badge counts blocked hostname rows, while a blocker may report blocked network requests. Raw badge comparisons are therefore not an apples-to-apples coverage benchmark.
 
@@ -169,9 +176,11 @@ network for EasyPrivacy data.
 
 ### Phase 2: Filter Adapter And Unified Decision Model
 
+Completed on July 17, 2026.
+
 Goal: integrate the engine behind pure TrackerBlocker contracts with no default behavior change.
 
-Work:
+Implemented work:
 
 - Add a `FilterEngine` adapter that loads the packaged artifact and maps normalized request details into Ghostery requests.
 - Define one request-level `RequestDecision` containing action, source, matched exception/filter evidence, relationship, and optional header restriction.
@@ -180,7 +189,12 @@ Work:
 - Represent engine health as loading, ready, or degraded. If loading or failed, retain current catalog behavior and surface the degraded state; never enforce a partial engine.
 - Put EasyPrivacy matching behind a local development/build flag until the accuracy phase passes.
 
-Exit gate: unit tests prove precedence and the existing catalog, pause, override, restriction, and unknown-allow behavior remain unchanged while the flag is off.
+Exit gate: **met**. Unit tests cover adapter validation and health, block and
+exception evidence, precedence, loading/degraded fallback, request-ID reuse and
+cleanup, and the unchanged catalog, pause, override, restriction, first-party,
+and unknown-allow behavior while the flag is off. The default Firefox build
+embeds the flag as disabled and retains the existing permissions and storage
+schema.
 
 ### Phase 3: Request-Level Enforcement And Accurate Accounting
 

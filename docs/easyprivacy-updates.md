@@ -25,6 +25,28 @@ sidecar for unsupported actions.
 - `public/THIRD-PARTY-NOTICES.txt`: attribution and license information shipped
   in both the extension and Firefox source archive.
 
+## Runtime integration
+
+The background loads the packaged engine and metadata from local
+`moz-extension:` URLs, validates the metadata schema, enabled capabilities,
+artifact size, and SHA-256, and then lets Ghostery validate and deserialize the
+engine. Engine health is `loading`, `ready`, or `degraded`. Loading, degraded,
+and disabled states always use the existing local catalog policy; a partial or
+invalid engine is never enforced.
+
+EasyPrivacy matching remains disabled by default. For local Phase 2 testing,
+opt in for one development session or build:
+
+```sh
+WXT_EASYPRIVACY_MATCHING=true npm run dev:firefox
+WXT_EASYPRIVACY_MATCHING=true npm run build:firefox
+```
+
+The flag is build-time input, not a persisted extension setting. Do not commit
+local `.env` flag files. The runtime does not load the capability report or the
+retained source: unsupported actions remain generation-time review information
+and cannot become runtime matches.
+
 ## Refreshing EasyPrivacy
 
 Install the exact locked dependencies first:
