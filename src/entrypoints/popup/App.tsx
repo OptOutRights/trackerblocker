@@ -21,7 +21,7 @@ import {
   isSettingsResponse,
 } from "../../messaging/settings";
 import { formatUrlHost } from "../../shared/domains";
-import type { DomainOverrideAction } from "../../shared/ruleDecisions";
+import type { DomainOverrideAction } from "../../shared/requestDecisions";
 import type { SitePauseMode, SitePauseStatus } from "../../storage/settings";
 import {
   PopupDashboard,
@@ -42,7 +42,16 @@ function isHealthCheckResponse(value: unknown): value is HealthCheckResponse {
     "ok" in value &&
     value.ok === true &&
     "startedAt" in value &&
-    typeof value.startedAt === "string"
+    typeof value.startedAt === "string" &&
+    "easyPrivacy" in value &&
+    typeof value.easyPrivacy === "object" &&
+    value.easyPrivacy !== null &&
+    "matchingEnabled" in value.easyPrivacy &&
+    typeof value.easyPrivacy.matchingEnabled === "boolean" &&
+    "engineHealth" in value.easyPrivacy &&
+    (value.easyPrivacy.engineHealth === "loading" ||
+      value.easyPrivacy.engineHealth === "ready" ||
+      value.easyPrivacy.engineHealth === "degraded")
   );
 }
 

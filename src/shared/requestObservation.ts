@@ -1,20 +1,24 @@
+import { formatUrlHost } from "./domains";
 import {
-  classifyRequestSiteRelationship,
-  formatUrlHost,
-} from "./domains";
-import {
-  lookupTrackerCatalogEntry,
   UNKNOWN_THIRD_PARTY_EXPLANATION,
   type CatalogCategory,
   type CatalogDefaultAction,
   type TrackerCatalogEntry,
+  type TrackerCatalogMatch,
 } from "./trackerCatalog";
 import {
-  decideRule,
+  decideRequest,
+  decideRequestPolicy,
+  normalizeRequestContext,
+  toRuleDecisionPresentation,
   type DomainOverrideAction,
+  type RequestDecision,
+  type RequestRelationship,
   type RuleDecisionSource,
   type RuleDecisionStatus,
-} from "./ruleDecisions";
+} from "./requestDecisions";
+
+export type { RequestRelationship } from "./requestDecisions";
 
 export type RequestTypeCategory =
   | "script"
@@ -31,7 +35,6 @@ export type RequestTypeCategory =
   | "prefetch"
   | "other";
 
-export type RequestRelationship = "third-party" | "unknown" | "first-party";
 export type RequestLifecycleStatus =
   | "started"
   | "completed"
@@ -151,6 +154,7 @@ interface RequestRowReference {
 
 export interface RecordRequestOptions {
   catalog?: readonly TrackerCatalogEntry[];
+  decision?: RequestDecision;
 }
 
 export interface RecordedRequest {
@@ -251,11 +255,16 @@ export function recordObservedRequest(
   options: RecordRequestOptions = {},
 ): RecordedRequest {
   const pageUrl = state.pageUrl ?? evidence.pageUrl;
-  const classification = classifyRequestSiteRelationship({
+  const requestContext = normalizeRequestContext({
+    requestId: evidence.requestId,
+    tabId: evidence.tabId,
     pageUrl,
+    documentUrl: evidence.documentUrl,
+    originUrl: evidence.originUrl,
+    initiator: evidence.initiator,
     requestUrl: evidence.requestUrl,
+    requestType: evidence.requestType,
   });
-
   const requestType = mapRequestType(evidence.requestType);
   const rowSeed: {
     relationship: RequestRelationship;
@@ -263,40 +272,34 @@ export function recordObservedRequest(
     host: string | null;
     siteDomain: string | null;
     displayName: string;
-  } =
-    classification.status === "third-party" ||
-    classification.status === "same-site"
-      ? {
-          relationship:
-            classification.status === "third-party"
-              ? "third-party"
-              : "first-party",
-          key: classification.requestHost,
-          host: classification.requestHost,
-          siteDomain: classification.requestSite,
-          displayName: classification.requestHost,
-        }
-      : {
-          relationship: "unknown",
-          key: getUnknownRequestKey(evidence.requestUrl),
-          host: null,
-          siteDomain: null,
-          displayName: getUnknownRequestDisplayName(evidence.requestUrl),
-        };
+  } = requestContext.requestHost
+    ? {
+        relationship: requestContext.relationship,
+        key: requestContext.requestHost,
+        host: requestContext.requestHost,
+        siteDomain: requestContext.requestSite,
+        displayName: requestContext.requestHost,
+      }
+    : {
+        relationship: "unknown",
+        key: getUnknownRequestKey(evidence.requestUrl),
+        host: null,
+        siteDomain: null,
+        displayName: getUnknownRequestDisplayName(evidence.requestUrl),
+      };
 
   const id = `${rowSeed.relationship}:${rowSeed.key}`;
   const existing = state.rows.get(id);
-  const catalogFields = getCatalogFields(
-    rowSeed,
-    evidence.requestUrl,
-    options.catalog,
-  );
-  const decision = decideRule({
-    relationship: rowSeed.relationship,
-    catalogDefaultAction: catalogFields.catalogDefaultAction,
-    domainOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
-    sitePaused: evidence.sitePaused,
-  });
+  const requestDecision =
+    options.decision ??
+    decideRequest({
+      context: requestContext,
+      sitePaused: evidence.sitePaused,
+      domainOverrides: evidence.domainOverrides,
+      catalog: options.catalog,
+    });
+  const catalogFields = getCatalogFields(rowSeed, requestDecision.catalogMatch);
+  const decision = toRuleDecisionPresentation(requestDecision);
   const contextUpdate = buildRequestContextEvidence(
     evidence,
     rowSeed.relationship,
@@ -331,12 +334,14 @@ export function recordObservedRequest(
   existing.requestCount += 1;
   existing.lastSeen = Math.max(existing.lastSeen, evidence.timestamp);
   mergeCatalogFields(existing, catalogFields);
-  const aggregateDecision = decideRule({
-    relationship: rowSeed.relationship,
-    catalogDefaultAction: existing.catalogDefaultAction,
-    domainOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
-    sitePaused: evidence.sitePaused,
-  });
+  const aggregateDecision = toRuleDecisionPresentation(
+    decideRequestPolicy({
+      relationship: rowSeed.relationship,
+      catalogDefaultAction: existing.catalogDefaultAction,
+      domainOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
+      sitePaused: evidence.sitePaused,
+    }),
+  );
   existing.status = aggregateDecision.status;
   existing.ruleSource = aggregateDecision.source;
   existing.lifecycle = mergeLifecycleCounts(
@@ -518,12 +523,14 @@ function applyRowDecision(
   row: ObservedRequestRow,
   decisionOptions: SummaryDecisionOptions,
 ): ObservedRequestRow {
-  const decision = decideRule({
-    relationship: row.relationship,
-    catalogDefaultAction: row.catalogDefaultAction,
-    domainOverride: getDomainOverride(row, decisionOptions.domainOverrides),
-    sitePaused: decisionOptions.sitePaused,
-  });
+  const decision = toRuleDecisionPresentation(
+    decideRequestPolicy({
+      relationship: row.relationship,
+      catalogDefaultAction: row.catalogDefaultAction,
+      domainOverride: getDomainOverride(row, decisionOptions.domainOverrides),
+      sitePaused: decisionOptions.sitePaused,
+    }),
+  );
 
   return {
     ...row,
@@ -557,8 +564,7 @@ function getCatalogFields(
     relationship: RequestRelationship;
     displayName: string;
   },
-  requestUrl?: string | null,
-  catalog?: readonly TrackerCatalogEntry[],
+  catalogMatch: TrackerCatalogMatch | null,
 ): CatalogFields {
   if (rowSeed.relationship === "first-party") {
     return {
@@ -587,12 +593,6 @@ function getCatalogFields(
       catalogNotes: null,
     };
   }
-
-  const catalogMatch = lookupTrackerCatalogEntry(
-    rowSeed.displayName,
-    catalog,
-    requestUrl,
-  );
 
   return {
     category: catalogMatch?.entry.category ?? "unknown",

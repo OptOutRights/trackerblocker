@@ -10,7 +10,7 @@ import {
   isSettingsErrorResponse,
   isSettingsResponse,
 } from "../../messaging/settings";
-import type { DomainOverrideAction } from "../../shared/ruleDecisions";
+import type { DomainOverrideAction } from "../../shared/requestDecisions";
 import type { TrackerBlockerSettings } from "../../storage/settings";
 
 type LoadStatus = "loading" | "ready" | "unavailable";

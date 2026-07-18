@@ -20,10 +20,10 @@ import {
   type SettingsErrorResponse,
   type SettingsResponse,
 } from "../messaging/settings";
-import {
-  ActionBadgeUpdateQueue,
-} from "../shared/actionBadge";
+import { ActionBadgeUpdateQueue } from "../shared/actionBadge";
+import { EASYPRIVACY_MATCHING_ENABLED } from "../shared/buildFlags";
 import { formatUrlHost } from "../shared/domains";
+import { FilterEngine } from "../shared/filterEngine";
 import {
   createTabObservationState,
   recordObservedRequest,
@@ -34,10 +34,14 @@ import {
   summarizeTabObservation,
   type TabObservationState,
 } from "../shared/requestObservation";
+import { applyRequestHeaderRestriction } from "../shared/requestRestriction";
 import {
-  decideHeaderRestriction,
-  stripTrackingRequestHeaders,
-} from "../shared/requestRestriction";
+  RequestDecisionCache,
+  createNavigationAllowDecision,
+  decideRequest,
+  normalizeRequestContext,
+  type RequestDecision,
+} from "../shared/requestDecisions";
 import {
   normalizeSettings,
   normalizeSettingsKey,
@@ -52,8 +56,12 @@ export default defineBackground(() => {
   const startedAt = new Date().toISOString();
   const tabObservations = new Map<number, TabObservationState>();
   const actionBadgeUpdates = new ActionBadgeUpdateQueue();
+  const filterEngine = new FilterEngine();
+  const requestDecisions = new RequestDecisionCache();
   const temporarySitePauses = new Map<number, string>();
   let settingsCache = normalizeSettings(undefined);
+
+  void filterEngine.initialize(loadPackagedEasyPrivacyArtifact);
 
   const registerListeners = () => {
     void initializeActionBadge();
@@ -64,6 +72,10 @@ export default defineBackground(() => {
           type: HEALTH_CHECK_RESPONSE,
           ok: true,
           startedAt,
+          easyPrivacy: {
+            matchingEnabled: EASYPRIVACY_MATCHING_ENABLED,
+            engineHealth: filterEngine.health,
+          },
         };
 
         sendResponse(response);
@@ -222,12 +234,26 @@ export default defineBackground(() => {
         );
 
         if (details.type === "main_frame") {
+          // Requests from the previous document can outlive navigation. Keep
+          // their decisions until completion/failure so later listeners reuse
+          // the policy result produced for the original request context.
           clearTemporaryPauseForNavigation(
             temporarySitePauses,
             details.tabId,
             details.url,
           );
           resetTabObservationState(state, details.url);
+          requestDecisions.set(
+            createNavigationAllowDecision(
+              normalizeRequestContext({
+                requestId: details.requestId,
+                tabId: details.tabId,
+                pageUrl: details.url,
+                requestUrl: details.url,
+                requestType: details.type,
+              }),
+            ),
+          );
           void updateActionBadgeForTab(
             state,
             temporarySitePauses,
@@ -244,21 +270,34 @@ export default defineBackground(() => {
           settingsCache,
         );
 
-        const result = recordObservedRequest(state, {
-          requestId: details.requestId,
-          tabId: details.tabId,
-          frameId: details.frameId,
-          parentFrameId: getRequestParentFrameId(details),
-          pageUrl: state.pageUrl ?? requestDocumentUrl,
-          documentUrl: getRequestDocumentUrl(details),
-          originUrl: getRequestOriginUrl(details),
-          initiator: getRequestInitiator(details),
-          requestUrl: details.url,
-          requestType: details.type,
-          timestamp: details.timeStamp,
-          sitePaused: sitePauseStatus !== "active",
-          domainOverrides: settingsCache.domainOverrides,
-        });
+        const decision = decideWebRequest(
+          details,
+          state.pageUrl ?? requestDocumentUrl,
+          sitePauseStatus !== "active",
+          settingsCache,
+          filterEngine,
+        );
+        requestDecisions.set(decision);
+
+        recordObservedRequest(
+          state,
+          {
+            requestId: details.requestId,
+            tabId: details.tabId,
+            frameId: details.frameId,
+            parentFrameId: getRequestParentFrameId(details),
+            pageUrl: state.pageUrl ?? requestDocumentUrl,
+            documentUrl: getRequestDocumentUrl(details),
+            originUrl: getRequestOriginUrl(details),
+            initiator: getRequestInitiator(details),
+            requestUrl: details.url,
+            requestType: details.type,
+            timestamp: details.timeStamp,
+            sitePaused: sitePauseStatus !== "active",
+            domainOverrides: settingsCache.domainOverrides,
+          },
+          { decision },
+        );
         void updateActionBadgeForTab(
           state,
           temporarySitePauses,
@@ -266,7 +305,7 @@ export default defineBackground(() => {
           actionBadgeUpdates,
         );
 
-        return result.shouldBlock ? { cancel: true } : undefined;
+        return decision.action === "block" ? { cancel: true } : undefined;
       },
       { urls: ["<all_urls>"] },
       ["blocking"],
@@ -316,19 +355,26 @@ export default defineBackground(() => {
           pageUrl,
           settingsCache,
         );
-        const decision = decideHeaderRestriction({
-          pageUrl,
-          requestUrl: details.url,
-          sitePaused: sitePauseStatus !== "active",
-          domainOverrides: settingsCache.domainOverrides,
-        });
+        const decision = requestDecisions.resolve(
+          details.requestId,
+          details.tabId,
+          () =>
+            decideWebRequest(
+              details,
+              pageUrl,
+              sitePauseStatus !== "active",
+              settingsCache,
+              filterEngine,
+            ),
+        );
 
-        if (!decision.shouldRestrictHeaders || !details.requestHeaders) {
+        if (!decision.headerRestriction || !details.requestHeaders) {
           return undefined;
         }
 
-        const requestHeaders = stripTrackingRequestHeaders(
+        const requestHeaders = applyRequestHeaderRestriction(
           details.requestHeaders,
+          decision.headerRestriction,
         );
 
         return { requestHeaders };
@@ -342,6 +388,8 @@ export default defineBackground(() => {
         if (details.tabId < 0) {
           return;
         }
+
+        requestDecisions.delete(details.requestId);
 
         const state = tabObservations.get(details.tabId);
 
@@ -369,6 +417,8 @@ export default defineBackground(() => {
           return;
         }
 
+        requestDecisions.delete(details.requestId);
+
         const state = tabObservations.get(details.tabId);
 
         if (!state) {
@@ -395,7 +445,11 @@ export default defineBackground(() => {
       }
 
       const state = getTabObservationState(tabObservations, tabId);
-      clearTemporaryPauseForNavigation(temporarySitePauses, tabId, changeInfo.url);
+      clearTemporaryPauseForNavigation(
+        temporarySitePauses,
+        tabId,
+        changeInfo.url,
+      );
 
       if (state.pageUrl === changeInfo.url) {
         return;
@@ -412,6 +466,7 @@ export default defineBackground(() => {
 
     browser.tabs.onRemoved.addListener((tabId) => {
       tabObservations.delete(tabId);
+      requestDecisions.deleteTab(tabId);
       temporarySitePauses.delete(tabId);
       actionBadgeUpdates.remove(tabId);
     });
@@ -446,6 +501,65 @@ async function sendSettingsResponse(
       reason: "storage-unavailable",
     });
   }
+}
+
+interface RequestDecisionDetails {
+  requestId: string;
+  tabId: number;
+  url: string;
+  type: string;
+}
+
+function decideWebRequest(
+  details: RequestDecisionDetails,
+  pageUrl: string | null | undefined,
+  sitePaused: boolean,
+  settings: TrackerBlockerSettings,
+  filterEngine: FilterEngine,
+): RequestDecision {
+  const context = normalizeRequestContext({
+    requestId: details.requestId,
+    tabId: details.tabId,
+    pageUrl,
+    documentUrl: getRequestStringProperty(details, "documentUrl"),
+    originUrl: getRequestOriginUrl(details),
+    initiator: getRequestInitiator(details),
+    requestUrl: details.url,
+    requestType: details.type,
+  });
+  const filterMatch = EASYPRIVACY_MATCHING_ENABLED
+    ? filterEngine.match({
+        requestId: context.requestId,
+        tabId: context.tabId,
+        url: context.requestUrl,
+        sourceUrl: context.sourceUrl,
+        type: context.requestType,
+      })
+    : null;
+
+  return decideRequest({
+    context,
+    sitePaused,
+    domainOverrides: settings.domainOverrides,
+    easyPrivacyEnabled: EASYPRIVACY_MATCHING_ENABLED,
+    filterMatch,
+  });
+}
+
+async function loadPackagedEasyPrivacyArtifact() {
+  const [artifactResponse, metadataResponse] = await Promise.all([
+    fetch(browser.runtime.getURL("/filter-data/easyprivacy.engine")),
+    fetch(browser.runtime.getURL("/filter-data/easyprivacy.metadata.json")),
+  ]);
+
+  if (!artifactResponse.ok || !metadataResponse.ok) {
+    throw new Error("Packaged EasyPrivacy data is unavailable.");
+  }
+
+  return {
+    artifact: new Uint8Array(await artifactResponse.arrayBuffer()),
+    metadata: await metadataResponse.json(),
+  };
 }
 
 function getSitePauseStatus(
@@ -620,30 +734,15 @@ function getRequestInitiator(details: unknown): string | undefined {
 }
 
 function getRequestDocumentUrl(details: unknown): string | undefined {
-  if (
-    typeof details === "object" &&
-    details !== null &&
-    "documentUrl" in details &&
-    typeof details.documentUrl === "string"
-  ) {
-    return details.documentUrl;
-  }
-
-  if (
-    typeof details === "object" &&
-    details !== null &&
-    "originUrl" in details &&
-    typeof details.originUrl === "string"
-  ) {
-    return details.originUrl;
-  }
-
-  return undefined;
+  return (
+    getRequestStringProperty(details, "documentUrl") ??
+    getRequestStringProperty(details, "originUrl")
+  );
 }
 
 function getRequestStringProperty(
   details: unknown,
-  property: "originUrl" | "initiator",
+  property: "documentUrl" | "originUrl" | "initiator",
 ): string | undefined {
   if (typeof details !== "object" || details === null) {
     return undefined;

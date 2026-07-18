@@ -1,4 +1,4 @@
-import type { DomainOverrideAction } from "../../shared/ruleDecisions";
+import type { DomainOverrideAction } from "../../shared/requestDecisions";
 import type {
   ObservedRequestRow,
   RequestRelationship,

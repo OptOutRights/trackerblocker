@@ -1,4 +1,4 @@
-import type { DomainOverrideAction } from "../../shared/ruleDecisions";
+import type { DomainOverrideAction } from "../../shared/requestDecisions";
 import type { ObservedRequestRow } from "../../shared/requestObservation";
 import type { SitePauseMode, SitePauseStatus } from "../../storage/settings";
 import { RequestRows } from "./RequestRows";

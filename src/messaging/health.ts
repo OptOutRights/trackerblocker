@@ -9,6 +9,10 @@ export interface HealthCheckResponse {
   type: typeof HEALTH_CHECK_RESPONSE;
   ok: boolean;
   startedAt: string;
+  easyPrivacy: {
+    matchingEnabled: boolean;
+    engineHealth: FilterEngineHealth;
+  };
 }
 
 export function isHealthCheckMessage(value: unknown): value is HealthCheckMessage {
@@ -19,3 +23,4 @@ export function isHealthCheckMessage(value: unknown): value is HealthCheckMessag
     value.type === HEALTH_CHECK_MESSAGE
   );
 }
+import type { FilterEngineHealth } from "../shared/filterEngine";

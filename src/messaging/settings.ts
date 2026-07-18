@@ -1,4 +1,4 @@
-import type { DomainOverrideAction } from "../shared/ruleDecisions";
+import type { DomainOverrideAction } from "../shared/requestDecisions";
 import type { SitePauseMode, TrackerBlockerSettings } from "../storage/settings";
 
 export const GET_SETTINGS_MESSAGE = "trackerblocker.getSettings";

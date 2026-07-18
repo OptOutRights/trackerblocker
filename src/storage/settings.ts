@@ -1,6 +1,6 @@
 import { browser } from "wxt/browser";
 
-import type { DomainOverrideAction } from "../shared/ruleDecisions";
+import type { DomainOverrideAction } from "../shared/requestDecisions";
 
 export const SETTINGS_STORAGE_KEY = "trackerblocker:settings";
 export const SETTINGS_SCHEMA_VERSION = 1;
