@@ -1,6 +1,10 @@
 import type { DomainOverrideAction } from "../../shared/requestDecisions";
-import type { ObservedRequestRow } from "../../shared/requestObservation";
-import type { SitePauseMode, SitePauseStatus } from "../../storage/settings";
+import type {
+  ObservedRequestRow,
+  TabRequestSummary,
+} from "../../shared/requestObservation";
+import type { RuntimeSitePauseStatus } from "../../messaging/requestSummary";
+import type { SitePauseMode } from "../../storage/settings";
 import { RequestRows } from "./RequestRows";
 
 export type BackgroundStatus = "checking" | "ready" | "unavailable";
@@ -18,7 +22,7 @@ export function PopupDashboard({
   onSetPause,
   onToggleRow,
   requestView,
-  rows,
+  summary,
   settingsStatus,
   sitePauseStatus,
 }: {
@@ -35,10 +39,11 @@ export function PopupDashboard({
   onSetPause: (mode: SitePauseMode) => Promise<void>;
   onToggleRow: (rowId: string) => void;
   requestView: RequestView;
-  rows: ObservedRequestRow[];
+  summary: TabRequestSummary | null;
   settingsStatus: SettingsStatus;
-  sitePauseStatus: SitePauseStatus;
+  sitePauseStatus: RuntimeSitePauseStatus;
 }) {
+  const rows = summary?.rows ?? [];
   const blockedRows = filterRows(rows, "blocked");
   const visibleRows =
     requestView === "blocked"
@@ -58,7 +63,7 @@ export function PopupDashboard({
           status={sitePauseStatus}
         />
 
-        <ProtectionSummary rows={rows} />
+        <ProtectionSummary summary={summary} />
 
         <PauseControls
           activeTabId={activeTabId}
@@ -68,9 +73,10 @@ export function PopupDashboard({
         />
 
         <RequestActions
-          blockedCount={blockedRows.length}
+          blockedCount={summary?.hostCounts.blocked ?? 0}
+          countsAreLowerBounds={summary?.hostCounts.lowerBound ?? false}
           currentView={requestView}
-          totalCount={rows.length}
+          totalCount={summary?.hostCounts.observed ?? 0}
           onChange={onChangeRequestView}
         />
 
@@ -82,6 +88,21 @@ export function PopupDashboard({
             onSetDomainOverride={onSetDomainOverride}
             onToggleRow={onToggleRow}
           />
+        )}
+
+        {summary?.hostRowsTruncated && (
+          <p class="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900">
+            Host details are truncated. Request totals remain complete; host
+            counts are lower bounds and {summary.omittedRequestCount} requests
+            are omitted from rows.
+          </p>
+        )}
+
+        {summary?.activeRequestEvidenceTruncated && (
+          <p class="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900">
+            Active-request correlation evidence was truncated to stay within
+            memory limits. Recorded request and action totals remain unchanged.
+          </p>
         )}
 
         {hasSystemIssue && (
@@ -102,7 +123,7 @@ function DashboardHeader({
 }: {
   activeHost: string;
   isUnavailable: boolean;
-  status: SitePauseStatus;
+  status: RuntimeSitePauseStatus;
 }) {
   const statusLabel = isUnavailable ? "Unavailable" : formatPauseStatus(status);
 
@@ -122,27 +143,33 @@ function DashboardHeader({
   );
 }
 
-function ProtectionSummary({ rows }: { rows: ObservedRequestRow[] }) {
-  const blockedDomainCount = rows.filter((row) => row.status === "blocked").length;
-  const restrictedDomainCount = rows.filter(
-    (row) => row.status === "restricted",
-  ).length;
-  const uncatalogedCount = rows.filter(
-    (row) => row.relationship === "third-party" && row.category === "unknown",
-  ).length;
+function ProtectionSummary({
+  summary,
+}: {
+  summary: TabRequestSummary | null;
+}) {
+  const requestCounts = summary?.requestCounts ?? {
+    total: 0,
+    blocked: 0,
+    restricted: 0,
+    allowed: 0,
+  };
+  const blockedHostCount = summary?.hostCounts.blocked ?? 0;
+  const hostSuffix = summary?.hostCounts.lowerBound ? "+" : "";
 
   return (
     <section class="tb-metric-panel mt-5" aria-label="Protection summary">
       <p class="tb-block-summary">
-        <span class="font-semibold text-zinc-950">{blockedDomainCount}</span>
+        <span class="font-semibold text-zinc-950">{requestCounts.blocked}</span>
         <span>
-          potential {blockedDomainCount === 1 ? "tracker" : "trackers"}{" "}
-          <span class="tb-underlined-word">blocked</span>
+          blocked {requestCounts.blocked === 1 ? "request" : "requests"}{" "}
+          across {blockedHostCount}
+          {hostSuffix} blocked {blockedHostCount === 1 ? "host" : "hosts"}
         </span>
       </p>
       <p class="mt-2 text-xs leading-snug text-zinc-500">
-        {restrictedDomainCount} restricted, {uncatalogedCount} uncataloged,{" "}
-        {rows.length} observed locally.
+        {requestCounts.restricted} restricted, {requestCounts.allowed} allowed,{" "}
+        {requestCounts.total} observed locally.
       </p>
     </section>
   );
@@ -157,8 +184,20 @@ function PauseControls({
   activeTabId: number | null;
   isDisabled: boolean;
   onSetPause: (mode: SitePauseMode) => Promise<void>;
-  status: SitePauseStatus;
+  status: RuntimeSitePauseStatus;
 }) {
+  if (status === "unknown") {
+    return (
+      <div class="mt-3 flex">
+        <PauseButton
+          isDisabled
+          label="Settings unavailable"
+          onClick={() => undefined}
+        />
+      </div>
+    );
+  }
+
   if (status === "paused-always") {
     return (
       <div class="mt-3 flex">
@@ -218,11 +257,13 @@ function PauseButton({
 
 function RequestActions({
   blockedCount,
+  countsAreLowerBounds,
   currentView,
   onChange,
   totalCount,
 }: {
   blockedCount: number;
+  countsAreLowerBounds: boolean;
   currentView: RequestView;
   onChange: (view: RequestView) => void;
   totalCount: number;
@@ -231,16 +272,18 @@ function RequestActions({
     <section class="mt-3 flex items-center gap-2" aria-label="Site inspection">
       <RequestActionButton
         count={blockedCount}
+        countIsLowerBound={countsAreLowerBounds}
         isSelected={currentView === "blocked"}
-        label="Blocked sites"
+        label="Blocked hosts"
         onSelect={() =>
           onChange(currentView === "blocked" ? "summary" : "blocked")
         }
       />
       <RequestActionButton
         count={totalCount}
+        countIsLowerBound={countsAreLowerBounds}
         isSelected={currentView === "all"}
-        label="All sites"
+        label="All hosts"
         onSelect={() => onChange(currentView === "all" ? "summary" : "all")}
       />
     </section>
@@ -249,11 +292,13 @@ function RequestActions({
 
 function RequestActionButton({
   count,
+  countIsLowerBound,
   isSelected,
   label,
   onSelect,
 }: {
   count: number;
+  countIsLowerBound: boolean;
   isSelected: boolean;
   label: string;
   onSelect: () => void;
@@ -266,7 +311,10 @@ function RequestActionButton({
       onClick={onSelect}
     >
       <span>{label}</span>
-      <span>{count}</span>
+      <span>
+        {count}
+        {countIsLowerBound ? "+" : ""}
+      </span>
     </button>
   );
 }
@@ -295,13 +343,13 @@ function filterRows(
   }
 
   if (filter === "blocked") {
-    return rows.filter((row) => row.status === "blocked");
+    return rows.filter((row) => row.actionCounts.blocked > 0);
   }
 
   return rows;
 }
 
-function formatPauseStatus(status: SitePauseStatus): string {
+function formatPauseStatus(status: RuntimeSitePauseStatus): string {
   switch (status) {
     case "active":
       return "Active";
@@ -309,10 +357,14 @@ function formatPauseStatus(status: SitePauseStatus): string {
       return "Paused once";
     case "paused-always":
       return "Paused always";
+    case "unknown":
+      return "Degraded";
   }
 }
 
-function pauseStatusClass(status: SitePauseStatus | "unavailable"): string {
+function pauseStatusClass(
+  status: RuntimeSitePauseStatus | "unavailable",
+): string {
   const base = "tb-status-pill";
 
   switch (status) {
@@ -322,6 +374,7 @@ function pauseStatusClass(status: SitePauseStatus | "unavailable"): string {
     case "paused-always":
       return `${base} is-paused`;
     case "unavailable":
+    case "unknown":
       return `${base} is-unavailable`;
   }
 }

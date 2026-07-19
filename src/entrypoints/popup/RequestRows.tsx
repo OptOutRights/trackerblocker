@@ -26,12 +26,12 @@ export function RequestRows({
       <div class="tb-empty-panel mt-3">
         <p class="text-sm font-medium text-zinc-800">
           {view === "blocked"
-            ? "No blocked sites on this page yet."
-            : "No sites observed for this tab yet."}
+            ? "No blocked hosts on this page yet."
+            : "No hosts observed for this tab yet."}
         </p>
         <p class="mt-1 text-xs leading-snug text-zinc-500">
           {view === "blocked"
-            ? "Open all sites to inspect allowed or uncataloged activity."
+            ? "Open all hosts to inspect allowed or uncataloged activity."
             : "Refresh the page to capture current requests."}
         </p>
       </div>
@@ -73,7 +73,7 @@ function RequestRow({
   const canOverride = row.relationship === "third-party";
 
   return (
-    <article class={requestRowClass(row.status)}>
+    <article class={requestRowClass(row)}>
       <button
         aria-expanded={isExpanded}
         class="flex w-full items-start justify-between gap-3 text-left"
@@ -92,9 +92,9 @@ function RequestRow({
           </p>
         </div>
         <div class="shrink-0 text-right">
-          <span class={statusBadgeClass(row.status)}>{row.requestCount}</span>
+          <span class={statusBadgeClass(row)}>{row.requestCount}</span>
           <p class="mt-1 text-xs font-medium text-zinc-500">
-            {formatStatus(row.status)}
+            {formatActionSummary(row)}
           </p>
         </div>
       </button>
@@ -119,7 +119,7 @@ function RequestRow({
             <DetailRow label="Redirects" value={formatRedirects(row)} />
             <DetailRow
               label="Rule source"
-              value={formatRuleSource(row.ruleSource)}
+              value={formatRuleSources(row)}
             />
             <DetailRow label="Catalog basis" value={formatCatalogBasis(row)} />
           </dl>
@@ -177,7 +177,15 @@ function formatLifecycle(row: ObservedRequestRow): string {
 }
 
 function formatVisibilityNotes(row: ObservedRequestRow): string {
-  return row.context.visibilityNotes.map(formatVisibilityNote).join(", ");
+  return [
+    ...row.context.visibilityNotes.map(formatVisibilityNote),
+    row.decisionEvidenceTruncated
+      ? "matched rule samples are truncated"
+      : null,
+    row.redirectEvidenceTruncated ? "redirect samples are truncated" : null,
+  ]
+    .filter((note): note is string => Boolean(note))
+    .join(", ");
 }
 
 function formatContextEvidence(row: ObservedRequestRow): string {
@@ -237,7 +245,7 @@ export function formatCatalogBasis(row: ObservedRequestRow): string {
   }
 
   return [
-    `packaged ${row.catalogDefaultAction} rule`,
+    `observed catalog evidence includes a packaged ${row.catalogDefaultAction} rule`,
     row.catalogRuleIds.length
       ? `rules: ${row.catalogRuleIds.join(", ")}`
       : null,
@@ -277,15 +285,7 @@ function OverrideButton({
 function getSelectedOverride(
   row: ObservedRequestRow,
 ): DomainOverrideAction | "auto" {
-  if (row.ruleSource === "blocked-by-user") {
-    return "block";
-  }
-
-  if (row.ruleSource === "allowed-by-user") {
-    return "allow";
-  }
-
-  return "auto";
+  return row.currentOverride ?? "auto";
 }
 
 function formatRelationship(relationship: RequestRelationship): string {
@@ -322,17 +322,21 @@ function formatCategory(category: ObservedRequestRow["category"]): string {
   }
 }
 
-function formatRuleSource(source: ObservedRequestRow["ruleSource"]): string {
-  switch (source) {
-    case "automatic":
-      return "Automatic";
-    case "blocked-by-user":
-      return "Blocked by user";
-    case "allowed-by-user":
-      return "Allowed by user";
-    case "site-paused":
-      return "Allowed because site is paused";
-  }
+export function formatRuleSources(row: ObservedRequestRow): string {
+  const labels: Array<[keyof ObservedRequestRow["sourceCounts"], string]> = [
+    ["site-pause", "site pause"],
+    ["user-block", "user block"],
+    ["user-allow", "user allow"],
+    ["settings-unavailable", "settings unavailable"],
+    ["easyprivacy", "EasyPrivacy"],
+    ["catalog", "catalog"],
+    ["default", "default allow"],
+  ];
+  const observed = labels
+    .filter(([source]) => row.sourceCounts[source] > 0)
+    .map(([source, label]) => `${label}: ${row.sourceCounts[source]}`);
+
+  return observed.length ? observed.join(", ") : "No decision source recorded";
 }
 
 function formatVisibilityNote(
@@ -354,52 +358,61 @@ function formatVisibilityNote(
     case "headers-not-inspected":
       return "headers are not inspected by default";
     case "evidence-truncated":
-      return "evidence samples are truncated";
+      return "context or active-request evidence is truncated";
     case "non-web-or-unclassifiable":
       return "non-web or unclassifiable";
   }
 }
 
-function formatStatus(status: ObservedRequestRow["status"]): string {
-  switch (status) {
-    case "blocked":
-      return "blocked";
-    case "allowed":
-      return "allowed";
-    case "restricted":
-      return "restricted";
-    case "allowed-paused":
-      return "paused";
-  }
+export function formatActionSummary(row: ObservedRequestRow): string {
+  return [
+    row.actionCounts.blocked > 0
+      ? `${row.actionCounts.blocked} blocked`
+      : null,
+    row.actionCounts.restricted > 0
+      ? `${row.actionCounts.restricted} restricted`
+      : null,
+    row.actionCounts.allowed > 0
+      ? `${row.actionCounts.allowed} allowed`
+      : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(", ");
 }
 
-function requestRowClass(status: ObservedRequestRow["status"]): string {
+function requestRowClass(row: ObservedRequestRow): string {
   const base = "tb-request-row";
 
-  switch (status) {
-    case "blocked":
-      return `${base} is-blocked`;
-    case "restricted":
-      return `${base} is-restricted`;
-    case "allowed":
-      return `${base} is-allowed`;
-    case "allowed-paused":
-      return `${base} is-paused`;
+  if (row.isMixed) {
+    return `${base} is-mixed`;
   }
+
+  if (row.actionCounts.blocked > 0) {
+    return `${base} is-blocked`;
+  }
+
+  if (row.actionCounts.restricted > 0) {
+    return `${base} is-restricted`;
+  }
+
+  return `${base} is-allowed`;
 }
 
-function statusBadgeClass(status: ObservedRequestRow["status"]): string {
+function statusBadgeClass(row: ObservedRequestRow): string {
   const base =
     "inline-flex min-w-8 justify-center border px-2 py-1 text-xs font-semibold leading-none";
 
-  switch (status) {
-    case "blocked":
-      return `${base} border-[#5db7dd] bg-[#dff5ff] text-zinc-950`;
-    case "restricted":
-      return `${base} border-[#d6c3a4] bg-[#fff8eb] text-[#6b4d21]`;
-    case "allowed":
-      return `${base} border-zinc-200 bg-white text-zinc-700`;
-    case "allowed-paused":
-      return `${base} border-[#9fcbd6] bg-[#e8f8fb] text-zinc-800`;
+  if (row.isMixed) {
+    return `${base} border-[#8ab7c9] bg-[#eef9fc] text-zinc-950`;
   }
+
+  if (row.actionCounts.blocked > 0) {
+    return `${base} border-[#5db7dd] bg-[#dff5ff] text-zinc-950`;
+  }
+
+  if (row.actionCounts.restricted > 0) {
+    return `${base} border-[#d6c3a4] bg-[#fff8eb] text-[#6b4d21]`;
+  }
+
+  return `${base} border-zinc-200 bg-white text-zinc-700`;
 }

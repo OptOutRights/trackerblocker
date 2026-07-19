@@ -1,3 +1,6 @@
+import type { FilterEngineHealth } from "../shared/filterEngine";
+import type { SettingsRuntimeHealth } from "../storage/settingsRuntime";
+
 export const HEALTH_CHECK_MESSAGE = "trackerblocker.healthCheck";
 export const HEALTH_CHECK_RESPONSE = "trackerblocker.healthCheckResponse";
 
@@ -13,6 +16,10 @@ export interface HealthCheckResponse {
     matchingEnabled: boolean;
     engineHealth: FilterEngineHealth;
   };
+  settings: {
+    health: SettingsRuntimeHealth;
+    hasUsableSnapshot: boolean;
+  };
 }
 
 export function isHealthCheckMessage(value: unknown): value is HealthCheckMessage {
@@ -23,4 +30,3 @@ export function isHealthCheckMessage(value: unknown): value is HealthCheckMessag
     value.type === HEALTH_CHECK_MESSAGE
   );
 }
-import type { FilterEngineHealth } from "../shared/filterEngine";

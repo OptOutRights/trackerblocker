@@ -8,9 +8,9 @@ export type ApplyActionBadge = (
 ) => Promise<void>;
 
 export function formatActionBadge(
-  blockedSiteCount: number,
+  blockedRequestCount: number,
 ): ActionBadgePresentation {
-  if (blockedSiteCount <= 0) {
+  if (blockedRequestCount <= 0) {
     return {
       text: "",
       title: "TrackerBlocker",
@@ -18,9 +18,9 @@ export function formatActionBadge(
   }
 
   return {
-    text: blockedSiteCount > 99 ? "99+" : String(blockedSiteCount),
-    title: `TrackerBlocker - ${blockedSiteCount} ${
-      blockedSiteCount === 1 ? "site" : "sites"
+    text: blockedRequestCount > 99 ? "99+" : String(blockedRequestCount),
+    title: `TrackerBlocker - ${blockedRequestCount} ${
+      blockedRequestCount === 1 ? "request" : "requests"
     } blocked`,
   };
 }
@@ -32,7 +32,7 @@ export class ActionBadgeUpdateQueue {
 
   update(
     tabId: number,
-    blockedSiteCount: number,
+    blockedRequestCount: number,
     apply: ApplyActionBadge,
   ): Promise<void> {
     const token = this.getTabToken(tabId);
@@ -40,15 +40,15 @@ export class ActionBadgeUpdateQueue {
     const next = previous.catch(() => undefined).then(async () => {
       if (
         this.tabTokens.get(tabId) !== token ||
-        this.appliedCounts.get(tabId) === blockedSiteCount
+        this.appliedCounts.get(tabId) === blockedRequestCount
       ) {
         return;
       }
 
-      await apply(formatActionBadge(blockedSiteCount));
+      await apply(formatActionBadge(blockedRequestCount));
 
       if (this.tabTokens.get(tabId) === token) {
-        this.appliedCounts.set(tabId, blockedSiteCount);
+        this.appliedCounts.set(tabId, blockedRequestCount);
       }
     });
 

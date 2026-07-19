@@ -11,6 +11,7 @@ import {
   GET_TAB_REQUEST_SUMMARY_RESPONSE,
   isGetTabRequestSummaryResponse,
   type GetTabRequestSummaryResponse,
+  type RuntimeSitePauseStatus,
 } from "../../messaging/requestSummary";
 import {
   GET_SETTINGS_MESSAGE,
@@ -22,7 +23,7 @@ import {
 } from "../../messaging/settings";
 import { formatUrlHost } from "../../shared/domains";
 import type { DomainOverrideAction } from "../../shared/requestDecisions";
-import type { SitePauseMode, SitePauseStatus } from "../../storage/settings";
+import type { SitePauseMode } from "../../storage/settings";
 import {
   PopupDashboard,
   type BackgroundStatus,
@@ -51,7 +52,16 @@ function isHealthCheckResponse(value: unknown): value is HealthCheckResponse {
     "engineHealth" in value.easyPrivacy &&
     (value.easyPrivacy.engineHealth === "loading" ||
       value.easyPrivacy.engineHealth === "ready" ||
-      value.easyPrivacy.engineHealth === "degraded")
+      value.easyPrivacy.engineHealth === "degraded") &&
+    "settings" in value &&
+    typeof value.settings === "object" &&
+    value.settings !== null &&
+    "health" in value.settings &&
+    (value.settings.health === "loading" ||
+      value.settings.health === "ready" ||
+      value.settings.health === "degraded") &&
+    "hasUsableSnapshot" in value.settings &&
+    typeof value.settings.hasUsableSnapshot === "boolean"
   );
 }
 
@@ -64,7 +74,7 @@ export function App() {
   const [settingsStatus, setSettingsStatus] =
     useState<SettingsStatus>("ready");
   const [sitePauseStatus, setSitePauseStatus] =
-    useState<SitePauseStatus>("active");
+    useState<RuntimeSitePauseStatus>("active");
   const [pauseRefreshHint, setPauseRefreshHint] = useState<string | null>(null);
   const [summary, setSummary] = useState<PopupSummary>(null);
   const [requestView, setRequestView] = useState<RequestView>("summary");
@@ -238,7 +248,7 @@ export function App() {
         expandedRowId={expandedRowId}
         isPauseDisabled={!activeSite || settingsStatus === "unavailable"}
         requestView={requestView}
-        rows={summary?.rows ?? []}
+        summary={summary}
         settingsStatus={settingsStatus}
         sitePauseStatus={sitePauseStatus}
         onChangeRequestView={setRequestView}
@@ -257,7 +267,9 @@ export function App() {
   );
 }
 
-function formatOptimisticPauseStatus(mode: SitePauseMode): SitePauseStatus {
+function formatOptimisticPauseStatus(
+  mode: SitePauseMode,
+): RuntimeSitePauseStatus {
   switch (mode) {
     case "once":
       return "paused-once";

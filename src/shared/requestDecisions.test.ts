@@ -2,13 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { FilterMatchResult } from "./filterEngine";
 import {
-  RequestDecisionCache,
-  createNavigationAllowDecision,
+  createSettingsUnavailableDecision,
+  decideMainFrameRequest,
   decideRequest,
   decideRequestPolicy,
   normalizeRequestContext,
   toRuleDecisionPresentation,
-  type RequestDecision,
 } from "./requestDecisions";
 import type { TrackerCatalogEntry } from "./trackerCatalog";
 
@@ -326,6 +325,62 @@ describe("decideRequest", () => {
     ).toMatchObject({ action: "block", source: "user-block" });
   });
 
+  it("disables automatic policy while preserving pause and user overrides", () => {
+    const base = {
+      relationship: "first-party" as const,
+      automaticPolicy: "disabled" as const,
+      easyPrivacyEnabled: true,
+      filterMatch: FILTER_BLOCK,
+    };
+
+    expect(decideRequestPolicy(base)).toMatchObject({
+      action: "allow",
+      source: "default",
+    });
+    expect(
+      decideRequestPolicy({ ...base, domainOverride: "block" }),
+    ).toMatchObject({ action: "block", source: "user-block" });
+    expect(decideRequestPolicy({ ...base, sitePaused: true })).toMatchObject({
+      action: "allow",
+      source: "site-pause",
+    });
+  });
+
+  it("keeps main-frame policy limited to pauses and explicit user overrides", () => {
+    const mainFrame = context(
+      "https://publisher.test/",
+      "https://publisher.test/",
+    );
+
+    expect(decideMainFrameRequest({ context: mainFrame })).toMatchObject({
+      action: "allow",
+      source: "default",
+    });
+    expect(
+      decideMainFrameRequest({
+        context: mainFrame,
+        domainOverrides: { "publisher.test": "block" },
+      }),
+    ).toMatchObject({ action: "block", source: "user-block" });
+    expect(
+      decideMainFrameRequest({
+        context: mainFrame,
+        sitePaused: true,
+        domainOverrides: { "publisher.test": "block" },
+      }),
+    ).toMatchObject({ action: "allow", source: "site-pause" });
+  });
+
+  it("records cold-start fail-open decisions explicitly", () => {
+    expect(createSettingsUnavailableDecision(context())).toMatchObject({
+      action: "allow",
+      source: "settings-unavailable",
+      matchedFilter: null,
+      matchedException: null,
+      headerRestriction: null,
+    });
+  });
+
   it("maps decisions to the existing popup status contract", () => {
     expect(
       toRuleDecisionPresentation(
@@ -351,80 +406,5 @@ describe("decideRequest", () => {
       shouldBlock: false,
       shouldRestrictHeaders: false,
     });
-  });
-});
-
-describe("RequestDecisionCache", () => {
-  function decision(
-    requestId: string,
-    tabId: number,
-    action: RequestDecision["action"] = "allow",
-  ): RequestDecision {
-    const normalized = normalizeRequestContext({
-      requestId,
-      tabId,
-      pageUrl: "https://publisher.test/",
-      requestUrl: "https://tracker.test/collect",
-      requestType: "xmlhttprequest",
-    });
-
-    return {
-      ...createNavigationAllowDecision(normalized),
-      action,
-    };
-  }
-
-  it("reuses the exact request decision and replaces redirect hops", () => {
-    const cache = new RequestDecisionCache();
-    const first = decision("request-1", 1, "block");
-    const redirected = decision("request-1", 1, "allow");
-
-    cache.set(first);
-    expect(cache.get("request-1", 1)).toBe(first);
-    cache.set(redirected);
-    expect(cache.get("request-1", 1)).toBe(redirected);
-  });
-
-  it("does not reclassify repeated listeners for the same request", () => {
-    const cache = new RequestDecisionCache();
-    const original = decision("request-1", 1, "restrict");
-    let createCount = 0;
-    const create = () => {
-      createCount += 1;
-      return original;
-    };
-
-    expect(cache.resolve("request-1", 1, create)).toBe(original);
-    expect(cache.resolve("request-1", 1, create)).toBe(original);
-    expect(createCount).toBe(1);
-  });
-
-  it("rejects a stale request id reused by another tab", () => {
-    const cache = new RequestDecisionCache();
-    cache.set(decision("request-1", 1));
-
-    expect(cache.get("request-1", 2)).toBeNull();
-    expect(cache.size).toBe(0);
-  });
-
-  it("cleans completion, tab-removal, and full-reset boundaries", () => {
-    const cache = new RequestDecisionCache();
-    cache.set(decision("request-1", 1));
-    cache.set(decision("request-2", 1));
-    cache.set(decision("request-3", 2));
-
-    cache.delete("request-1");
-    expect(cache.get("request-1")).toBeNull();
-    cache.deleteTab(1);
-    expect(cache.get("request-2")).toBeNull();
-    expect(cache.get("request-3", 2)).not.toBeNull();
-    cache.clear();
-    expect(cache.size).toBe(0);
-  });
-
-  it("does not retain requests without an id", () => {
-    const cache = new RequestDecisionCache();
-    cache.set(decision("", 1));
-    expect(cache.size).toBe(0);
   });
 });

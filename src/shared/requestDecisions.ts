@@ -12,6 +12,7 @@ export type RequestDecisionSource =
   | "site-pause"
   | "user-block"
   | "user-allow"
+  | "settings-unavailable"
   | "easyprivacy"
   | "catalog"
   | "default";
@@ -76,6 +77,7 @@ export interface RequestDecisionInput {
   catalog?: readonly TrackerCatalogEntry[];
   easyPrivacyEnabled?: boolean;
   filterMatch?: FilterMatchResult | null;
+  automaticPolicy?: "enabled" | "disabled";
 }
 
 export interface RequestPolicyInput {
@@ -85,6 +87,7 @@ export interface RequestPolicyInput {
   catalogDefaultAction?: CatalogDefaultAction | null;
   easyPrivacyEnabled?: boolean;
   filterMatch?: FilterMatchResult | null;
+  automaticPolicy?: "enabled" | "disabled";
 }
 
 export interface RuleDecisionPresentation {
@@ -152,6 +155,7 @@ export function decideRequest(input: RequestDecisionInput): RequestDecision {
     catalogDefaultAction: catalogMatch?.action ?? null,
     easyPrivacyEnabled: input.easyPrivacyEnabled,
     filterMatch: input.filterMatch,
+    automaticPolicy: input.automaticPolicy,
   });
 
   return {
@@ -162,6 +166,18 @@ export function decideRequest(input: RequestDecisionInput): RequestDecision {
     catalogMatch,
     ...policy,
   };
+}
+
+export function decideMainFrameRequest(
+  input: Pick<
+    RequestDecisionInput,
+    "context" | "sitePaused" | "domainOverrides"
+  >,
+): RequestDecision {
+  return decideRequest({
+    ...input,
+    automaticPolicy: "disabled",
+  });
 }
 
 export function decideRequestPolicy(input: RequestPolicyInput): Pick<
@@ -182,6 +198,10 @@ export function decideRequestPolicy(input: RequestPolicyInput): Pick<
 
   if (input.domainOverride === "allow") {
     return createPolicyDecision("allow", "user-allow");
+  }
+
+  if (input.automaticPolicy === "disabled") {
+    return createPolicyDecision("allow", "default");
   }
 
   if (input.easyPrivacyEnabled && input.filterMatch?.outcome === "exception") {
@@ -223,14 +243,14 @@ export function decideRequestPolicy(input: RequestPolicyInput): Pick<
   return createPolicyDecision("allow", "default");
 }
 
-export function createNavigationAllowDecision(
+export function createSettingsUnavailableDecision(
   context: NormalizedRequestContext,
 ): RequestDecision {
   return {
     requestId: context.requestId,
     tabId: context.tabId,
     action: "allow",
-    source: "default",
+    source: "settings-unavailable",
     relationship: context.relationship,
     requestHost: context.requestHost,
     matchedFilter: null,
@@ -263,72 +283,6 @@ export function toRuleDecisionPresentation(
     shouldBlock: decision.action === "block",
     shouldRestrictHeaders: decision.action === "restrict",
   };
-}
-
-export class RequestDecisionCache {
-  readonly #decisions = new Map<string, RequestDecision>();
-
-  get size(): number {
-    return this.#decisions.size;
-  }
-
-  get(
-    requestId: string | null | undefined,
-    tabId?: number,
-  ): RequestDecision | null {
-    if (!requestId) {
-      return null;
-    }
-
-    const decision = this.#decisions.get(requestId) ?? null;
-
-    if (decision && typeof tabId === "number" && decision.tabId !== tabId) {
-      this.#decisions.delete(requestId);
-      return null;
-    }
-
-    return decision;
-  }
-
-  set(decision: RequestDecision): void {
-    if (decision.requestId) {
-      this.#decisions.set(decision.requestId, decision);
-    }
-  }
-
-  resolve(
-    requestId: string | null | undefined,
-    tabId: number,
-    createDecision: () => RequestDecision,
-  ): RequestDecision {
-    const cached = this.get(requestId, tabId);
-
-    if (cached) {
-      return cached;
-    }
-
-    const decision = createDecision();
-    this.set(decision);
-    return decision;
-  }
-
-  delete(requestId: string | null | undefined): void {
-    if (requestId) {
-      this.#decisions.delete(requestId);
-    }
-  }
-
-  deleteTab(tabId: number): void {
-    for (const [requestId, decision] of this.#decisions) {
-      if (decision.tabId === tabId) {
-        this.#decisions.delete(requestId);
-      }
-    }
-  }
-
-  clear(): void {
-    this.#decisions.clear();
-  }
 }
 
 function createPolicyDecision(

@@ -8,14 +8,12 @@ import {
 } from "./trackerCatalog";
 import {
   decideRequest,
-  decideRequestPolicy,
   normalizeRequestContext,
-  toRuleDecisionPresentation,
   type DomainOverrideAction,
+  type RequestAction,
   type RequestDecision,
+  type RequestDecisionSource,
   type RequestRelationship,
-  type RuleDecisionSource,
-  type RuleDecisionStatus,
 } from "./requestDecisions";
 
 export type { RequestRelationship } from "./requestDecisions";
@@ -59,6 +57,15 @@ export interface RequestLifecycleCounts {
   failed: number;
   redirected: number;
 }
+
+export interface RequestActionCounts {
+  total: number;
+  blocked: number;
+  restricted: number;
+  allowed: number;
+}
+
+export type RequestSourceCounts = Record<RequestDecisionSource, number>;
 
 export interface RequestContextEvidence {
   frameIds: number[];
@@ -115,9 +122,15 @@ export interface ObservedRequestRow {
   catalogBreakageRisk: string | null;
   catalogRuleIds: string[];
   catalogNotes: string | null;
-  status: RuleDecisionStatus;
-  ruleSource: RuleDecisionSource;
   requestCount: number;
+  actionCounts: RequestActionCounts;
+  sourceCounts: RequestSourceCounts;
+  isMixed: boolean;
+  matchedFilterIds: string[];
+  matchedExceptionIds: string[];
+  decisionEvidenceTruncated: boolean;
+  redirectEvidenceTruncated: boolean;
+  currentOverride: DomainOverrideAction | null;
   requestTypes: RequestTypeCategory[];
   firstSeen: number;
   lastSeen: number;
@@ -130,26 +143,43 @@ export interface TabRequestSummary {
   tabId: number;
   siteUrl: string | null;
   siteHost: string | null;
-  totalRequests: number;
-  thirdPartyCount: number;
-  unknownCount: number;
-  firstPartyCount: number;
-  blockedCount: number;
-  restrictedCount: number;
-  allowedCount: number;
+  requestCounts: RequestActionCounts;
+  hostCounts: {
+    observed: number;
+    thirdParty: number;
+    unknown: number;
+    firstParty: number;
+    blocked: number;
+    restricted: number;
+    allowed: number;
+    mixed: number;
+    lowerBound: boolean;
+  };
+  hostRowsTruncated: boolean;
+  omittedRequestCount: number;
+  activeRequestEvidenceTruncated: boolean;
   rows: ObservedRequestRow[];
 }
 
 export interface TabObservationState {
   tabId: number;
   pageUrl: string | null;
+  generation: number;
   rows: Map<string, ObservedRequestRow>;
-  requestRows: Map<string, RequestRowReference>;
+  requestCounts: RequestActionCounts;
+  omittedRequestCount: number;
+  hostRowsTruncated: boolean;
+  activeRequestEvidenceTruncated: boolean;
+  activeRequests: Map<string, ActiveRequestAttempt>;
 }
 
-interface RequestRowReference {
-  rowId: string;
-  wasBlocked: boolean;
+export interface ActiveRequestAttempt {
+  requestId: string;
+  tabId: number;
+  attemptIndex: number;
+  rowId: string | null;
+  decision: RequestDecision;
+  startedAt: number;
 }
 
 export interface RecordRequestOptions {
@@ -158,12 +188,11 @@ export interface RecordRequestOptions {
 }
 
 export interface RecordedRequest {
-  row: ObservedRequestRow;
+  row: ObservedRequestRow | null;
   shouldBlock: boolean;
 }
 
 export interface SummaryDecisionOptions {
-  sitePaused?: boolean;
   domainOverrides?: Record<string, DomainOverrideAction>;
 }
 
@@ -178,6 +207,12 @@ const EMPTY_LIFECYCLE_COUNTS: RequestLifecycleCounts = {
   failed: 0,
   redirected: 0,
 };
+const EMPTY_ACTION_COUNTS: RequestActionCounts = {
+  total: 0,
+  blocked: 0,
+  restricted: 0,
+  allowed: 0,
+};
 const RELATIONSHIP_ORDER: Record<RequestRelationship, number> = {
   "third-party": 0,
   unknown: 1,
@@ -190,6 +225,14 @@ const CATALOG_ACTION_PRIORITY: Record<CatalogDefaultAction, number> = {
 };
 const EMPTY_WEB_AUTHORITY_PATTERN = /^(?:https?|wss?):\/\/[/?#]/i;
 const MAX_REQUEST_CONTEXT_VALUES = 16;
+export const MAX_ACTIVE_REQUESTS_PER_TAB = 512;
+export const MAX_ACTIVE_REQUESTS_GLOBAL = 4_096;
+export const MAX_ACTIVE_REQUEST_AGE_MS = 10 * 60 * 1_000;
+export const MAX_HOST_ROWS_PER_TAB = 256;
+export const MAX_MATCHED_FILTER_IDS = 8;
+export const MAX_MATCHED_EXCEPTION_IDS = 8;
+export const MAX_CATALOG_RULE_IDS = 16;
+export const MAX_REDIRECT_HOPS = 8;
 
 export function createTabObservationState(
   tabId: number,
@@ -198,8 +241,13 @@ export function createTabObservationState(
   return {
     tabId,
     pageUrl: pageUrl ?? null,
+    generation: 0,
     rows: new Map(),
-    requestRows: new Map(),
+    requestCounts: { ...EMPTY_ACTION_COUNTS },
+    omittedRequestCount: 0,
+    hostRowsTruncated: false,
+    activeRequestEvidenceTruncated: false,
+    activeRequests: new Map(),
   };
 }
 
@@ -207,9 +255,14 @@ export function resetTabObservationState(
   state: TabObservationState,
   pageUrl?: string | null,
 ): void {
+  state.generation += 1;
   state.pageUrl = pageUrl ?? null;
   state.rows.clear();
-  state.requestRows.clear();
+  state.requestCounts = { ...EMPTY_ACTION_COUNTS };
+  state.omittedRequestCount = 0;
+  state.hostRowsTruncated = false;
+  state.activeRequestEvidenceTruncated = false;
+  state.activeRequests.clear();
 }
 
 export function mapRequestType(
@@ -298,14 +351,37 @@ export function recordObservedRequest(
       domainOverrides: evidence.domainOverrides,
       catalog: options.catalog,
     });
+  const shouldBlock = requestDecision.action === "block";
+  const actionUpdate = createActionCounts(requestDecision.action);
+  state.requestCounts = mergeActionCounts(state.requestCounts, actionUpdate);
+  pruneStaleActiveRequests(state, evidence.timestamp);
+
+  if (!existing && state.rows.size >= MAX_HOST_ROWS_PER_TAB) {
+    state.hostRowsTruncated = true;
+    state.omittedRequestCount += 1;
+    rememberActiveRequest(
+      state,
+      evidence.requestId,
+      null,
+      requestDecision,
+      evidence.timestamp,
+    );
+    return { row: null, shouldBlock };
+  }
+
   const catalogFields = getCatalogFields(rowSeed, requestDecision.catalogMatch);
-  const decision = toRuleDecisionPresentation(requestDecision);
   const contextUpdate = buildRequestContextEvidence(
     evidence,
     rowSeed.relationship,
     requestType,
   );
-  const lifecycleUpdate = createStartedLifecycle(decision.shouldBlock);
+  const lifecycleUpdate = createStartedLifecycle(shouldBlock);
+  const filterIds = requestDecision.matchedFilter
+    ? [requestDecision.matchedFilter.id]
+    : [];
+  const exceptionIds = requestDecision.matchedException
+    ? [requestDecision.matchedException.id]
+    : [];
 
   if (!existing) {
     const row: ObservedRequestRow = {
@@ -315,9 +391,15 @@ export function recordObservedRequest(
       displayName: rowSeed.displayName,
       relationship: rowSeed.relationship,
       ...catalogFields,
-      status: decision.status,
-      ruleSource: decision.source,
       requestCount: 1,
+      actionCounts: actionUpdate,
+      sourceCounts: createSourceCounts(requestDecision.source),
+      isMixed: false,
+      matchedFilterIds: filterIds,
+      matchedExceptionIds: exceptionIds,
+      decisionEvidenceTruncated: false,
+      redirectEvidenceTruncated: false,
+      currentOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
       requestTypes: [requestType],
       firstSeen: evidence.timestamp,
       lastSeen: evidence.timestamp,
@@ -327,23 +409,43 @@ export function recordObservedRequest(
     };
 
     state.rows.set(id, row);
-    rememberRequestRow(state, evidence.requestId, id, decision.shouldBlock);
-    return { row, shouldBlock: decision.shouldBlock };
+    rememberActiveRequest(
+      state,
+      evidence.requestId,
+      id,
+      requestDecision,
+      evidence.timestamp,
+    );
+    return { row, shouldBlock };
   }
 
   existing.requestCount += 1;
+  existing.actionCounts = mergeActionCounts(
+    existing.actionCounts,
+    actionUpdate,
+  );
+  existing.sourceCounts = mergeSourceCounts(
+    existing.sourceCounts,
+    requestDecision.source,
+  );
+  existing.isMixed = hasMixedActions(existing.actionCounts);
   existing.lastSeen = Math.max(existing.lastSeen, evidence.timestamp);
   mergeCatalogFields(existing, catalogFields);
-  const aggregateDecision = toRuleDecisionPresentation(
-    decideRequestPolicy({
-      relationship: rowSeed.relationship,
-      catalogDefaultAction: existing.catalogDefaultAction,
-      domainOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
-      sitePaused: evidence.sitePaused,
-    }),
+  existing.currentOverride = evidence.domainOverrides?.[rowSeed.key] ?? null;
+  const mergedFilters = mergeBoundedStrings(
+    existing.matchedFilterIds,
+    filterIds,
+    MAX_MATCHED_FILTER_IDS,
   );
-  existing.status = aggregateDecision.status;
-  existing.ruleSource = aggregateDecision.source;
+  const mergedExceptions = mergeBoundedStrings(
+    existing.matchedExceptionIds,
+    exceptionIds,
+    MAX_MATCHED_EXCEPTION_IDS,
+  );
+  existing.matchedFilterIds = mergedFilters.values;
+  existing.matchedExceptionIds = mergedExceptions.values;
+  existing.decisionEvidenceTruncated ||=
+    mergedFilters.truncated || mergedExceptions.truncated;
   existing.lifecycle = mergeLifecycleCounts(
     existing.lifecycle,
     lifecycleUpdate,
@@ -357,8 +459,24 @@ export function recordObservedRequest(
     existing.requestTypes = [...existing.requestTypes, requestType].sort();
   }
 
-  rememberRequestRow(state, evidence.requestId, id, decision.shouldBlock);
-  return { row: existing, shouldBlock: decision.shouldBlock };
+  rememberActiveRequest(
+    state,
+    evidence.requestId,
+    id,
+    requestDecision,
+    evidence.timestamp,
+  );
+  return { row: existing, shouldBlock };
+}
+
+export function recordUnobservedRequestAttempt(
+  state: TabObservationState,
+  requestId: string | null | undefined,
+  decision: RequestDecision,
+  timestamp: number,
+): void {
+  pruneStaleActiveRequests(state, timestamp);
+  rememberActiveRequest(state, requestId, null, decision, timestamp);
 }
 
 export interface RequestRedirectEvidence {
@@ -388,13 +506,15 @@ export function recordRequestRedirect(
   row.lifecycle = mergeLifecycleCounts(row.lifecycle, {
     redirected: 1,
   });
-  row.redirectHops = appendRedirectHop(row.redirectHops, {
+  const redirectUpdate = appendRedirectHop(row.redirectHops, {
     fromHost: formatUrlHost(evidence.fromUrl),
     toHost: formatUrlHost(evidence.redirectUrl),
     statusCode:
       typeof evidence.statusCode === "number" ? evidence.statusCode : null,
     timestamp: evidence.timestamp,
   });
+  row.redirectHops = redirectUpdate.values;
+  row.redirectEvidenceTruncated ||= redirectUpdate.truncated;
 
   return row;
 }
@@ -418,22 +538,25 @@ function recordLifecycleTerminalState(
   evidence: RequestCompletionEvidence,
   lifecycleStatus: Extract<RequestLifecycleStatus, "completed" | "failed">,
 ): ObservedRequestRow | null {
-  const reference = getRequestRowReference(state, evidence.requestId);
-  const row = reference ? state.rows.get(reference.rowId) ?? null : null;
+  const attempt = getActiveRequestAttempt(state, evidence.requestId);
 
-  if (!row || !reference) {
+  if (evidence.requestId) {
+    state.activeRequests.delete(evidence.requestId);
+  }
+
+  const row = attempt?.rowId
+    ? state.rows.get(attempt.rowId) ?? null
+    : null;
+
+  if (!row || !attempt) {
     return null;
   }
 
   row.lastSeen = Math.max(row.lastSeen, evidence.timestamp);
-  if (!(lifecycleStatus === "failed" && reference.wasBlocked)) {
+  if (!(lifecycleStatus === "failed" && attempt.decision.action === "block")) {
     row.lifecycle = mergeLifecycleCounts(row.lifecycle, {
       [lifecycleStatus]: 1,
     });
-  }
-
-  if (evidence.requestId) {
-    state.requestRows.delete(evidence.requestId);
   }
 
   return row;
@@ -452,22 +575,45 @@ export function mergeLifecycleCounts(
   };
 }
 
-function rememberRequestRow(
+function rememberActiveRequest(
   state: TabObservationState,
   requestId: string | null | undefined,
-  rowId: string,
-  wasBlocked: boolean,
+  rowId: string | null,
+  decision: RequestDecision,
+  startedAt: number,
 ): void {
-  if (requestId) {
-    state.requestRows.set(requestId, { rowId, wasBlocked });
+  if (!requestId) {
+    return;
   }
+
+  const existing = state.activeRequests.get(requestId);
+
+  if (!existing && state.activeRequests.size >= MAX_ACTIVE_REQUESTS_PER_TAB) {
+    evictOldestActiveRequest(state);
+  }
+
+  state.activeRequests.set(requestId, {
+    requestId,
+    tabId: state.tabId,
+    attemptIndex: existing ? existing.attemptIndex + 1 : 0,
+    rowId,
+    decision,
+    startedAt,
+  });
 }
 
-function getRequestRowReference(
+export function getActiveRequestAttempt(
   state: TabObservationState,
   requestId: string | null | undefined,
-): RequestRowReference | null {
-  return requestId ? state.requestRows.get(requestId) ?? null : null;
+): ActiveRequestAttempt | null {
+  return requestId ? state.activeRequests.get(requestId) ?? null : null;
+}
+
+export function getActiveRequestDecision(
+  state: TabObservationState | undefined,
+  requestId: string | null | undefined,
+): RequestDecision | null {
+  return state ? getActiveRequestAttempt(state, requestId)?.decision ?? null : null;
 }
 
 function getRowForRequestId(
@@ -478,18 +624,92 @@ function getRowForRequestId(
     return null;
   }
 
-  const reference = state.requestRows.get(requestId);
+  const attempt = state.activeRequests.get(requestId);
 
-  return reference ? state.rows.get(reference.rowId) ?? null : null;
+  return attempt?.rowId ? state.rows.get(attempt.rowId) ?? null : null;
+}
+
+export function enforceGlobalActiveRequestLimit(
+  states: Iterable<TabObservationState>,
+): void {
+  const stateList = [...states];
+  const total = stateList.reduce(
+    (count, state) => count + state.activeRequests.size,
+    0,
+  );
+
+  if (total <= MAX_ACTIVE_REQUESTS_GLOBAL) {
+    return;
+  }
+
+  const active = stateList.flatMap((state) =>
+    [...state.activeRequests.values()].map((attempt) => ({ state, attempt })),
+  );
+
+  active
+    .sort((left, right) => left.attempt.startedAt - right.attempt.startedAt)
+    .slice(0, active.length - MAX_ACTIVE_REQUESTS_GLOBAL)
+    .forEach(({ state, attempt }) => {
+      evictActiveRequest(state, attempt.requestId);
+    });
+}
+
+function pruneStaleActiveRequests(
+  state: TabObservationState,
+  now: number,
+): void {
+  for (const attempt of state.activeRequests.values()) {
+    if (now - attempt.startedAt > MAX_ACTIVE_REQUEST_AGE_MS) {
+      evictActiveRequest(state, attempt.requestId);
+    }
+  }
+}
+
+function evictOldestActiveRequest(state: TabObservationState): void {
+  const oldest = [...state.activeRequests.values()].sort(
+    (left, right) => left.startedAt - right.startedAt,
+  )[0];
+
+  if (oldest) {
+    evictActiveRequest(state, oldest.requestId);
+  }
+}
+
+function evictActiveRequest(
+  state: TabObservationState,
+  requestId: string,
+): void {
+  const attempt = state.activeRequests.get(requestId);
+
+  if (!attempt) {
+    return;
+  }
+
+  state.activeRequests.delete(requestId);
+  state.activeRequestEvidenceTruncated = true;
+
+  if (attempt.rowId) {
+    const row = state.rows.get(attempt.rowId);
+
+    if (row && !row.context.visibilityNotes.includes("evidence-truncated")) {
+      row.context.visibilityNotes = [
+        ...row.context.visibilityNotes,
+        "evidence-truncated",
+      ].sort() as VisibilityNote[];
+    }
+  }
 }
 
 function appendRedirectHop(
   current: readonly RequestRedirectHop[],
   hop: RequestRedirectHop,
-): RequestRedirectHop[] {
+): { values: RequestRedirectHop[]; truncated: boolean } {
   const next = [...current, hop];
 
-  return next.slice(-8);
+  return {
+    values: next.slice(-MAX_REDIRECT_HOPS),
+    truncated: next.length > MAX_REDIRECT_HOPS,
+  };
 }
 
 export function summarizeTabObservation(
@@ -504,17 +724,23 @@ export function summarizeTabObservation(
     tabId: state.tabId,
     siteUrl: state.pageUrl,
     siteHost: formatUrlHost(state.pageUrl),
-    totalRequests: rows.reduce((sum, row) => sum + row.requestCount, 0),
-    thirdPartyCount: rows.filter((row) => row.relationship === "third-party")
-      .length,
-    unknownCount: rows.filter(isUnknownRow).length,
-    firstPartyCount: rows.filter((row) => row.relationship === "first-party")
-      .length,
-    blockedCount: rows.filter((row) => row.status === "blocked").length,
-    restrictedCount: rows.filter((row) => row.status === "restricted").length,
-    allowedCount: rows.filter(
-      (row) => row.status === "allowed" || row.status === "allowed-paused",
-    ).length,
+    requestCounts: { ...state.requestCounts },
+    hostCounts: {
+      observed: rows.length,
+      thirdParty: rows.filter((row) => row.relationship === "third-party")
+        .length,
+      unknown: rows.filter(isUnknownRow).length,
+      firstParty: rows.filter((row) => row.relationship === "first-party")
+        .length,
+      blocked: rows.filter((row) => row.actionCounts.blocked > 0).length,
+      restricted: rows.filter((row) => row.actionCounts.restricted > 0).length,
+      allowed: rows.filter((row) => row.actionCounts.allowed > 0).length,
+      mixed: rows.filter((row) => row.isMixed).length,
+      lowerBound: state.hostRowsTruncated,
+    },
+    hostRowsTruncated: state.hostRowsTruncated,
+    omittedRequestCount: state.omittedRequestCount,
+    activeRequestEvidenceTruncated: state.activeRequestEvidenceTruncated,
     rows,
   };
 }
@@ -523,19 +749,12 @@ function applyRowDecision(
   row: ObservedRequestRow,
   decisionOptions: SummaryDecisionOptions,
 ): ObservedRequestRow {
-  const decision = toRuleDecisionPresentation(
-    decideRequestPolicy({
-      relationship: row.relationship,
-      catalogDefaultAction: row.catalogDefaultAction,
-      domainOverride: getDomainOverride(row, decisionOptions.domainOverrides),
-      sitePaused: decisionOptions.sitePaused,
-    }),
-  );
-
   return {
     ...row,
-    status: decision.status,
-    ruleSource: decision.source,
+    currentOverride: getDomainOverride(
+      row,
+      decisionOptions.domainOverrides,
+    ),
   };
 }
 
@@ -628,10 +847,13 @@ function mergeCatalogFields(
       row.catalogRuleIds.length === 0 &&
       update.catalogRuleIds.length > 0);
 
-  row.catalogRuleIds = mergeSortedStrings(
+  const mergedRuleIds = mergeBoundedStrings(
     row.catalogRuleIds,
     update.catalogRuleIds,
+    MAX_CATALOG_RULE_IDS,
   );
+  row.catalogRuleIds = mergedRuleIds.values;
+  row.decisionEvidenceTruncated ||= mergedRuleIds.truncated;
 
   if (!shouldUseUpdate) {
     return;
@@ -836,6 +1058,73 @@ function collectPathHints(requestUrl?: string | null): string[] {
   } catch {
     return [];
   }
+}
+
+function createActionCounts(action: RequestAction): RequestActionCounts {
+  return {
+    total: 1,
+    blocked: action === "block" ? 1 : 0,
+    restricted: action === "restrict" ? 1 : 0,
+    allowed: action === "allow" ? 1 : 0,
+  };
+}
+
+function mergeActionCounts(
+  current: RequestActionCounts,
+  update: RequestActionCounts,
+): RequestActionCounts {
+  return {
+    total: current.total + update.total,
+    blocked: current.blocked + update.blocked,
+    restricted: current.restricted + update.restricted,
+    allowed: current.allowed + update.allowed,
+  };
+}
+
+function createSourceCounts(
+  source: RequestDecisionSource,
+): RequestSourceCounts {
+  return mergeSourceCounts(
+    {
+      "site-pause": 0,
+      "user-block": 0,
+      "user-allow": 0,
+      "settings-unavailable": 0,
+      easyprivacy: 0,
+      catalog: 0,
+      default: 0,
+    },
+    source,
+  );
+}
+
+function mergeSourceCounts(
+  current: RequestSourceCounts,
+  source: RequestDecisionSource,
+): RequestSourceCounts {
+  return {
+    ...current,
+    [source]: current[source] + 1,
+  };
+}
+
+function hasMixedActions(counts: RequestActionCounts): boolean {
+  return [counts.blocked, counts.restricted, counts.allowed].filter(
+    (count) => count > 0,
+  ).length > 1;
+}
+
+function mergeBoundedStrings<T extends string>(
+  current: readonly T[],
+  update: readonly T[],
+  limit: number,
+): { values: T[]; truncated: boolean } {
+  const merged = mergeSortedStrings(current, update);
+
+  return {
+    values: merged.slice(0, limit),
+    truncated: merged.length > limit,
+  };
 }
 
 function mergeSortedStrings<T extends string>(

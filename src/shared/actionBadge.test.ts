@@ -4,17 +4,21 @@ import { ActionBadgeUpdateQueue, formatActionBadge } from "./actionBadge";
 
 describe("formatActionBadge", () => {
   it("caps visible text while preserving the exact count in the title", () => {
+    expect(formatActionBadge(1)).toEqual({
+      text: "1",
+      title: "TrackerBlocker - 1 request blocked",
+    });
     expect(formatActionBadge(99)).toEqual({
       text: "99",
-      title: "TrackerBlocker - 99 sites blocked",
+      title: "TrackerBlocker - 99 requests blocked",
     });
     expect(formatActionBadge(100)).toEqual({
       text: "99+",
-      title: "TrackerBlocker - 100 sites blocked",
+      title: "TrackerBlocker - 100 requests blocked",
     });
     expect(formatActionBadge(101)).toEqual({
       text: "99+",
-      title: "TrackerBlocker - 101 sites blocked",
+      title: "TrackerBlocker - 101 requests blocked",
     });
   });
 });

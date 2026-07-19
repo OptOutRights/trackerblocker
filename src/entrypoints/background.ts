@@ -9,6 +9,7 @@ import {
   GET_TAB_REQUEST_SUMMARY_RESPONSE,
   isGetTabRequestSummaryMessage,
   type GetTabRequestSummaryResponse,
+  type RuntimeSitePauseStatus,
 } from "../messaging/requestSummary";
 import {
   SETTINGS_ERROR_RESPONSE,
@@ -21,28 +22,33 @@ import {
   type SettingsResponse,
 } from "../messaging/settings";
 import { ActionBadgeUpdateQueue } from "../shared/actionBadge";
+import { startBackgroundRuntime } from "../shared/backgroundStartup";
 import { EASYPRIVACY_MATCHING_ENABLED } from "../shared/buildFlags";
 import { formatUrlHost } from "../shared/domains";
 import { FilterEngine } from "../shared/filterEngine";
 import {
   createTabObservationState,
+  enforceGlobalActiveRequestLimit,
+  getActiveRequestDecision,
   recordObservedRequest,
   recordRequestCompleted,
   recordRequestFailed,
   recordRequestRedirect,
+  recordUnobservedRequestAttempt,
   resetTabObservationState,
   summarizeTabObservation,
   type TabObservationState,
 } from "../shared/requestObservation";
 import { applyRequestHeaderRestriction } from "../shared/requestRestriction";
 import {
-  RequestDecisionCache,
-  createNavigationAllowDecision,
+  createSettingsUnavailableDecision,
+  decideMainFrameRequest,
   decideRequest,
   normalizeRequestContext,
   type RequestDecision,
 } from "../shared/requestDecisions";
 import {
+  SETTINGS_STORAGE_KEY,
   normalizeSettings,
   normalizeSettingsKey,
   readSettings,
@@ -51,21 +57,17 @@ import {
   type SitePauseStatus,
   type TrackerBlockerSettings,
 } from "../storage/settings";
+import { SettingsRuntime } from "../storage/settingsRuntime";
 
 export default defineBackground(() => {
   const startedAt = new Date().toISOString();
   const tabObservations = new Map<number, TabObservationState>();
   const actionBadgeUpdates = new ActionBadgeUpdateQueue();
   const filterEngine = new FilterEngine();
-  const requestDecisions = new RequestDecisionCache();
+  const settingsRuntime = new SettingsRuntime();
   const temporarySitePauses = new Map<number, string>();
-  let settingsCache = normalizeSettings(undefined);
-
-  void filterEngine.initialize(loadPackagedEasyPrivacyArtifact);
 
   const registerListeners = () => {
-    void initializeActionBadge();
-
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (isHealthCheckMessage(message)) {
         const response: HealthCheckResponse = {
@@ -75,6 +77,10 @@ export default defineBackground(() => {
           easyPrivacy: {
             matchingEnabled: EASYPRIVACY_MATCHING_ENABLED,
             engineHealth: filterEngine.health,
+          },
+          settings: {
+            health: settingsRuntime.snapshot.health,
+            hasUsableSnapshot: settingsRuntime.snapshot.settings !== null,
           },
         };
 
@@ -88,19 +94,22 @@ export default defineBackground(() => {
           message.tabId,
           message.pageUrl,
         );
-        const sitePauseStatus = getSitePauseStatus(
-          temporarySitePauses,
-          message.tabId,
-          state.pageUrl ?? message.pageUrl,
-          settingsCache,
-        );
+        const settings = settingsRuntime.snapshot.settings;
+        const sitePauseStatus: RuntimeSitePauseStatus = settings
+          ? getSitePauseStatus(
+              temporarySitePauses,
+              message.tabId,
+              state.pageUrl ?? message.pageUrl,
+              settings,
+            )
+          : "unknown";
         const summary = summarizeTabObservation(state, {
-          sitePaused: sitePauseStatus !== "active",
-          domainOverrides: settingsCache.domainOverrides,
+          domainOverrides: settings?.domainOverrides,
         });
         const response: GetTabRequestSummaryResponse = {
           type: GET_TAB_REQUEST_SUMMARY_RESPONSE,
           sitePauseStatus,
+          settingsHealth: settingsRuntime.snapshot.health,
           ...summary,
         };
 
@@ -110,17 +119,10 @@ export default defineBackground(() => {
 
       if (isGetSettingsMessage(message)) {
         void sendSettingsResponse(
-          () => readSettings(),
+          () => getUsableRuntimeSettings(settingsRuntime),
           sendResponse,
-          (settings) => {
-            settingsCache = settings;
-            void updateObservedActionBadges(
-              tabObservations,
-              temporarySitePauses,
-              settingsCache,
-              actionBadgeUpdates,
-            );
-          },
+          undefined,
+          () => settingsRuntime.degrade("storage-unavailable"),
         );
         return true;
       }
@@ -128,10 +130,9 @@ export default defineBackground(() => {
       if (isUpdateSitePauseMessage(message)) {
         if (message.mode === "once") {
           void sendSettingsResponse(
-            () => readSettings(),
+            () => getUsableRuntimeSettings(settingsRuntime),
             sendResponse,
             (settings) => {
-              settingsCache = settings;
               if (typeof message.tabId === "number") {
                 setTemporarySitePause(
                   temporarySitePauses,
@@ -139,13 +140,8 @@ export default defineBackground(() => {
                   message.site,
                 );
               }
-              void updateObservedActionBadges(
-                tabObservations,
-                temporarySitePauses,
-                settingsCache,
-                actionBadgeUpdates,
-              );
             },
+            () => settingsRuntime.degrade("storage-unavailable"),
           );
           return true;
         }
@@ -159,20 +155,15 @@ export default defineBackground(() => {
             }),
           sendResponse,
           (settings) => {
-            settingsCache = settings;
+            settingsRuntime.accept(settings);
             if (
               (message.mode === null || message.mode === "always") &&
               typeof message.tabId === "number"
             ) {
               temporarySitePauses.delete(message.tabId);
             }
-            void updateObservedActionBadges(
-              tabObservations,
-              temporarySitePauses,
-              settingsCache,
-              actionBadgeUpdates,
-            );
           },
+          () => settingsRuntime.degrade("storage-unavailable"),
         );
         return true;
       }
@@ -187,14 +178,9 @@ export default defineBackground(() => {
             }),
           sendResponse,
           (settings) => {
-            settingsCache = settings;
-            void updateObservedActionBadges(
-              tabObservations,
-              temporarySitePauses,
-              settingsCache,
-              actionBadgeUpdates,
-            );
+            settingsRuntime.accept(settings);
           },
+          () => settingsRuntime.degrade("storage-unavailable"),
         );
         return true;
       }
@@ -204,15 +190,10 @@ export default defineBackground(() => {
           () => resetSettings(),
           sendResponse,
           (settings) => {
-            settingsCache = settings;
+            settingsRuntime.accept(settings);
             temporarySitePauses.clear();
-            void updateObservedActionBadges(
-              tabObservations,
-              temporarySitePauses,
-              settingsCache,
-              actionBadgeUpdates,
-            );
           },
+          () => settingsRuntime.degrade("storage-unavailable"),
         );
         return true;
       }
@@ -220,8 +201,10 @@ export default defineBackground(() => {
       return false;
     });
 
+    // Firefox accepts a Promise from blocking webRequest listeners. WXT's
+    // generated cross-browser type currently models only the synchronous form.
     browser.webRequest.onBeforeRequest.addListener(
-      (details) => {
+      (async (details: Browser.webRequest.OnBeforeRequestDetails) => {
         if (details.tabId < 0) {
           return undefined;
         }
@@ -232,81 +215,109 @@ export default defineBackground(() => {
           details.tabId,
           requestDocumentUrl,
         );
+        const observationGeneration = state.generation;
+        const requestPageUrl = state.pageUrl ?? requestDocumentUrl;
+        settingsRuntime.retry(readSettings);
+        const settings = await settingsRuntime.waitForUsableSettings();
 
         if (details.type === "main_frame") {
-          // Requests from the previous document can outlive navigation. Keep
-          // their decisions until completion/failure so later listeners reuse
-          // the policy result produced for the original request context.
-          clearTemporaryPauseForNavigation(
-            temporarySitePauses,
-            details.tabId,
-            details.url,
+          const context = normalizeWebRequestContext(details, details.url);
+          const sitePauseStatus = settings
+            ? getSitePauseStatus(
+                temporarySitePauses,
+                details.tabId,
+                details.url,
+                settings,
+              )
+            : "unknown";
+          const decision = settings
+            ? decideMainFrameRequest({
+                context,
+                sitePaused: sitePauseStatus !== "active",
+                domainOverrides: settings.domainOverrides,
+              })
+            : createSettingsUnavailableDecision(context);
+
+          if (decision.action !== "block") {
+            clearTemporaryPauseForNavigation(
+              temporarySitePauses,
+              details.tabId,
+              details.url,
+            );
+            resetTabObservationState(state, details.url);
+          }
+
+          recordUnobservedRequestAttempt(
+            state,
+            details.requestId,
+            decision,
+            details.timeStamp,
           );
-          resetTabObservationState(state, details.url);
-          requestDecisions.set(
-            createNavigationAllowDecision(
-              normalizeRequestContext({
-                requestId: details.requestId,
-                tabId: details.tabId,
-                pageUrl: details.url,
-                requestUrl: details.url,
-                requestType: details.type,
-              }),
-            ),
-          );
+          enforceGlobalActiveRequestLimit(tabObservations.values());
           void updateActionBadgeForTab(
             state,
-            temporarySitePauses,
-            settingsCache,
             actionBadgeUpdates,
           );
-          return undefined;
+          return decision.action === "block" ? { cancel: true } : undefined;
         }
 
-        const sitePauseStatus = getSitePauseStatus(
-          temporarySitePauses,
-          details.tabId,
-          state.pageUrl ?? requestDocumentUrl,
-          settingsCache,
-        );
+        const context = normalizeWebRequestContext(details, requestPageUrl);
+        const sitePauseStatus = settings
+          ? getSitePauseStatus(
+              temporarySitePauses,
+              details.tabId,
+              requestPageUrl,
+              settings,
+            )
+          : "unknown";
+        const decision = settings
+          ? decideWebRequest(
+              details,
+              requestPageUrl,
+              sitePauseStatus !== "active",
+              settings,
+              filterEngine,
+            )
+          : createSettingsUnavailableDecision(context);
 
-        const decision = decideWebRequest(
-          details,
-          state.pageUrl ?? requestDocumentUrl,
-          sitePauseStatus !== "active",
-          settingsCache,
-          filterEngine,
-        );
-        requestDecisions.set(decision);
-
-        recordObservedRequest(
-          state,
-          {
-            requestId: details.requestId,
-            tabId: details.tabId,
-            frameId: details.frameId,
-            parentFrameId: getRequestParentFrameId(details),
-            pageUrl: state.pageUrl ?? requestDocumentUrl,
-            documentUrl: getRequestDocumentUrl(details),
-            originUrl: getRequestOriginUrl(details),
-            initiator: getRequestInitiator(details),
-            requestUrl: details.url,
-            requestType: details.type,
-            timestamp: details.timeStamp,
-            sitePaused: sitePauseStatus !== "active",
-            domainOverrides: settingsCache.domainOverrides,
-          },
-          { decision },
-        );
+        if (state.generation === observationGeneration) {
+          recordObservedRequest(
+            state,
+            {
+              requestId: details.requestId,
+              tabId: details.tabId,
+              frameId: details.frameId,
+              parentFrameId: getRequestParentFrameId(details),
+              pageUrl: requestPageUrl,
+              documentUrl: getRequestDocumentUrl(details),
+              originUrl: getRequestOriginUrl(details),
+              initiator: getRequestInitiator(details),
+              requestUrl: details.url,
+              requestType: details.type,
+              timestamp: details.timeStamp,
+              sitePaused: isPausedSiteStatus(sitePauseStatus),
+              domainOverrides: settings?.domainOverrides,
+            },
+            { decision },
+          );
+        } else {
+          recordUnobservedRequestAttempt(
+            state,
+            details.requestId,
+            decision,
+            details.timeStamp,
+          );
+        }
+        enforceGlobalActiveRequestLimit(tabObservations.values());
         void updateActionBadgeForTab(
           state,
-          temporarySitePauses,
-          settingsCache,
           actionBadgeUpdates,
         );
 
         return decision.action === "block" ? { cancel: true } : undefined;
-      },
+      }) as unknown as (
+        details: Browser.webRequest.OnBeforeRequestDetails,
+      ) => Browser.webRequest.BlockingResponse | undefined,
       { urls: ["<all_urls>"] },
       ["blocking"],
     );
@@ -332,8 +343,6 @@ export default defineBackground(() => {
         });
         void updateActionBadgeForTab(
           state,
-          temporarySitePauses,
-          settingsCache,
           actionBadgeUpdates,
         );
       },
@@ -347,28 +356,9 @@ export default defineBackground(() => {
         }
 
         const state = tabObservations.get(details.tabId);
-        const requestDocumentUrl = getRequestDocumentUrl(details);
-        const pageUrl = state?.pageUrl ?? requestDocumentUrl;
-        const sitePauseStatus = getSitePauseStatus(
-          temporarySitePauses,
-          details.tabId,
-          pageUrl,
-          settingsCache,
-        );
-        const decision = requestDecisions.resolve(
-          details.requestId,
-          details.tabId,
-          () =>
-            decideWebRequest(
-              details,
-              pageUrl,
-              sitePauseStatus !== "active",
-              settingsCache,
-              filterEngine,
-            ),
-        );
+        const decision = getActiveRequestDecision(state, details.requestId);
 
-        if (!decision.headerRestriction || !details.requestHeaders) {
+        if (!decision?.headerRestriction || !details.requestHeaders) {
           return undefined;
         }
 
@@ -389,8 +379,6 @@ export default defineBackground(() => {
           return;
         }
 
-        requestDecisions.delete(details.requestId);
-
         const state = tabObservations.get(details.tabId);
 
         if (!state) {
@@ -403,8 +391,6 @@ export default defineBackground(() => {
         });
         void updateActionBadgeForTab(
           state,
-          temporarySitePauses,
-          settingsCache,
           actionBadgeUpdates,
         );
       },
@@ -416,8 +402,6 @@ export default defineBackground(() => {
         if (details.tabId < 0) {
           return;
         }
-
-        requestDecisions.delete(details.requestId);
 
         const state = tabObservations.get(details.tabId);
 
@@ -431,8 +415,6 @@ export default defineBackground(() => {
         });
         void updateActionBadgeForTab(
           state,
-          temporarySitePauses,
-          settingsCache,
           actionBadgeUpdates,
         );
       },
@@ -458,15 +440,22 @@ export default defineBackground(() => {
       resetTabObservationState(state, changeInfo.url);
       void updateActionBadgeForTab(
         state,
-        temporarySitePauses,
-        settingsCache,
         actionBadgeUpdates,
+      );
+    });
+
+    browser.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName !== "local" || !(SETTINGS_STORAGE_KEY in changes)) {
+        return;
+      }
+
+      settingsRuntime.accept(
+        normalizeSettings(changes[SETTINGS_STORAGE_KEY]?.newValue),
       );
     });
 
     browser.tabs.onRemoved.addListener((tabId) => {
       tabObservations.delete(tabId);
-      requestDecisions.deleteTab(tabId);
       temporarySitePauses.delete(tabId);
       actionBadgeUpdates.remove(tabId);
     });
@@ -474,18 +463,23 @@ export default defineBackground(() => {
     console.info(`[TrackerBlocker] Background ready at ${startedAt}`);
   };
 
-  void readSettings()
-    .catch(() => normalizeSettings(undefined))
-    .then((settings) => {
-      settingsCache = settings;
-      registerListeners();
-    });
+  startBackgroundRuntime({
+    registerListeners,
+    startSettings: () => settingsRuntime.start(readSettings),
+    startFilterEngine: () => {
+      void filterEngine.initialize(loadPackagedEasyPrivacyArtifact);
+    },
+    initializeBadge: () => {
+      void initializeActionBadge();
+    },
+  });
 });
 
 async function sendSettingsResponse(
   loadSettings: () => Promise<Omit<SettingsResponse, "type">>,
   sendResponse: (response: SettingsResponse | SettingsErrorResponse) => void,
   onSettingsLoaded?: (settings: TrackerBlockerSettings) => void,
+  onSettingsError?: () => void,
 ): Promise<void> {
   try {
     const settings = await loadSettings();
@@ -496,11 +490,25 @@ async function sendSettingsResponse(
       ...settings,
     });
   } catch {
+    onSettingsError?.();
     sendResponse({
       type: SETTINGS_ERROR_RESPONSE,
       reason: "storage-unavailable",
     });
   }
+}
+
+async function getUsableRuntimeSettings(
+  settingsRuntime: SettingsRuntime,
+): Promise<TrackerBlockerSettings> {
+  settingsRuntime.retry(readSettings);
+  const settings = await settingsRuntime.waitForUsableSettings();
+
+  if (!settings) {
+    throw new Error("Settings are unavailable.");
+  }
+
+  return settings;
 }
 
 interface RequestDecisionDetails {
@@ -517,16 +525,7 @@ function decideWebRequest(
   settings: TrackerBlockerSettings,
   filterEngine: FilterEngine,
 ): RequestDecision {
-  const context = normalizeRequestContext({
-    requestId: details.requestId,
-    tabId: details.tabId,
-    pageUrl,
-    documentUrl: getRequestStringProperty(details, "documentUrl"),
-    originUrl: getRequestOriginUrl(details),
-    initiator: getRequestInitiator(details),
-    requestUrl: details.url,
-    requestType: details.type,
-  });
+  const context = normalizeWebRequestContext(details, pageUrl);
   const filterMatch = EASYPRIVACY_MATCHING_ENABLED
     ? filterEngine.match({
         requestId: context.requestId,
@@ -543,6 +542,22 @@ function decideWebRequest(
     domainOverrides: settings.domainOverrides,
     easyPrivacyEnabled: EASYPRIVACY_MATCHING_ENABLED,
     filterMatch,
+  });
+}
+
+function normalizeWebRequestContext(
+  details: RequestDecisionDetails,
+  pageUrl: string | null | undefined,
+) {
+  return normalizeRequestContext({
+    requestId: details.requestId,
+    tabId: details.tabId,
+    pageUrl,
+    documentUrl: getRequestStringProperty(details, "documentUrl"),
+    originUrl: getRequestOriginUrl(details),
+    initiator: getRequestInitiator(details),
+    requestUrl: details.url,
+    requestType: details.type,
   });
 }
 
@@ -579,6 +594,10 @@ function getSitePauseStatus(
   }
 
   return temporarySitePauses.get(tabId) === site ? "paused-once" : "active";
+}
+
+function isPausedSiteStatus(status: RuntimeSitePauseStatus): boolean {
+  return status === "paused-once" || status === "paused-always";
 }
 
 function setTemporarySitePause(
@@ -620,44 +639,14 @@ async function initializeActionBadge(): Promise<void> {
   ]);
 }
 
-async function updateObservedActionBadges(
-  tabObservations: Map<number, TabObservationState>,
-  temporarySitePauses: Map<number, string>,
-  settings: TrackerBlockerSettings,
-  actionBadgeUpdates: ActionBadgeUpdateQueue,
-): Promise<void> {
-  await Promise.all(
-    [...tabObservations.values()].map((state) =>
-      updateActionBadgeForTab(
-        state,
-        temporarySitePauses,
-        settings,
-        actionBadgeUpdates,
-      ),
-    ),
-  );
-}
-
 async function updateActionBadgeForTab(
   state: TabObservationState,
-  temporarySitePauses: Map<number, string>,
-  settings: TrackerBlockerSettings,
   actionBadgeUpdates: ActionBadgeUpdateQueue,
 ): Promise<void> {
-  const sitePauseStatus = getSitePauseStatus(
-    temporarySitePauses,
-    state.tabId,
-    state.pageUrl,
-    settings,
-  );
-  const summary = summarizeTabObservation(state, {
-    sitePaused: sitePauseStatus !== "active",
-    domainOverrides: settings.domainOverrides,
-  });
   try {
     await actionBadgeUpdates.update(
       state.tabId,
-      summary.blockedCount,
+      state.requestCounts.blocked,
       async (badge) => {
         await Promise.all([
           browser.action.setBadgeText({

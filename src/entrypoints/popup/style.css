@@ -231,6 +231,10 @@ button {
   background: #d6a84f;
 }
 
+.tb-request-row.is-mixed::before {
+  background: linear-gradient(#38bdf8 0 50%, #b9c2b1 50% 100%);
+}
+
 .tb-request-row.is-allowed::before {
   background: #b9c2b1;
 }

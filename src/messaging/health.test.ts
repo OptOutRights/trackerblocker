@@ -25,6 +25,10 @@ describe("isHealthCheckMessage", () => {
         matchingEnabled: false,
         engineHealth: "degraded",
       },
+      settings: {
+        health: "degraded",
+        hasUsableSnapshot: false,
+      },
     };
 
     expect(response.easyPrivacy).toEqual({
