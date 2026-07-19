@@ -55,7 +55,7 @@ export function PopupDashboard({
     backgroundStatus === "unavailable" || settingsStatus === "unavailable";
 
   return (
-    <main class="tb-popup w-[380px] p-3 text-zinc-950">
+    <main class="tb-popup text-zinc-950">
       <section class="tb-shell">
         <DashboardHeader
           activeHost={activeHost}
@@ -92,16 +92,15 @@ export function PopupDashboard({
 
         {summary?.hostRowsTruncated && (
           <p class="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900">
-            Host details are truncated. Request totals remain complete; host
-            counts are lower bounds and {summary.omittedRequestCount} requests
-            are omitted from rows.
+            Showing a limited host list. {summary.omittedRequestCount} requests
+            are omitted below; totals above are complete.
           </p>
         )}
 
         {summary?.activeRequestEvidenceTruncated && (
           <p class="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900">
-            Active-request correlation evidence was truncated to stay within
-            memory limits. Recorded request and action totals remain unchanged.
+            Some request details were dropped to limit memory. Totals remain
+            accurate.
           </p>
         )}
 
@@ -155,23 +154,36 @@ function ProtectionSummary({
     allowed: 0,
   };
   const blockedHostCount = summary?.hostCounts.blocked ?? 0;
+  const observedHostCount = summary?.hostCounts.observed ?? 0;
   const hostSuffix = summary?.hostCounts.lowerBound ? "+" : "";
 
   return (
     <section class="tb-metric-panel mt-5" aria-label="Protection summary">
-      <p class="tb-block-summary">
-        <span class="font-semibold text-zinc-950">{requestCounts.blocked}</span>
-        <span>
-          blocked {requestCounts.blocked === 1 ? "request" : "requests"}{" "}
-          across {blockedHostCount}
-          {hostSuffix} blocked {blockedHostCount === 1 ? "host" : "hosts"}
-        </span>
+      <p class="tb-metric-value">{requestCounts.blocked}</p>
+      <p class="tb-metric-label">
+        {requestCounts.blocked === 1 ? "Request blocked" : "Requests blocked"}
       </p>
-      <p class="mt-2 text-xs leading-snug text-zinc-500">
-        {requestCounts.restricted} restricted, {requestCounts.allowed} allowed,{" "}
-        {requestCounts.total} observed locally.
+      <p class="tb-metric-context">
+        {blockedHostCount}
+        {hostSuffix} of {observedHostCount}
+        {hostSuffix} {observedHostCount === 1 ? "host" : "hosts"} affected
       </p>
+
+      <dl class="tb-stat-grid" aria-label="Observed request totals">
+        <Stat label="Allowed" value={requestCounts.allowed} />
+        <Stat label="Restricted" value={requestCounts.restricted} />
+        <Stat label="Total" value={requestCounts.total} />
+      </dl>
     </section>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
   );
 }
 
@@ -188,7 +200,7 @@ function PauseControls({
 }) {
   if (status === "unknown") {
     return (
-      <div class="mt-3 flex">
+      <div class="tb-command-grid is-single mt-3">
         <PauseButton
           isDisabled
           label="Settings unavailable"
@@ -200,7 +212,7 @@ function PauseControls({
 
   if (status === "paused-always") {
     return (
-      <div class="mt-3 flex">
+      <div class="tb-command-grid is-single mt-3">
         <PauseButton
           isDisabled={isDisabled}
           label="Resume protection"
@@ -211,7 +223,7 @@ function PauseControls({
   }
 
   return (
-    <div class="mt-3 grid grid-cols-2 gap-2">
+    <div class="tb-command-grid mt-3">
       {status === "paused-once" ? (
         <PauseButton
           isDisabled={isDisabled}
@@ -221,13 +233,13 @@ function PauseControls({
       ) : (
         <PauseButton
           isDisabled={isDisabled || activeTabId === null}
-          label="Pause once"
+          label="Pause for this tab"
           onClick={() => void onSetPause("once")}
         />
       )}
       <PauseButton
         isDisabled={isDisabled}
-        label="Always pause"
+        label="Always pause site"
         onClick={() => void onSetPause("always")}
       />
     </div>
@@ -269,7 +281,7 @@ function RequestActions({
   totalCount: number;
 }) {
   return (
-    <section class="mt-3 flex items-center gap-2" aria-label="Site inspection">
+    <section class="tb-action-grid mt-3" aria-label="Site inspection">
       <RequestActionButton
         count={blockedCount}
         countIsLowerBound={countsAreLowerBounds}
@@ -328,8 +340,8 @@ function SystemNotice({
 }) {
   return (
     <p class="mt-4 border-l-2 border-[#d9534f] bg-[#fff6f4] px-3 py-2 text-xs leading-snug text-[#7a2d2a]">
-      Some extension services are unavailable. Background: {backgroundStatus};
-      settings: {settingsStatus}.
+      Protection is degraded. Background: {backgroundStatus}; settings:{" "}
+      {settingsStatus}.
     </p>
   );
 }

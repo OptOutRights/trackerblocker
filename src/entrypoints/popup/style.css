@@ -12,7 +12,8 @@ html,
 body,
 #app {
   margin: 0;
-  min-width: 360px;
+  width: 380px;
+  min-width: 380px;
 }
 
 body {
@@ -28,48 +29,29 @@ button {
 }
 
 .tb-popup {
-  background:
-    radial-gradient(circle at 88% 4%, rgba(125, 211, 252, 0.28), transparent 32%),
-    linear-gradient(145deg, #f8fbfc 0%, #edf5f8 100%);
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(145deg, #f8fbfc 0%, #edf5f8 100%);
 }
 
 .tb-shell {
   position: relative;
-  overflow: hidden;
   border: 1px solid #c8d7dd;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 14px 34px rgba(14, 35, 45, 0.13);
-  clip-path: polygon(
-    0 0,
-    calc(100% - 18px) 0,
-    100% 18px,
-    100% 100%,
-    18px 100%,
-    0 calc(100% - 18px)
-  );
+  box-shadow: 0 10px 28px rgba(14, 35, 45, 0.1);
   padding: 16px;
 }
 
 .tb-shell::before {
   position: absolute;
   top: 0;
-  right: 18px;
-  left: 38%;
+  left: 16px;
+  width: 72px;
   height: 3px;
   background: #7dd3fc;
   content: "";
-}
-
-.tb-shell::after {
-  position: absolute;
-  right: -34px;
-  bottom: -42px;
-  width: 150px;
-  height: 150px;
-  border: 1px solid rgba(56, 189, 248, 0.34);
-  border-radius: 50%;
-  content: "";
-  pointer-events: none;
 }
 
 .tb-status-pill {
@@ -115,42 +97,103 @@ button {
 
 .tb-metric-panel {
   position: relative;
-  padding: 4px 0 2px;
-}
-
-.tb-block-summary {
-  display: inline-flex;
   min-width: 0;
-  align-items: center;
-  gap: 6px;
-  color: #272d32;
-  font-size: 17px;
-  font-weight: 650;
-  line-height: 1.1;
+  padding: 2px 0;
 }
 
-.tb-underlined-word {
-  text-decoration: underline;
-  text-decoration-color: #38bdf8;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 4px;
+.tb-metric-value {
+  margin: 0;
+  color: #181b18;
+  font-size: clamp(2.25rem, 12vw, 2.75rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 720;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+  overflow-wrap: anywhere;
+}
+
+.tb-metric-label {
+  margin: 7px 0 0;
+  color: #272d32;
+  font-size: 16px;
+  font-weight: 680;
+  line-height: 1.2;
+}
+
+.tb-metric-context {
+  margin: 3px 0 0;
+  color: #626a70;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.tb-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 14px 0 0;
+  overflow: hidden;
+  border: 1px solid #d8e2e6;
+  border-radius: 8px;
+  background: #d8e2e6;
+}
+
+.tb-stat-grid > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  background: #f8fbfc;
+  padding: 8px 9px;
+}
+
+.tb-stat-grid dt {
+  min-width: 0;
+  color: #667078;
+  font-size: 11px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.tb-stat-grid dd {
+  margin: 0;
+  color: #272d32;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tb-command-grid,
+.tb-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tb-command-grid.is-single {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .tb-command-button {
-  min-height: 36px;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
   border: 1px solid #c8d7dd;
-  background:
-    linear-gradient(90deg, rgba(125, 211, 252, 0.18), transparent 34%),
-    #ffffff;
-  padding: 8px 11px;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 9px 12px;
   font-size: 12px;
   font-weight: 650;
+  line-height: 1.25;
   color: #272b29;
+  overflow-wrap: anywhere;
+  white-space: normal;
   transition:
     border-color 150ms ease,
     background-color 150ms ease,
     transform 150ms ease;
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
 }
 
 .tb-command-button:hover:not(:disabled) {
@@ -172,19 +215,23 @@ button {
   min-width: 0;
   flex: 1 1 0;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: center;
+  gap: 12px;
+  min-height: 44px;
   border: 1px solid #c8d7dd;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.78);
   padding: 8px 10px;
   font-size: 12px;
   font-weight: 650;
+  line-height: 1.2;
   color: #3d474d;
+  overflow-wrap: anywhere;
+  white-space: normal;
   transition:
     border-color 150ms ease,
     background-color 150ms ease,
     color 150ms ease;
-  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
 }
 
 .tb-action-button:hover {
@@ -201,18 +248,18 @@ button {
 
 .tb-empty-panel {
   border: 1px dashed #cbd2c3;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.64);
   padding: 14px;
-  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
 }
 
 .tb-request-row {
   position: relative;
   overflow: hidden;
   border: 1px solid #dbe1d3;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.86);
   padding: 10px 11px 10px 14px;
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
 }
 
 .tb-request-row::before {
@@ -241,4 +288,75 @@ button {
 
 .tb-request-row.is-paused::before {
   background: #9fcbd6;
+}
+
+.tb-request-row > button {
+  min-width: 0;
+}
+
+.tb-request-row > button > div:last-child {
+  max-width: 48%;
+  overflow-wrap: anywhere;
+}
+
+.tb-detail-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.tb-detail-row dd {
+  overflow-wrap: anywhere;
+}
+
+button:focus-visible {
+  outline: 2px solid #087fae;
+  outline-offset: 2px;
+}
+
+@media (max-width: 330px) {
+  .tb-popup {
+    padding: 8px;
+  }
+
+  .tb-shell {
+    padding: 14px;
+  }
+
+  .tb-command-grid,
+  .tb-action-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tb-stat-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tb-detail-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .tb-request-row > button {
+    flex-direction: column;
+  }
+
+  .tb-request-row > button > div:last-child {
+    display: flex;
+    max-width: none;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+  }
+
+  .tb-request-row > button > div:last-child p {
+    margin-top: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-command-button,
+  .tb-action-button {
+    transition: none;
+  }
 }

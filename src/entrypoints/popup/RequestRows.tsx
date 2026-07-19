@@ -157,9 +157,9 @@ function RequestRow({
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div class="grid grid-cols-[88px_1fr] gap-2">
+    <div class="tb-detail-row">
       <dt class="font-medium text-zinc-500">{label}</dt>
-      <dd class="text-zinc-800">{value}</dd>
+      <dd class="min-w-0 text-zinc-800">{value}</dd>
     </div>
   );
 }
