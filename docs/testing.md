@@ -15,7 +15,12 @@ Current test files:
   source identity checks, unsupported-rule inventory, and byte-identical
   regeneration of the packaged EasyPrivacy outputs.
 - `src/shared/domains.test.ts`: first-party vs third-party classification, URL normalization, WebSocket requests, public suffix cases, IPs, localhost, malformed inputs, and ignored schemes.
-- `src/shared/requestObservation.test.ts`: passive request aggregation by hostname, request type mapping, row ordering, top-level page classification for frame requests, unknown/unclassifiable handling, resets, and empty summaries.
+- `src/shared/requestObservation.test.ts`: immutable request-attempt aggregation,
+  mixed action/source counts, redirect correlation, bounded matched-rule,
+  redirect, host-row, active-request and context evidence, lifecycle cleanup,
+  lower-bound summaries, classification, resets, and empty summaries.
+- `src/shared/backgroundStartup.test.ts`: listener registration completes before
+  settings, filter-engine, and badge initialization begins without browser mocks.
 - `src/shared/trackerCatalog.test.ts`: packaged catalog validation, lookup matching, suffix boundaries, fallback explanation wording, and malformed catalog rejection.
 - `src/shared/buildFlags.test.ts`: explicit opt-in and default-off EasyPrivacy
   build-flag semantics.
@@ -23,9 +28,12 @@ Current test files:
   blocks, exceptions, request mapping, degraded fallback, and the production
   Ghostery import boundary.
 - `src/shared/requestDecisions.test.ts`: normalized request contracts, unified
-  precedence, feature-off catalog compatibility, header restrictions, and
-  request-ID cache lifecycle.
+  precedence, default-off catalog compatibility, EasyPrivacy exceptions and
+  first-party subresources, explicit settings-unavailable fail-open decisions,
+  header restrictions, and user-only main-frame blocking.
 - `src/storage/settings.test.ts`: local settings defaults, normalization, migration, read/write helpers, updates, and reset behavior.
+- `src/storage/settingsRuntime.test.ts`: 500 ms cold-start timeout, late-read
+  recovery, last-known-good retention, retry throttling, and stale-read races.
 - `src/messaging/health.test.ts`: background health-check message guard behavior.
 - `src/messaging/requestSummary.test.ts`: request summary message and response guard behavior.
 - `src/messaging/settings.test.ts`: settings message and response guard behavior.
@@ -110,13 +118,18 @@ npm run web-ext:firefox
 Manual checks should be recorded in the relevant roadmap implementation notes when they cover behavior that Vitest cannot prove.
 
 EasyPrivacy matching is disabled when the build flag is absent. Use the
-explicit local flag only for adapter and policy smoke tests:
+explicit local flag only for adapter, policy, and Phase 3 enforcement smoke
+tests:
 
 ```sh
 WXT_EASYPRIVACY_MATCHING=true npm run dev:firefox
 ```
 
 Rebuild without the flag before release verification.
+
+Automatic EasyPrivacy `main_frame` enforcement is disabled even in an opt-in
+Phase 3 build. Test top-level navigation cancellation with an explicit user
+Block override only; the automatic main-frame gate belongs to Phase 5.
 
 ### Future UI Smoke Tests
 

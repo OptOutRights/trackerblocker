@@ -205,6 +205,8 @@ schema.
 
 ### Phase 3: Request-Level Enforcement And Accurate Accounting
 
+Completed on July 18, 2026.
+
 Goal: enable EasyPrivacy without losing truthful evidence.
 
 Work:
@@ -217,7 +219,17 @@ Work:
 - Define badge semantics explicitly. Recommended: badge text counts blocked requests; popup summary separately reports blocked hostnames. Use those exact labels.
 - Preserve lifecycle accounting, redirect evidence, pause-once behavior, global overrides, and header restriction.
 
-Exit gate: a mixed-use hostname can contain blocked and allowed requests without either action being misreported. First-party subresources are blocked only by an explicit supported list rule or user choice, and `main_frame` navigations are blocked only by an explicit user choice.
+Implemented work:
+
+- Listener registration completes before settings, filter-engine, or badge initialization begins.
+- Settings wait at most 500 ms at cold startup. A last-known-good snapshot remains usable after later failures; without one, requests fail open with an explicit degraded decision source and later reads may recover the runtime.
+- Each observed `onBeforeRequest` occurrence records an immutable action and source while redirect attempts retain the browser request ID and increment their attempt index. Later settings changes affect only future decisions; summaries overlay only the current override control.
+- Active request decisions are reused by later listeners and removed on completion, failure, navigation, tab closure, age or capacity eviction, and worker restart. Missing or evicted decisions are not reclassified.
+- Per-tab host rows, active decisions, redirect hops, context evidence, and matched rule/exception IDs are bounded. Exact request totals survive host-row truncation; affected host counts are labelled as lower bounds and all truncation states are exposed in the popup.
+- Badge text counts blocked requests. Popup totals separately label blocked requests, blocked hosts, allowed requests, restricted requests, mixed hosts, and bounded evidence.
+- Automatic EasyPrivacy enforcement remains build-time opt-in and applies only to supported subresource matches, including supported first-party subresource matches. Automatic `main_frame` matching is not invoked; only an explicit user Block override can cancel top-level navigation.
+
+Exit gate: **met**. A mixed-use hostname can contain blocked and allowed requests without either action being misreported. First-party subresources are blocked only by an explicit supported list rule or user choice, and `main_frame` navigations are blocked only by an explicit user choice.
 
 ### Phase 4: Explanation And Narrow Recovery UX
 

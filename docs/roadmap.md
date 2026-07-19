@@ -152,7 +152,11 @@ TODO: implementation details
 
 - Permissions added: `webRequest` plus `<all_urls>` host permissions; no blocking permission or request cancellation.
 - Listener strategy: `browser.webRequest.onBeforeRequest` records passive request evidence relative to the top-level tab page; `tabs.onUpdated` and `main_frame` requests reset tab state; `tabs.onRemoved` clears memory.
-- Background state shape: short-lived in-memory tab summaries aggregate rows by normalized request hostname, relationship, request count, request types, and last-seen timestamp; registrable site domains are retained as metadata for classification/grouping.
+- Background state shape: short-lived in-memory tab summaries aggregate
+  immutable request action/source counts by normalized hostname. Host rows,
+  active request decisions, context, redirects, and matched-rule samples are
+  bounded; exact request totals survive row truncation and affected host counts
+  are reported as lower bounds.
 - Popup message contract: `trackerblocker.getTabRequestSummary` returns active-tab counts and rows ordered as third-party, unknown/unclassifiable, then first-party; the popup refreshes while open.
 - Test coverage: request type mapping, aggregation, ordering, top-level-page-relative frame requests, WebSocket requests, public-suffix-aware first-party handling, unknown/unclassifiable handling, resets, empty summaries, and message guards.
 
@@ -228,9 +232,16 @@ Implementation details
 - Decision logic now lives in `src/shared/requestDecisions.ts` and stays browser-independent.
 - `RequestDecision` records action, source, relationship, EasyPrivacy evidence, catalog match, and optional header restriction.
 - Precedence is site pause, per-hostname block/allow override, EasyPrivacy exception, EasyPrivacy block, third-party catalog default, then default allow.
-- Existing popup statuses and sources are derived from the request decision without changing the stored settings or presentation schema.
-- Request observation consumes the unified decision while preserving the current host-level summary model.
-- `src/shared/requestDecisions.test.ts` covers precedence, catalog defaults, feature-off compatibility, unknowns, first-party behavior, and cache lifecycle.
+- Popup action and source counts are recorded from the request decision and are
+  not recomputed after settings change. Only the current override control is
+  overlaid on an existing host row.
+- Request observation retains the active decision by browser request ID for
+  later listeners while counting each redirect `onBeforeRequest` occurrence as
+  a distinct attempt.
+- `src/shared/requestDecisions.test.ts` covers precedence, catalog defaults,
+  feature-off compatibility, EasyPrivacy blocks/exceptions, unknowns,
+  first-party subresources, settings-unavailable fail-open, and user-only
+  main-frame blocking.
 
 ### Phase 5: Local Storage And Overrides
 
@@ -301,7 +312,11 @@ TODO: implementation details
 
 - `browser.webRequest.onBeforeRequest` now registers with `["blocking"]` and returns `{ cancel: true }` for rows whose local decision is `blocked`.
 - The manifest includes `webRequestBlocking`; `npm run lint:firefox` validates the built Firefox MV3 output with zero errors and one bundled popup warning.
-- Blocking decisions use an in-memory settings cache loaded from `browser.storage.local`, so the blocking listener stays synchronous while settings remain local.
+- All WebExtension listeners register synchronously before settings or filter
+  initialization. The Firefox blocking listener may then await settings for at
+  most 500 ms. It uses last-known-good settings after later failures and fails
+  open on a cold timeout or storage failure rather than applying defaults
+  without knowing pauses and Allow overrides.
 - Blocked attempts are recorded through `recordObservedRequest()` before cancellation, so the popup summary includes attempted requests.
 - Pause once, always pause, and per-hostname allow override feed the same decision path and prevent cancellation.
 - Request observation tests cover catalog-blocked rows, allow overrides, and site-pause recovery; manual Firefox checks remain part of Phase 9 QA.
@@ -338,11 +353,15 @@ Worktree suitability:
 TODO: implementation details
 
 - Popup UI remains in `src/entrypoints/popup/App.tsx` and uses the existing compact Preact/Tailwind structure.
-- The default view shows current site, active/paused protection status, observed request total, and summary filters for third parties, blocked, allowed, and uncataloged/unclassifiable rows.
+- The default view shows current site, active/paused protection status, blocked,
+  restricted, allowed, and total request counts, plus separately labelled
+  blocked-host and all-host filters.
 - Popup protection controls support active, paused once, and paused always states. Pause once is tab-scoped and survives refresh on the same site, while always pause is stored locally.
 - Rows expand in-place to show entity, local explanation, request types, rule source, and per-hostname Auto/Block/Allow controls for third-party rows.
 - The site pause button writes through `trackerblocker.updateSitePause`; row controls write through `trackerblocker.setDomainOverride`, then refresh the summary from background state.
-- Summary responses recompute row decisions from the current settings cache so controls update visible decisions immediately.
+- Summary responses preserve observed decisions immutably. Settings changes
+  affect future requests, while the current Auto/Block/Allow selection updates
+  without rewriting historical counts.
 - Accessibility basics include real buttons, `aria-pressed` on filter/control buttons, and `aria-expanded` on expandable rows.
 - No Playwright harness exists yet; Phase 7 verification used Vitest, TypeScript, and Firefox build, with manual browser smoke checks left for Phase 9.
 
@@ -417,6 +436,23 @@ TODO: implementation details
 - Firefox lint reports 0 errors, 0 notices, and 1 bundled-code `UNSAFE_VAR_ASSIGNMENT` warning; source search found no `innerHTML` or `dangerouslySetInnerHTML` usage.
 - Zip output is available at `.output/trackerblocker-0.0.0-firefox.zip`; source zip is available at `.output/trackerblocker-0.0.0-sources.zip`.
 - Manual browser checks for representative sites, pause recovery, overrides, options reset, and empty states are listed in `docs/qa.md`.
+
+## EasyPrivacy Integration Status
+
+- Phase 1 reproducibly vendors and packages a supported-only EasyPrivacy engine.
+- Phase 2 validates and deserializes that engine behind a pure adapter and a
+  default-off build flag.
+- Phase 3 completed on July 18, 2026: listeners register before asynchronous
+  initialization; settings use a bounded last-known-good gate; supported
+  EasyPrivacy subresource blocks and exceptions feed immutable request-level
+  accounting; badge and popup count semantics are explicit; and all in-memory
+  evidence is bounded with visible truncation.
+- EasyPrivacy remains disabled by default. Phase 4 owns narrow explanation and
+  recovery UX. Phase 5 owns coverage, breakage, licensing, release readiness,
+  and the separate decision about automatic `main_frame` enforcement.
+
+See `easyprivacy-filtering-proposal.md` and `docs/easyprivacy-updates.md` for
+the detailed gates and maintainer workflow.
 
 ## Recommended Work Order
 

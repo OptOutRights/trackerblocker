@@ -48,7 +48,7 @@ npm run zip:firefox
 
 ## MVP Behavior
 
-The popup shows third-party hostnames observed on the active tab, local catalog categories, blocking status, and expandable explanations. Users can pause protection once for the current tab/site, always pause the current site, or set a third-party hostname to Auto, Block, or Allow. The options page lists always-paused sites and hostname overrides, and can reset local settings. Settings stay in `browser.storage.local`; observed request summaries and pause-once state are kept in background memory.
+The popup shows hosts observed on the active tab, immutable blocked/restricted/allowed request counts, mixed-host activity, local catalog context, and expandable evidence. The badge counts blocked requests; the popup labels blocked-host counts separately. Users can pause protection once for the current tab/site, always pause the current site, or set a third-party hostname to Auto, Block, or Allow. The options page lists always-paused sites and hostname overrides, and can reset local settings. Settings stay in `browser.storage.local`; bounded request summaries, active decision correlation, and pause-once state stay in background memory.
 
 ## EasyPrivacy Data
 

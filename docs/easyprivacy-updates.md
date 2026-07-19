@@ -31,10 +31,28 @@ The background loads the packaged engine and metadata from local
 `moz-extension:` URLs, validates the metadata schema, enabled capabilities,
 artifact size, and SHA-256, and then lets Ghostery validate and deserialize the
 engine. Engine health is `loading`, `ready`, or `degraded`. Loading, degraded,
-and disabled states always use the existing local catalog policy; a partial or
+and disabled engine states use the existing local catalog policy; a partial or
 invalid engine is never enforced.
 
-EasyPrivacy matching remains disabled by default. For local Phase 2 testing,
+WebExtension listeners register before asynchronous initialization begins.
+Settings have a separate `loading`, `ready`, or `degraded` runtime state. A
+cold request waits at most 500 ms for settings. After a successful read, later
+timeouts or storage failures retain the last-known-good snapshot; without a
+snapshot, the request is explicitly recorded as allowed because settings were
+unavailable. No catalog or EasyPrivacy default is applied until settings are
+known, so unknown pauses and Allow overrides cannot be bypassed. Successful
+later reads recover the runtime without changing decisions already observed.
+
+Phase 3 accounts for each observed request attempt rather than assigning one
+decision to an entire hostname. Redirect attempts share the browser request ID
+for correlation but receive increasing attempt indexes and immutable actions.
+The badge counts blocked requests, while popup host counts are separately
+labelled and can represent mixed blocked, restricted, and allowed activity.
+All request evidence stays in bounded background memory; host-row, active
+request, redirect, context, and matched-rule truncation is disclosed in the
+popup. Only user settings remain in `browser.storage.local`.
+
+EasyPrivacy matching remains disabled by default. For local Phase 3 testing,
 opt in for one development session or build:
 
 ```sh
@@ -46,6 +64,13 @@ The flag is build-time input, not a persisted extension setting. Do not commit
 local `.env` flag files. The runtime does not load the capability report or the
 retained source: unsupported actions remain generation-time review information
 and cannot become runtime matches.
+
+When opted in, supported EasyPrivacy blocks and exceptions apply to
+subresources before the first-party default, including explicitly matched
+first-party subresources. EasyPrivacy is not evaluated for automatic
+`main_frame` cancellation in Phase 3. A global user Block override can still
+cancel a matching top-level hostname; automatic top-level enforcement has a
+separate Phase 5 coverage, breakage, and recovery gate.
 
 ## Refreshing EasyPrivacy
 
