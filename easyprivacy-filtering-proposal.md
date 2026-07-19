@@ -109,6 +109,13 @@ An EasyPrivacy exception must stop the catalog fallback; otherwise TrackerBlocke
 
 User choices should continue to outrank automatic sources. A later settings migration should add a narrower "Allow on this site" override, because the current global hostname allow is too broad as the default breakage-recovery tool.
 
+Phase 3 does not automatically cancel `main_frame` navigations from an
+EasyPrivacy match. An explicit user Block override may still cancel a
+top-level navigation, while supported EasyPrivacy rules continue to apply to
+subresources, including explicitly matched first-party subresources. Phase 5
+owns the separate coverage, breakage, and recovery gate for deciding whether
+automatic EasyPrivacy `main_frame` enforcement should be enabled.
+
 ### Data And Privacy Boundaries
 
 - Package network-filter data with the extension. Do not enable cosmetic filtering, scriptlets, remote updates, or content injection in the first implementation.
@@ -202,7 +209,7 @@ Goal: enable EasyPrivacy without losing truthful evidence.
 
 Work:
 
-- Evaluate supported EasyPrivacy rules for HTTP(S) and WebSocket request contexts before the first-party default.
+- Evaluate supported EasyPrivacy rules for HTTP(S) and WebSocket subresource contexts before the first-party default. Keep automatic EasyPrivacy `main_frame` cancellation disabled; explicit user Block overrides may still cancel top-level navigations.
 - Honor exceptions and only cancel matches whose action is explicitly supported.
 - Register WebExtension listeners synchronously at background startup. Load settings and the filter artifact behind explicit initialization state; use current catalog behavior while the EasyPrivacy engine is not ready.
 - Change observation state from one merged hostname decision to per-request decision counts and bounded matched-rule samples.
@@ -210,7 +217,7 @@ Work:
 - Define badge semantics explicitly. Recommended: badge text counts blocked requests; popup summary separately reports blocked hostnames. Use those exact labels.
 - Preserve lifecycle accounting, redirect evidence, pause-once behavior, global overrides, and header restriction.
 
-Exit gate: a mixed-use hostname can contain blocked and allowed requests without either action being misreported, and first-party traffic is blocked only by an explicit supported list rule or user choice.
+Exit gate: a mixed-use hostname can contain blocked and allowed requests without either action being misreported. First-party subresources are blocked only by an explicit supported list rule or user choice, and `main_frame` navigations are blocked only by an explicit user choice.
 
 ### Phase 4: Explanation And Narrow Recovery UX
 
@@ -234,6 +241,10 @@ Goal: establish that the new coverage is materially better without unacceptable 
 Work:
 
 - Build a local fixture corpus covering known block, exception, type-specific, source-site-specific, first-party path, redirect-chain, mixed-host, pause, and override cases.
+- Evaluate automatic EasyPrivacy `main_frame` enforcement as a separate
+  go/no-go decision. Test representative top-level matches and false positives,
+  and enable it only if the coverage benefit justifies the higher breakage risk
+  and Phase 4 recovery controls are adequate.
 - Compare identical request fixtures, not badge numbers. Report blocked requests, blocked hosts, exceptions, unsupported rules, and false-positive regressions separately.
 - Manually smoke-test representative news, commerce, login, video, payment, social, and quiet first-party sites in a fresh Firefox profile.
 - Run `npm test`, `npm run typecheck`, `npm run lint:firefox`, and `npm run zip:firefox`.
