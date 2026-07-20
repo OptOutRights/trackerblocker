@@ -52,6 +52,11 @@ describe("FilterEngine", () => {
 
     expect(engine.health).toBe("ready");
     expect(engine.degradedReason).toBeNull();
+    expect(engine.provenance).toMatchObject({
+      upstreamVersion: "202607171801",
+      ghosteryPackageVersion: "2.18.1",
+      packagedNetworkRules: 55_496,
+    });
   });
 
   it("returns TrackerBlocker-owned block, exception, and no-match evidence", async () => {
@@ -92,15 +97,31 @@ describe("FilterEngine", () => {
       health: "ready",
       matchedException: null,
     });
-    expect(blocked.matchedFilter?.id).toMatch(/^easyprivacy:[0-9a-f]{8}$/);
+    expect(blocked.matchedFilter).toMatchObject({
+      engineId: expect.stringMatching(/^easyprivacy:[0-9a-f]{8}$/),
+      key: expect.stringMatching(
+        /^easyprivacy:[0-9a-f]{12}:[0-9a-f]{8}:[0-9a-f]{8}$/,
+      ),
+      normalizedSummary: expect.any(String),
+    });
     expect(excepted).toMatchObject({
       outcome: "exception",
       health: "ready",
     });
-    expect(excepted.matchedFilter?.id).toMatch(/^easyprivacy:[0-9a-f]{8}$/);
-    expect(excepted.matchedException?.id).toMatch(
+    expect(excepted.matchedFilter?.engineId).toMatch(
       /^easyprivacy:[0-9a-f]{8}$/,
     );
+    expect(excepted.matchedException?.engineId).toMatch(
+      /^easyprivacy:[0-9a-f]{8}$/,
+    );
+    expect(excepted.matchedException?.normalizedSummary).not.toContain(
+      "abema.tv",
+    );
+    if (excepted.matchedException?.sourceConstraint === "compacted") {
+      expect(excepted.matchedException.normalizedSummary).toContain(
+        "domain=<compacted>",
+      );
+    }
     expect(allowed).toEqual({
       outcome: "no-match",
       health: "ready",

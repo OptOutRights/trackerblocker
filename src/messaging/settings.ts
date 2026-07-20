@@ -4,6 +4,7 @@ import type { SitePauseMode, TrackerBlockerSettings } from "../storage/settings"
 export const GET_SETTINGS_MESSAGE = "trackerblocker.getSettings";
 export const UPDATE_SITE_PAUSE_MESSAGE = "trackerblocker.updateSitePause";
 export const SET_DOMAIN_OVERRIDE_MESSAGE = "trackerblocker.setDomainOverride";
+export const SET_SITE_ALLOW_MESSAGE = "trackerblocker.setSiteAllow";
 export const RESET_SETTINGS_MESSAGE = "trackerblocker.resetSettings";
 export const SETTINGS_RESPONSE = "trackerblocker.settingsResponse";
 export const SETTINGS_ERROR_RESPONSE = "trackerblocker.settingsErrorResponse";
@@ -25,6 +26,16 @@ export interface SetDomainOverrideMessage {
   action: DomainOverrideAction | null;
 }
 
+export interface SetSiteAllowMessage {
+  type: typeof SET_SITE_ALLOW_MESSAGE;
+  site: string;
+  domain: string;
+  allowed: boolean;
+  tabId?: number;
+  generation?: number;
+  rowId?: string;
+}
+
 export interface ResetSettingsMessage {
   type: typeof RESET_SETTINGS_MESSAGE;
 }
@@ -33,15 +44,33 @@ export type SettingsMessage =
   | GetSettingsMessage
   | UpdateSitePauseMessage
   | SetDomainOverrideMessage
+  | SetSiteAllowMessage
   | ResetSettingsMessage;
 
 export interface SettingsResponse extends TrackerBlockerSettings {
   type: typeof SETTINGS_RESPONSE;
 }
 
+export function isSetSiteAllowMessage(
+  value: unknown,
+): value is SetSiteAllowMessage {
+  const record = value as Record<string, unknown>;
+
+  return (
+    hasType(value, SET_SITE_ALLOW_MESSAGE) &&
+    typeof record.site === "string" &&
+    typeof record.domain === "string" &&
+    typeof record.allowed === "boolean" &&
+    (!hasSiteAllowContext(record) ||
+      (Number.isSafeInteger(record.tabId) &&
+        Number.isSafeInteger(record.generation) &&
+        typeof record.rowId === "string"))
+  );
+}
+
 export interface SettingsErrorResponse {
   type: typeof SETTINGS_ERROR_RESPONSE;
-  reason: "storage-unavailable";
+  reason: "storage-unavailable" | "stale-page";
 }
 
 export function isGetSettingsMessage(
@@ -87,13 +116,16 @@ export function isSettingsResponse(value: unknown): value is SettingsResponse {
   return (
     hasType(value, SETTINGS_RESPONSE) &&
     "schemaVersion" in value &&
-    value.schemaVersion === 1 &&
+    value.schemaVersion === 2 &&
     "pausedSites" in value &&
     typeof value.pausedSites === "object" &&
     value.pausedSites !== null &&
     "domainOverrides" in value &&
     typeof value.domainOverrides === "object" &&
-    value.domainOverrides !== null
+    value.domainOverrides !== null &&
+    "siteAllows" in value &&
+    typeof value.siteAllows === "object" &&
+    value.siteAllows !== null
   );
 }
 
@@ -103,7 +135,7 @@ export function isSettingsErrorResponse(
   return (
     hasType(value, SETTINGS_ERROR_RESPONSE) &&
     "reason" in value &&
-    value.reason === "storage-unavailable"
+    (value.reason === "storage-unavailable" || value.reason === "stale-page")
   );
 }
 
@@ -117,4 +149,8 @@ function hasType<TType extends string>(
     "type" in value &&
     value.type === type
   );
+}
+
+function hasSiteAllowContext(value: Record<string, unknown>): boolean {
+  return "tabId" in value || "generation" in value || "rowId" in value;
 }

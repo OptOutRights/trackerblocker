@@ -10,11 +10,14 @@ import {
   decideRequest,
   normalizeRequestContext,
   type DomainOverrideAction,
+  type EasyPrivacyEvaluation,
   type RequestAction,
   type RequestDecision,
+  type RequestDecisionReason,
   type RequestDecisionSource,
   type RequestRelationship,
 } from "./requestDecisions";
+import type { FilterRuleEvidence } from "./filterEngine";
 
 export type { RequestRelationship } from "./requestDecisions";
 
@@ -126,11 +129,14 @@ export interface ObservedRequestRow {
   actionCounts: RequestActionCounts;
   sourceCounts: RequestSourceCounts;
   isMixed: boolean;
-  matchedFilterIds: string[];
-  matchedExceptionIds: string[];
+  matchedFilterKeys: string[];
+  matchedExceptionKeys: string[];
   decisionEvidenceTruncated: boolean;
+  requestSampleCount: number;
+  requestSamplesTruncated: boolean;
   redirectEvidenceTruncated: boolean;
   currentOverride: DomainOverrideAction | null;
+  currentSiteAllow: boolean;
   requestTypes: RequestTypeCategory[];
   firstSeen: number;
   lastSeen: number;
@@ -141,6 +147,7 @@ export interface ObservedRequestRow {
 
 export interface TabRequestSummary {
   tabId: number;
+  generation: number;
   siteUrl: string | null;
   siteHost: string | null;
   requestCounts: RequestActionCounts;
@@ -171,6 +178,8 @@ export interface TabObservationState {
   hostRowsTruncated: boolean;
   activeRequestEvidenceTruncated: boolean;
   activeRequests: Map<string, ActiveRequestAttempt>;
+  requestSamples: Map<string, RequestAttemptExplanation[]>;
+  nextRequestSampleId: number;
 }
 
 export interface ActiveRequestAttempt {
@@ -178,8 +187,44 @@ export interface ActiveRequestAttempt {
   tabId: number;
   attemptIndex: number;
   rowId: string | null;
+  sampleId: string | null;
   decision: RequestDecision;
   startedAt: number;
+}
+
+export interface RequestAttemptExplanation {
+  id: string;
+  attemptIndex: number;
+  action: RequestAction;
+  source: RequestDecisionSource;
+  reason: RequestDecisionReason;
+  easyPrivacyEvaluation: EasyPrivacyEvaluation;
+  relationship: RequestRelationship;
+  requestType: RequestTypeCategory;
+  sourceHost: string | null;
+  pathHint: string | null;
+  matchedFilter: FilterRuleEvidence | null;
+  matchedException: FilterRuleEvidence | null;
+  catalogEvidence: {
+    entryId: string;
+    ruleId: string | null;
+    action: CatalogDefaultAction;
+    explanation: string;
+  } | null;
+  startedAt: number;
+  lastUpdatedAt: number;
+  lifecycleStatus: RequestLifecycleStatus;
+  redirectCount: number;
+}
+
+export interface HostRequestDetails {
+  tabId: number;
+  generation: number;
+  rowId: string;
+  host: string | null;
+  displayName: string;
+  samples: RequestAttemptExplanation[];
+  truncated: boolean;
 }
 
 export interface RecordRequestOptions {
@@ -194,6 +239,8 @@ export interface RecordedRequest {
 
 export interface SummaryDecisionOptions {
   domainOverrides?: Record<string, DomainOverrideAction>;
+  siteAllows?: Record<string, Record<string, true>>;
+  siteHost?: string | null;
 }
 
 const FIRST_PARTY_EXPLANATION =
@@ -224,6 +271,42 @@ const CATALOG_ACTION_PRIORITY: Record<CatalogDefaultAction, number> = {
   block: 2,
 };
 const EMPTY_WEB_AUTHORITY_PATTERN = /^(?:https?|wss?):\/\/[/?#]/i;
+const SAFE_PATH_SEGMENTS = new Set([
+  "a",
+  "api",
+  "asset",
+  "assets",
+  "beacon",
+  "collect",
+  "collection",
+  "conversion",
+  "embed",
+  "event",
+  "events",
+  "g",
+  "pixel",
+  "script",
+  "track",
+  "tracking",
+  "telemetry",
+  "user",
+  "users",
+  "v1",
+  "v2",
+  "v3",
+]);
+const SAFE_RESOURCE_BASENAMES = new Set([
+  "analytics",
+  "asset",
+  "beacon",
+  "collect",
+  "embed",
+  "event",
+  "pixel",
+  "script",
+  "telemetry",
+  "track",
+]);
 const MAX_REQUEST_CONTEXT_VALUES = 16;
 export const MAX_ACTIVE_REQUESTS_PER_TAB = 512;
 export const MAX_ACTIVE_REQUESTS_GLOBAL = 4_096;
@@ -233,6 +316,7 @@ export const MAX_MATCHED_FILTER_IDS = 8;
 export const MAX_MATCHED_EXCEPTION_IDS = 8;
 export const MAX_CATALOG_RULE_IDS = 16;
 export const MAX_REDIRECT_HOPS = 8;
+export const MAX_REQUEST_SAMPLES_PER_HOST = 6;
 
 export function createTabObservationState(
   tabId: number,
@@ -248,6 +332,8 @@ export function createTabObservationState(
     hostRowsTruncated: false,
     activeRequestEvidenceTruncated: false,
     activeRequests: new Map(),
+    requestSamples: new Map(),
+    nextRequestSampleId: 0,
   };
 }
 
@@ -263,6 +349,8 @@ export function resetTabObservationState(
   state.hostRowsTruncated = false;
   state.activeRequestEvidenceTruncated = false;
   state.activeRequests.clear();
+  state.requestSamples.clear();
+  state.nextRequestSampleId = 0;
 }
 
 export function mapRequestType(
@@ -376,11 +464,11 @@ export function recordObservedRequest(
     requestType,
   );
   const lifecycleUpdate = createStartedLifecycle(shouldBlock);
-  const filterIds = requestDecision.matchedFilter
-    ? [requestDecision.matchedFilter.id]
+  const filterKeys = requestDecision.matchedFilter
+    ? [requestDecision.matchedFilter.key]
     : [];
-  const exceptionIds = requestDecision.matchedException
-    ? [requestDecision.matchedException.id]
+  const exceptionKeys = requestDecision.matchedException
+    ? [requestDecision.matchedException.key]
     : [];
 
   if (!existing) {
@@ -395,11 +483,14 @@ export function recordObservedRequest(
       actionCounts: actionUpdate,
       sourceCounts: createSourceCounts(requestDecision.source),
       isMixed: false,
-      matchedFilterIds: filterIds,
-      matchedExceptionIds: exceptionIds,
+      matchedFilterKeys: filterKeys,
+      matchedExceptionKeys: exceptionKeys,
       decisionEvidenceTruncated: false,
+      requestSampleCount: 0,
+      requestSamplesTruncated: false,
       redirectEvidenceTruncated: false,
       currentOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
+      currentSiteAllow: false,
       requestTypes: [requestType],
       firstSeen: evidence.timestamp,
       lastSeen: evidence.timestamp,
@@ -415,6 +506,7 @@ export function recordObservedRequest(
       id,
       requestDecision,
       evidence.timestamp,
+      createRequestSampleInput(evidence, requestContext, requestType),
     );
     return { row, shouldBlock };
   }
@@ -433,17 +525,17 @@ export function recordObservedRequest(
   mergeCatalogFields(existing, catalogFields);
   existing.currentOverride = evidence.domainOverrides?.[rowSeed.key] ?? null;
   const mergedFilters = mergeBoundedStrings(
-    existing.matchedFilterIds,
-    filterIds,
+    existing.matchedFilterKeys,
+    filterKeys,
     MAX_MATCHED_FILTER_IDS,
   );
   const mergedExceptions = mergeBoundedStrings(
-    existing.matchedExceptionIds,
-    exceptionIds,
+    existing.matchedExceptionKeys,
+    exceptionKeys,
     MAX_MATCHED_EXCEPTION_IDS,
   );
-  existing.matchedFilterIds = mergedFilters.values;
-  existing.matchedExceptionIds = mergedExceptions.values;
+  existing.matchedFilterKeys = mergedFilters.values;
+  existing.matchedExceptionKeys = mergedExceptions.values;
   existing.decisionEvidenceTruncated ||=
     mergedFilters.truncated || mergedExceptions.truncated;
   existing.lifecycle = mergeLifecycleCounts(
@@ -465,6 +557,7 @@ export function recordObservedRequest(
     id,
     requestDecision,
     evidence.timestamp,
+    createRequestSampleInput(evidence, requestContext, requestType),
   );
   return { row: existing, shouldBlock };
 }
@@ -515,6 +608,11 @@ export function recordRequestRedirect(
   });
   row.redirectHops = redirectUpdate.values;
   row.redirectEvidenceTruncated ||= redirectUpdate.truncated;
+  updateAttemptSample(state, evidence.requestId, evidence.timestamp, (sample) => ({
+    ...sample,
+    lifecycleStatus: "redirected",
+    redirectCount: sample.redirectCount + 1,
+  }));
 
   return row;
 }
@@ -558,6 +656,13 @@ function recordLifecycleTerminalState(
       [lifecycleStatus]: 1,
     });
   }
+  updateRequestSample(state, attempt, evidence.timestamp, (sample) => ({
+    ...sample,
+    lifecycleStatus:
+      lifecycleStatus === "failed" && attempt.decision.action === "block"
+        ? "blocked"
+        : lifecycleStatus,
+  }));
 
   return row;
 }
@@ -581,25 +686,219 @@ function rememberActiveRequest(
   rowId: string | null,
   decision: RequestDecision,
   startedAt: number,
+  sampleInput?: RequestSampleInput,
 ): void {
-  if (!requestId) {
-    return;
+  const existing = requestId ? state.activeRequests.get(requestId) : undefined;
+
+  if (
+    requestId &&
+    !existing &&
+    state.activeRequests.size >= MAX_ACTIVE_REQUESTS_PER_TAB
+  ) {
+    evictOldestActiveRequest(state);
   }
 
-  const existing = state.activeRequests.get(requestId);
+  const attemptIndex = existing ? existing.attemptIndex + 1 : 0;
+  const sampleId = rowId && sampleInput
+    ? rememberRequestSample(
+        state,
+        rowId,
+        decision,
+        attemptIndex,
+        startedAt,
+        sampleInput,
+      )
+    : null;
 
-  if (!existing && state.activeRequests.size >= MAX_ACTIVE_REQUESTS_PER_TAB) {
-    evictOldestActiveRequest(state);
+  if (!requestId) {
+    return;
   }
 
   state.activeRequests.set(requestId, {
     requestId,
     tabId: state.tabId,
-    attemptIndex: existing ? existing.attemptIndex + 1 : 0,
+    attemptIndex,
     rowId,
+    sampleId,
     decision,
     startedAt,
   });
+}
+
+interface RequestSampleInput {
+  requestType: RequestTypeCategory;
+  sourceHost: string | null;
+  pathHint: string | null;
+}
+
+function createRequestSampleInput(
+  evidence: RequestEvidence,
+  context: ReturnType<typeof normalizeRequestContext>,
+  requestType: RequestTypeCategory,
+): RequestSampleInput {
+  return {
+    requestType,
+    sourceHost: formatUrlHost(context.sourceUrl),
+    pathHint: formatPrivacySafePathHint(evidence.requestUrl),
+  };
+}
+
+function rememberRequestSample(
+  state: TabObservationState,
+  rowId: string,
+  decision: RequestDecision,
+  attemptIndex: number,
+  startedAt: number,
+  input: RequestSampleInput,
+): string | null {
+  const row = state.rows.get(rowId);
+
+  if (!row) {
+    return null;
+  }
+
+  const sample: RequestAttemptExplanation = {
+    id: `sample-${state.nextRequestSampleId++}`,
+    attemptIndex,
+    action: decision.action,
+    source: decision.source,
+    reason: decision.reason,
+    easyPrivacyEvaluation: decision.easyPrivacyEvaluation,
+    relationship: decision.relationship,
+    requestType: input.requestType,
+    sourceHost: input.sourceHost,
+    pathHint: input.pathHint,
+    matchedFilter: decision.matchedFilter,
+    matchedException: decision.matchedException,
+    catalogEvidence: decision.catalogMatch
+      ? {
+          entryId: decision.catalogMatch.entry.id,
+          ruleId: decision.catalogMatch.matchedRule?.id ?? null,
+          action: decision.catalogMatch.action,
+          explanation:
+            decision.catalogMatch.matchedRule?.explanation ??
+            decision.catalogMatch.entry.explanation,
+        }
+      : null,
+    startedAt,
+    lastUpdatedAt: startedAt,
+    lifecycleStatus: decision.action === "block" ? "blocked" : "started",
+    redirectCount: 0,
+  };
+  const current = state.requestSamples.get(rowId) ?? [];
+
+  if (current.length < MAX_REQUEST_SAMPLES_PER_HOST) {
+    state.requestSamples.set(rowId, [...current, sample]);
+    row.requestSampleCount += 1;
+    return sample.id;
+  }
+
+  row.requestSamplesTruncated = true;
+  const replacementIndex = chooseRequestSampleReplacement(current, sample);
+
+  if (replacementIndex < 0) {
+    return null;
+  }
+
+  const next = [...current];
+  next[replacementIndex] = sample;
+  state.requestSamples.set(rowId, next);
+  return sample.id;
+}
+
+function chooseRequestSampleReplacement(
+  current: readonly RequestAttemptExplanation[],
+  incoming: RequestAttemptExplanation,
+): number {
+  const duplicateIndex = current.findIndex(
+    (sample) => formatSampleSignature(sample) === formatSampleSignature(incoming),
+  );
+
+  if (duplicateIndex >= 0) {
+    return duplicateIndex;
+  }
+
+  const ranked = current
+    .map((sample, index) => ({
+      index,
+      priority: getRequestSamplePriority(sample),
+      startedAt: sample.startedAt,
+    }))
+    .sort(
+      (left, right) =>
+        left.priority - right.priority || left.startedAt - right.startedAt,
+    );
+  const lowest = ranked[0];
+
+  return lowest && getRequestSamplePriority(incoming) > lowest.priority
+    ? lowest.index
+    : -1;
+}
+
+function getRequestSamplePriority(sample: RequestAttemptExplanation): number {
+  if (sample.matchedException) {
+    return 5;
+  }
+
+  if (sample.action === "block") {
+    return 4;
+  }
+
+  if (sample.action === "restrict") {
+    return 3;
+  }
+
+  return sample.source === "default" ? 1 : 2;
+}
+
+function formatSampleSignature(sample: RequestAttemptExplanation): string {
+  return [
+    sample.action,
+    sample.source,
+    sample.reason,
+    sample.requestType,
+    sample.pathHint ?? "",
+    sample.matchedFilter?.key ?? "",
+    sample.matchedException?.key ?? "",
+  ].join("|");
+}
+
+function updateAttemptSample(
+  state: TabObservationState,
+  requestId: string | null | undefined,
+  timestamp: number,
+  update: (sample: RequestAttemptExplanation) => RequestAttemptExplanation,
+): void {
+  const attempt = getActiveRequestAttempt(state, requestId);
+
+  if (attempt) {
+    updateRequestSample(state, attempt, timestamp, update);
+  }
+}
+
+function updateRequestSample(
+  state: TabObservationState,
+  attempt: ActiveRequestAttempt,
+  timestamp: number,
+  update: (sample: RequestAttemptExplanation) => RequestAttemptExplanation,
+): void {
+  if (!attempt.rowId || !attempt.sampleId) {
+    return;
+  }
+
+  const samples = state.requestSamples.get(attempt.rowId);
+  const index = samples?.findIndex((sample) => sample.id === attempt.sampleId) ?? -1;
+
+  if (!samples || index < 0) {
+    return;
+  }
+
+  const next = [...samples];
+  next[index] = {
+    ...update(samples[index]),
+    lastUpdatedAt: timestamp,
+  };
+  state.requestSamples.set(attempt.rowId, next);
 }
 
 export function getActiveRequestAttempt(
@@ -717,11 +1016,17 @@ export function summarizeTabObservation(
   decisionOptions: SummaryDecisionOptions = {},
 ): TabRequestSummary {
   const rows = [...state.rows.values()]
-    .map((row) => applyRowDecision(row, decisionOptions))
+    .map((row) =>
+      applyRowDecision(row, {
+        ...decisionOptions,
+        siteHost: decisionOptions.siteHost ?? formatUrlHost(state.pageUrl),
+      }),
+    )
     .sort(compareObservedRows);
 
   return {
     tabId: state.tabId,
+    generation: state.generation,
     siteUrl: state.pageUrl,
     siteHost: formatUrlHost(state.pageUrl),
     requestCounts: { ...state.requestCounts },
@@ -745,6 +1050,34 @@ export function summarizeTabObservation(
   };
 }
 
+export function summarizeHostRequestDetails(
+  state: TabObservationState,
+  generation: number,
+  rowId: string,
+): HostRequestDetails | null {
+  if (generation !== state.generation) {
+    return null;
+  }
+
+  const row = state.rows.get(rowId);
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    tabId: state.tabId,
+    generation: state.generation,
+    rowId,
+    host: row.host,
+    displayName: row.displayName,
+    samples: [...(state.requestSamples.get(rowId) ?? [])]
+      .sort((left, right) => right.startedAt - left.startedAt)
+      .map((sample) => ({ ...sample })),
+    truncated: row.requestSamplesTruncated,
+  };
+}
+
 function applyRowDecision(
   row: ObservedRequestRow,
   decisionOptions: SummaryDecisionOptions,
@@ -755,7 +1088,20 @@ function applyRowDecision(
       row,
       decisionOptions.domainOverrides,
     ),
+    currentSiteAllow: getSiteAllow(row, decisionOptions),
   };
+}
+
+function getSiteAllow(
+  row: ObservedRequestRow,
+  decisionOptions: SummaryDecisionOptions,
+): boolean {
+  return Boolean(
+    decisionOptions.siteHost &&
+      row.host &&
+      decisionOptions.siteAllows?.[decisionOptions.siteHost]?.[row.host] ===
+        true,
+  );
 }
 
 export function isUnknownRow(row: ObservedRequestRow): boolean {
@@ -1060,6 +1406,60 @@ function collectPathHints(requestUrl?: string | null): string[] {
   }
 }
 
+export function formatPrivacySafePathHint(
+  requestUrl?: string | null,
+): string | null {
+  if (!requestUrl) {
+    return null;
+  }
+
+  try {
+    const pathname = new URL(requestUrl).pathname;
+    const segments = pathname
+      .split("/")
+      .filter(Boolean)
+      .slice(0, 4)
+      .map(sanitizePathSegment);
+
+    if (segments.length === 0) {
+      return "/";
+    }
+
+    const hint = `/${segments.join("/")}`;
+    return hint.length <= 96 ? hint : `${hint.slice(0, 95)}…`;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizePathSegment(segment: string): string {
+  const normalized = segment.toLowerCase();
+  const looksSensitive =
+    /%40|@/.test(normalized) ||
+    /\b\d{5,}\b/.test(normalized) ||
+    /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(normalized) ||
+    /^[a-z0-9_-]{20,}$/i.test(normalized);
+
+  if (looksSensitive) {
+    return "…";
+  }
+
+  if (SAFE_PATH_SEGMENTS.has(normalized)) {
+    return normalized;
+  }
+
+  const resourceMatch = /^([a-z0-9_-]+)\.(js|css|gif|png|svg|webp|woff2?)$/i.exec(
+    normalized,
+  );
+  if (resourceMatch) {
+    return SAFE_RESOURCE_BASENAMES.has(resourceMatch[1])
+      ? normalized
+      : `….${resourceMatch[2]}`;
+  }
+
+  return "…";
+}
+
 function createActionCounts(action: RequestAction): RequestActionCounts {
   return {
     total: 1,
@@ -1087,6 +1487,7 @@ function createSourceCounts(
   return mergeSourceCounts(
     {
       "site-pause": 0,
+      "site-allow": 0,
       "user-block": 0,
       "user-allow": 0,
       "settings-unavailable": 0,

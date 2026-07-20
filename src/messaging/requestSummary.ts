@@ -1,4 +1,7 @@
-import type { TabRequestSummary } from "../shared/requestObservation";
+import type {
+  HostRequestDetails,
+  TabRequestSummary,
+} from "../shared/requestObservation";
 import type { SitePauseStatus } from "../storage/settings";
 import type { SettingsRuntimeHealth } from "../storage/settingsRuntime";
 
@@ -8,6 +11,10 @@ export const GET_TAB_REQUEST_SUMMARY_MESSAGE =
   "trackerblocker.getTabRequestSummary";
 export const GET_TAB_REQUEST_SUMMARY_RESPONSE =
   "trackerblocker.getTabRequestSummaryResponse";
+export const GET_HOST_REQUEST_DETAILS_MESSAGE =
+  "trackerblocker.getHostRequestDetails";
+export const GET_HOST_REQUEST_DETAILS_RESPONSE =
+  "trackerblocker.getHostRequestDetailsResponse";
 
 export interface GetTabRequestSummaryMessage {
   type: typeof GET_TAB_REQUEST_SUMMARY_MESSAGE;
@@ -19,6 +26,18 @@ export interface GetTabRequestSummaryResponse extends TabRequestSummary {
   type: typeof GET_TAB_REQUEST_SUMMARY_RESPONSE;
   sitePauseStatus: RuntimeSitePauseStatus;
   settingsHealth: SettingsRuntimeHealth;
+}
+
+export interface GetHostRequestDetailsMessage {
+  type: typeof GET_HOST_REQUEST_DETAILS_MESSAGE;
+  tabId: number;
+  generation: number;
+  rowId: string;
+}
+
+export interface GetHostRequestDetailsResponse {
+  type: typeof GET_HOST_REQUEST_DETAILS_RESPONSE;
+  details: HostRequestDetails | null;
 }
 
 export function isGetTabRequestSummaryMessage(
@@ -34,6 +53,48 @@ export function isGetTabRequestSummaryMessage(
   );
 }
 
+export function isGetHostRequestDetailsMessage(
+  value: unknown,
+): value is GetHostRequestDetailsMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === GET_HOST_REQUEST_DETAILS_MESSAGE &&
+    "tabId" in value &&
+    typeof value.tabId === "number" &&
+    "generation" in value &&
+    Number.isSafeInteger(value.generation) &&
+    "rowId" in value &&
+    typeof value.rowId === "string"
+  );
+}
+
+export function isGetHostRequestDetailsResponse(
+  value: unknown,
+): value is GetHostRequestDetailsResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === GET_HOST_REQUEST_DETAILS_RESPONSE &&
+    "details" in value &&
+    (value.details === null ||
+      (typeof value.details === "object" &&
+        value.details !== null &&
+        "tabId" in value.details &&
+        typeof value.details.tabId === "number" &&
+        "generation" in value.details &&
+        Number.isSafeInteger(value.details.generation) &&
+        "rowId" in value.details &&
+        typeof value.details.rowId === "string" &&
+        "samples" in value.details &&
+        Array.isArray(value.details.samples) &&
+        "truncated" in value.details &&
+        typeof value.details.truncated === "boolean"))
+  );
+}
+
 export function isGetTabRequestSummaryResponse(
   value: unknown,
 ): value is GetTabRequestSummaryResponse {
@@ -44,6 +105,8 @@ export function isGetTabRequestSummaryResponse(
     value.type === GET_TAB_REQUEST_SUMMARY_RESPONSE &&
     "tabId" in value &&
     typeof value.tabId === "number" &&
+    "generation" in value &&
+    Number.isSafeInteger(value.generation) &&
     "rows" in value &&
     Array.isArray(value.rows) &&
     "requestCounts" in value &&

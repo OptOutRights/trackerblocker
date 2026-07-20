@@ -24,16 +24,23 @@ describe("isHealthCheckMessage", () => {
       easyPrivacy: {
         matchingEnabled: false,
         engineHealth: "degraded",
+        degradedReason: "artifact-invalid",
+        provenance: null,
+        hostPermissionGranted: false,
       },
       settings: {
         health: "degraded",
         hasUsableSnapshot: false,
+        degradedReason: "timeout",
       },
     };
 
     expect(response.easyPrivacy).toEqual({
       matchingEnabled: false,
       engineHealth: "degraded",
+      degradedReason: "artifact-invalid",
+      provenance: null,
+      hostPermissionGranted: false,
     });
   });
 });

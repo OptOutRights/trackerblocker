@@ -7,9 +7,10 @@ import {
 import type { TrackerBlockerSettings } from "./settings";
 
 const SETTINGS: TrackerBlockerSettings = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   pausedSites: { "paused.test": true },
   domainOverrides: { "allowed.test": "allow" },
+  siteAllows: {},
 };
 
 afterEach(() => {

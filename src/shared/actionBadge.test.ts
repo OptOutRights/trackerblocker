@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ActionBadgeUpdateQueue, formatActionBadge } from "./actionBadge";
 
 describe("formatActionBadge", () => {
-  it("caps visible text while preserving the exact count in the title", () => {
+  it("shows the exact count in both the badge and title", () => {
     expect(formatActionBadge(1)).toEqual({
       text: "1",
       title: "TrackerBlocker - 1 request blocked",
@@ -13,12 +13,16 @@ describe("formatActionBadge", () => {
       title: "TrackerBlocker - 99 requests blocked",
     });
     expect(formatActionBadge(100)).toEqual({
-      text: "99+",
+      text: "100",
       title: "TrackerBlocker - 100 requests blocked",
     });
     expect(formatActionBadge(101)).toEqual({
-      text: "99+",
+      text: "101",
       title: "TrackerBlocker - 101 requests blocked",
+    });
+    expect(formatActionBadge(12_345)).toEqual({
+      text: "12345",
+      title: "TrackerBlocker - 12345 requests blocked",
     });
   });
 });

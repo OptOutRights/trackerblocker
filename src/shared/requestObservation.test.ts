@@ -8,6 +8,7 @@ import {
   enforceGlobalActiveRequestLimit,
   getActiveRequestAttempt,
   getActiveRequestDecision,
+  formatPrivacySafePathHint,
   mapRequestType,
   recordObservedRequest,
   recordRequestCompleted,
@@ -15,6 +16,7 @@ import {
   recordRequestRedirect,
   recordUnobservedRequestAttempt,
   resetTabObservationState,
+  summarizeHostRequestDetails,
   summarizeTabObservation,
 } from "./requestObservation";
 import type {
@@ -23,6 +25,18 @@ import type {
   RequestDecisionSource,
 } from "./requestDecisions";
 import type { TrackerCatalogEntry } from "./trackerCatalog";
+import type { FilterRuleEvidence } from "./filterEngine";
+
+function ruleEvidence(key: string): FilterRuleEvidence {
+  return {
+    key,
+    engineId: key.split(":").at(-1) ?? key,
+    normalizedSummary: "||mixed.test/collect^",
+    requestTypes: ["xhr"],
+    partyScope: "third-party",
+    sourceConstraint: "none",
+  };
+}
 
 function requestDecision(
   requestId: string,
@@ -38,6 +52,22 @@ function requestDecision(
     tabId,
     action,
     source,
+    reason:
+      source === "easyprivacy"
+        ? action === "allow"
+          ? "easyprivacy-exception"
+          : "easyprivacy-block"
+        : source === "user-block"
+          ? "global-user-block"
+          : source === "site-pause"
+            ? "site-paused"
+            : "no-supported-match",
+    easyPrivacyEvaluation:
+      source === "easyprivacy"
+        ? action === "allow"
+          ? "exception"
+          : "block"
+        : "not-evaluated",
     relationship: "third-party",
     requestHost: "mixed.test",
     matchedFilter: null,
@@ -282,6 +312,34 @@ describe("request observation aggregation", () => {
           actionCounts: { total: 1, blocked: 1, restricted: 0, allowed: 0 },
           sourceCounts: { catalog: 1 },
           currentOverride: "allow",
+        },
+      ],
+    });
+  });
+
+  it("overlays only the exact current-site allow without rewriting history", () => {
+    const state = createTabObservationState(1, "https://publisher.test/page");
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://www.google-analytics.com/analytics.js",
+      requestType: "script",
+      timestamp: 100,
+    });
+
+    expect(
+      summarizeTabObservation(state, {
+        siteAllows: {
+          "publisher.test": { "www.google-analytics.com": true },
+          "other.test": { "unrelated.test": true },
+        },
+      }),
+    ).toMatchObject({
+      requestCounts: { blocked: 1, allowed: 0 },
+      rows: [
+        {
+          currentSiteAllow: true,
+          actionCounts: { blocked: 1, allowed: 0 },
         },
       ],
     });
@@ -891,7 +949,7 @@ describe("request observation aggregation", () => {
             1,
             "block",
             "easyprivacy",
-            { matchedFilter: { id: `easyprivacy:${index}` } },
+            { matchedFilter: ruleEvidence(`easyprivacy:${index}`) },
           ),
         },
       );
@@ -909,8 +967,8 @@ describe("request observation aggregation", () => {
       },
       {
         decision: requestDecision("excepted", 1, "allow", "easyprivacy", {
-          matchedFilter: { id: "easyprivacy:block" },
-          matchedException: { id: "easyprivacy:exception" },
+          matchedFilter: ruleEvidence("easyprivacy:block"),
+          matchedException: ruleEvidence("easyprivacy:exception"),
         }),
       },
     );
@@ -931,10 +989,10 @@ describe("request observation aggregation", () => {
       actionCounts: { total: 10, blocked: 9, restricted: 0, allowed: 1 },
       sourceCounts: { easyprivacy: 10 },
       isMixed: true,
-      matchedExceptionIds: ["easyprivacy:exception"],
+      matchedExceptionKeys: ["easyprivacy:exception"],
       decisionEvidenceTruncated: true,
     });
-    expect(summary.rows[0].matchedFilterIds).toHaveLength(8);
+    expect(summary.rows[0].matchedFilterKeys).toHaveLength(8);
   });
 
   it("correlates redirect attempts by request id and reuses only the latest decision", () => {
@@ -1062,6 +1120,93 @@ describe("request observation aggregation", () => {
     });
     expect(getActiveRequestDecision(state, "stale")).toBeNull();
     expect(state.activeRequestEvidenceTruncated).toBe(true);
+  });
+
+  it("keeps bounded, privacy-safe causal samples and rejects stale detail reads", () => {
+    const state = createTabObservationState(1, "https://publisher.test/article");
+
+    const requestTypes = [
+      "xmlhttprequest",
+      "image",
+      "script",
+      "font",
+      "media",
+      "websocket",
+      "stylesheet",
+    ];
+    for (let index = 0; index < requestTypes.length; index += 1) {
+      recordObservedRequest(
+        state,
+        {
+          requestId: `ordinary-${index}`,
+          tabId: 1,
+          frameId: 0,
+          documentUrl: "https://publisher.test/article",
+          requestUrl: `https://mixed.test/collect/${index}?email=person@example.test`,
+          requestType: requestTypes[index],
+          timestamp: 100 + index,
+        },
+        {
+          decision: requestDecision(
+            `ordinary-${index}`,
+            1,
+            "allow",
+            "default",
+          ),
+        },
+      );
+    }
+
+    const excepted = recordObservedRequest(
+      state,
+      {
+        requestId: "excepted",
+        tabId: 1,
+        frameId: 0,
+        documentUrl: "https://publisher.test/article",
+        requestUrl:
+          "https://mixed.test/users/person%40example.test/0123456789/asset.js?token=secret",
+        requestType: "script",
+        timestamp: 200,
+      },
+      {
+        decision: requestDecision("excepted", 1, "allow", "easyprivacy", {
+          matchedFilter: ruleEvidence("easyprivacy:block"),
+          matchedException: ruleEvidence("easyprivacy:exception"),
+        }),
+      },
+    );
+
+    const rowId = excepted.row?.id ?? "";
+    const details = summarizeHostRequestDetails(state, state.generation, rowId);
+    expect(details).toMatchObject({
+      rowId,
+      truncated: true,
+    });
+    expect(details?.samples).toHaveLength(6);
+    expect(
+      details?.samples.find((sample) => sample.source === "easyprivacy"),
+    ).toMatchObject({
+      source: "easyprivacy",
+      reason: "easyprivacy-exception",
+      pathHint: "/users/…/…/asset.js",
+      sourceHost: "publisher.test",
+      matchedException: { key: "easyprivacy:exception" },
+    });
+    expect(JSON.stringify(details)).not.toContain("person@example.test");
+    expect(JSON.stringify(details)).not.toContain("token=secret");
+    expect(
+      summarizeHostRequestDetails(state, state.generation + 1, rowId),
+    ).toBeNull();
+  });
+
+  it("returns only scrubbed URL paths as request hints", () => {
+    expect(
+      formatPrivacySafePathHint(
+        "https://tracker.test/a/550e8400-e29b-41d4-a716-446655440000/file.js?secret=value",
+      ),
+    ).toBe("/a/…/….js");
+    expect(formatPrivacySafePathHint("not a url")).toBeNull();
   });
 
   it("resets observations for a new top-level page", () => {

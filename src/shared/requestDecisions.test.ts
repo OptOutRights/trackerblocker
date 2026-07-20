@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { FilterMatchResult } from "./filterEngine";
+import type { FilterMatchResult, FilterRuleEvidence } from "./filterEngine";
 import {
   createSettingsUnavailableDecision,
   decideMainFrameRequest,
@@ -14,15 +14,26 @@ import type { TrackerCatalogEntry } from "./trackerCatalog";
 const FILTER_BLOCK: FilterMatchResult = {
   outcome: "block",
   health: "ready",
-  matchedFilter: { id: "easyprivacy:00000001" },
+  matchedFilter: ruleEvidence("00000001"),
   matchedException: null,
 };
 const FILTER_EXCEPTION: FilterMatchResult = {
   outcome: "exception",
   health: "ready",
-  matchedFilter: { id: "easyprivacy:00000001" },
-  matchedException: { id: "easyprivacy:00000002" },
+  matchedFilter: ruleEvidence("00000001"),
+  matchedException: ruleEvidence("00000002"),
 };
+
+function ruleEvidence(id: string): FilterRuleEvidence {
+  return {
+    key: `easyprivacy:artifact:${id}:summary`,
+    engineId: `easyprivacy:${id}`,
+    normalizedSummary: `||tracker-${id}.test^`,
+    requestTypes: [],
+    partyScope: "any",
+    sourceConstraint: "none",
+  };
+}
 
 const CATALOG: TrackerCatalogEntry[] = [
   {
@@ -180,6 +191,11 @@ describe("decideRequest", () => {
       action: "allow",
       source: "site-pause",
     });
+    expect(decideRequestPolicy({ ...base, siteAllowed: true })).toMatchObject({
+      action: "allow",
+      source: "site-allow",
+      reason: "site-allow",
+    });
     expect(
       decideRequestPolicy({ ...base, domainOverride: "allow" }),
     ).toMatchObject({ action: "allow", source: "user-allow" });
@@ -325,6 +341,42 @@ describe("decideRequest", () => {
     ).toMatchObject({ action: "block", source: "user-block" });
   });
 
+  it("lets an exact-site allow outrank a global block for subresources", () => {
+    expect(
+      decideRequest({
+        context: context(),
+        domainOverrides: { "tracker.test": "block" },
+        siteAllows: {
+          "publisher.test": { "tracker.test": true },
+        },
+        easyPrivacyEnabled: true,
+        filterMatch: FILTER_BLOCK,
+      }),
+    ).toMatchObject({
+      action: "allow",
+      source: "site-allow",
+      reason: "site-allow",
+    });
+
+    expect(
+      decideRequest({
+        context: context(
+          "https://static.publisher.test/collect",
+          "https://publisher.test/",
+        ),
+        siteAllows: {
+          "publisher.test": { "static.publisher.test": true },
+        },
+        easyPrivacyEnabled: true,
+        filterMatch: FILTER_BLOCK,
+      }),
+    ).toMatchObject({
+      action: "allow",
+      source: "site-allow",
+      relationship: "first-party",
+    });
+  });
+
   it("disables automatic policy while preserving pause and user overrides", () => {
     const base = {
       relationship: "first-party" as const,
@@ -355,6 +407,7 @@ describe("decideRequest", () => {
     expect(decideMainFrameRequest({ context: mainFrame })).toMatchObject({
       action: "allow",
       source: "default",
+      reason: "main-frame-automatic-disabled",
     });
     expect(
       decideMainFrameRequest({

@@ -6,10 +6,12 @@ import {
   SETTINGS_ERROR_RESPONSE,
   SETTINGS_RESPONSE,
   SET_DOMAIN_OVERRIDE_MESSAGE,
+  SET_SITE_ALLOW_MESSAGE,
   UPDATE_SITE_PAUSE_MESSAGE,
   isGetSettingsMessage,
   isResetSettingsMessage,
   isSetDomainOverrideMessage,
+  isSetSiteAllowMessage,
   isSettingsErrorResponse,
   isSettingsResponse,
   isUpdateSitePauseMessage,
@@ -49,6 +51,25 @@ describe("settings messaging", () => {
       }),
     ).toBe(true);
     expect(
+      isSetSiteAllowMessage({
+        type: SET_SITE_ALLOW_MESSAGE,
+        site: "publisher.test",
+        domain: "tracker.test",
+        allowed: true,
+        tabId: 1,
+        generation: 2,
+        rowId: "third-party:tracker.test",
+      }),
+    ).toBe(true);
+    expect(
+      isSetSiteAllowMessage({
+        type: SET_SITE_ALLOW_MESSAGE,
+        site: "publisher.test",
+        domain: "tracker.test",
+        allowed: false,
+      }),
+    ).toBe(true);
+    expect(
       isSetDomainOverrideMessage({
         type: SET_DOMAIN_OVERRIDE_MESSAGE,
         domain: "tracker.test",
@@ -64,6 +85,15 @@ describe("settings messaging", () => {
         type: UPDATE_SITE_PAUSE_MESSAGE,
         site: 1,
         mode: "always",
+      }),
+    ).toBe(false);
+    expect(
+      isSetSiteAllowMessage({
+        type: SET_SITE_ALLOW_MESSAGE,
+        site: "publisher.test",
+        domain: "tracker.test",
+        allowed: true,
+        tabId: 1,
       }),
     ).toBe(false);
     expect(
@@ -86,9 +116,10 @@ describe("settings messaging", () => {
     expect(
       isSettingsResponse({
         type: SETTINGS_RESPONSE,
-        schemaVersion: 1,
+        schemaVersion: 2,
         pausedSites: {},
         domainOverrides: {},
+        siteAllows: {},
       }),
     ).toBe(true);
   });
@@ -97,7 +128,7 @@ describe("settings messaging", () => {
     expect(
       isSettingsResponse({
         type: SETTINGS_RESPONSE,
-        schemaVersion: 2,
+        schemaVersion: 1,
         pausedSites: {},
         domainOverrides: {},
       }),
@@ -109,6 +140,12 @@ describe("settings messaging", () => {
       isSettingsErrorResponse({
         type: SETTINGS_ERROR_RESPONSE,
         reason: "storage-unavailable",
+      }),
+    ).toBe(true);
+    expect(
+      isSettingsErrorResponse({
+        type: SETTINGS_ERROR_RESPONSE,
+        reason: "stale-page",
       }),
     ).toBe(true);
     expect(

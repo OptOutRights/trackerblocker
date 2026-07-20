@@ -18,7 +18,7 @@ export function formatActionBadge(
   }
 
   return {
-    text: blockedRequestCount > 99 ? "99+" : String(blockedRequestCount),
+    text: String(blockedRequestCount),
     title: `TrackerBlocker - ${blockedRequestCount} ${
       blockedRequestCount === 1 ? "request" : "requests"
     } blocked`,

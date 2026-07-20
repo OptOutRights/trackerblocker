@@ -6,7 +6,9 @@ import {
   type HealthCheckResponse,
 } from "../messaging/health";
 import {
+  GET_HOST_REQUEST_DETAILS_RESPONSE,
   GET_TAB_REQUEST_SUMMARY_RESPONSE,
+  isGetHostRequestDetailsMessage,
   isGetTabRequestSummaryMessage,
   type GetTabRequestSummaryResponse,
   type RuntimeSitePauseStatus,
@@ -17,9 +19,11 @@ import {
   isGetSettingsMessage,
   isResetSettingsMessage,
   isSetDomainOverrideMessage,
+  isSetSiteAllowMessage,
   isUpdateSitePauseMessage,
   type SettingsErrorResponse,
   type SettingsResponse,
+  type SetSiteAllowMessage,
 } from "../messaging/settings";
 import { ActionBadgeUpdateQueue } from "../shared/actionBadge";
 import { startBackgroundRuntime } from "../shared/backgroundStartup";
@@ -36,10 +40,12 @@ import {
   recordRequestRedirect,
   recordUnobservedRequestAttempt,
   resetTabObservationState,
+  summarizeHostRequestDetails,
   summarizeTabObservation,
   type TabObservationState,
 } from "../shared/requestObservation";
 import { applyRequestHeaderRestriction } from "../shared/requestRestriction";
+import { TabPageUrlCache } from "../shared/tabPageUrls";
 import {
   createSettingsUnavailableDecision,
   decideMainFrameRequest,
@@ -52,11 +58,16 @@ import {
   normalizeSettings,
   normalizeSettingsKey,
   readSettings,
-  resetSettings,
-  updateSettings,
+  SettingsMutationQueue,
   type SitePauseStatus,
   type TrackerBlockerSettings,
 } from "../storage/settings";
+import {
+  pausesFromSessionState,
+  readSessionStateWithin,
+  sessionStateFromPauses,
+  writeSessionState,
+} from "../storage/sessionState";
 import { SettingsRuntime } from "../storage/settingsRuntime";
 
 export default defineBackground(() => {
@@ -66,26 +77,22 @@ export default defineBackground(() => {
   const filterEngine = new FilterEngine();
   const settingsRuntime = new SettingsRuntime();
   const temporarySitePauses = new Map<number, string>();
+  const removedTabIds = new Set<number>();
+  const tabPageUrls = new TabPageUrlCache();
+  const settingsMutations = new SettingsMutationQueue();
+  let sessionStateReady: Promise<void> = Promise.resolve();
+  let sessionWriteTail: Promise<void> = Promise.resolve();
 
   const registerListeners = () => {
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (isHealthCheckMessage(message)) {
-        const response: HealthCheckResponse = {
-          type: HEALTH_CHECK_RESPONSE,
-          ok: true,
+        void sendHealthResponse(
           startedAt,
-          easyPrivacy: {
-            matchingEnabled: EASYPRIVACY_MATCHING_ENABLED,
-            engineHealth: filterEngine.health,
-          },
-          settings: {
-            health: settingsRuntime.snapshot.health,
-            hasUsableSnapshot: settingsRuntime.snapshot.settings !== null,
-          },
-        };
-
-        sendResponse(response);
-        return false;
+          filterEngine,
+          settingsRuntime,
+          sendResponse,
+        );
+        return true;
       }
 
       if (isGetTabRequestSummaryMessage(message)) {
@@ -105,6 +112,7 @@ export default defineBackground(() => {
           : "unknown";
         const summary = summarizeTabObservation(state, {
           domainOverrides: settings?.domainOverrides,
+          siteAllows: settings?.siteAllows,
         });
         const response: GetTabRequestSummaryResponse = {
           type: GET_TAB_REQUEST_SUMMARY_RESPONSE,
@@ -114,6 +122,21 @@ export default defineBackground(() => {
         };
 
         sendResponse(response);
+        return false;
+      }
+
+      if (isGetHostRequestDetailsMessage(message)) {
+        const state = tabObservations.get(message.tabId);
+        sendResponse({
+          type: GET_HOST_REQUEST_DETAILS_RESPONSE,
+          details: state
+            ? summarizeHostRequestDetails(
+                state,
+                message.generation,
+                message.rowId,
+              )
+            : null,
+        });
         return false;
       }
 
@@ -132,13 +155,16 @@ export default defineBackground(() => {
           void sendSettingsResponse(
             () => getUsableRuntimeSettings(settingsRuntime),
             sendResponse,
-            (settings) => {
+            async (settings) => {
               if (typeof message.tabId === "number") {
+                await sessionStateReady;
+                await requireCurrentTabSite(message.tabId, message.site);
                 setTemporarySitePause(
                   temporarySitePauses,
                   message.tabId,
                   message.site,
                 );
+                await persistTemporarySitePauses();
               }
             },
             () => settingsRuntime.degrade("storage-unavailable"),
@@ -148,19 +174,21 @@ export default defineBackground(() => {
 
         void sendSettingsResponse(
           () =>
-            updateSettings({
+            settingsMutations.update({
               type: "site-pause",
               site: message.site,
               paused: message.mode === "always",
             }),
           sendResponse,
-          (settings) => {
+          async (settings) => {
             settingsRuntime.accept(settings);
             if (
               (message.mode === null || message.mode === "always") &&
               typeof message.tabId === "number"
             ) {
+              await sessionStateReady;
               temporarySitePauses.delete(message.tabId);
+              await persistTemporarySitePauses();
             }
           },
           () => settingsRuntime.degrade("storage-unavailable"),
@@ -171,7 +199,7 @@ export default defineBackground(() => {
       if (isSetDomainOverrideMessage(message)) {
         void sendSettingsResponse(
           () =>
-            updateSettings({
+            settingsMutations.update({
               type: "domain-override",
               domain: message.domain,
               action: message.action,
@@ -185,13 +213,33 @@ export default defineBackground(() => {
         return true;
       }
 
+      if (isSetSiteAllowMessage(message)) {
+        void sendSettingsResponse(
+          async () => {
+            await requireCurrentSiteAllowContext(message, tabObservations);
+            return settingsMutations.update({
+              type: "site-allow",
+              site: message.site,
+              domain: message.domain,
+              allowed: message.allowed,
+            });
+          },
+          sendResponse,
+          (settings) => settingsRuntime.accept(settings),
+          () => settingsRuntime.degrade("storage-unavailable"),
+        );
+        return true;
+      }
+
       if (isResetSettingsMessage(message)) {
         void sendSettingsResponse(
-          () => resetSettings(),
+          () => settingsMutations.reset(),
           sendResponse,
-          (settings) => {
+          async (settings) => {
             settingsRuntime.accept(settings);
+            await sessionStateReady;
             temporarySitePauses.clear();
+            await persistTemporarySitePauses();
           },
           () => settingsRuntime.degrade("storage-unavailable"),
         );
@@ -208,19 +256,19 @@ export default defineBackground(() => {
         if (details.tabId < 0) {
           return undefined;
         }
-
-        const requestDocumentUrl = getRequestDocumentUrl(details);
-        const state = getTabObservationState(
-          tabObservations,
-          details.tabId,
-          requestDocumentUrl,
-        );
-        const observationGeneration = state.generation;
-        const requestPageUrl = state.pageUrl ?? requestDocumentUrl;
+        removedTabIds.delete(details.tabId);
         settingsRuntime.retry(readSettings);
-        const settings = await settingsRuntime.waitForUsableSettings();
 
         if (details.type === "main_frame") {
+          const [settings] = await Promise.all([
+            settingsRuntime.waitForUsableSettings(),
+            sessionStateReady,
+          ]);
+          const state = getTabObservationState(
+            tabObservations,
+            details.tabId,
+            tabPageUrls.get(details.tabId),
+          );
           const context = normalizeWebRequestContext(details, details.url);
           const sitePauseStatus = settings
             ? getSitePauseStatus(
@@ -239,11 +287,15 @@ export default defineBackground(() => {
             : createSettingsUnavailableDecision(context);
 
           if (decision.action !== "block") {
-            clearTemporaryPauseForNavigation(
+            const clearedTemporaryPause = clearTemporaryPauseForNavigation(
               temporarySitePauses,
               details.tabId,
               details.url,
             );
+            if (clearedTemporaryPause) {
+              void persistTemporarySitePauses();
+            }
+            tabPageUrls.set(details.tabId, details.url);
             resetTabObservationState(state, details.url);
           }
 
@@ -261,6 +313,18 @@ export default defineBackground(() => {
           return decision.action === "block" ? { cancel: true } : undefined;
         }
 
+        const [settings, requestPageUrl] = await Promise.all([
+          settingsRuntime.waitForUsableSettings(),
+          tabPageUrls.resolve(details.tabId, loadCurrentTabPageUrl),
+          sessionStateReady,
+        ]);
+        const state = getTabObservationState(
+          tabObservations,
+          details.tabId,
+          requestPageUrl,
+        );
+        synchronizeTabObservationPage(state, requestPageUrl);
+        const observationGeneration = state.generation;
         const context = normalizeWebRequestContext(details, requestPageUrl);
         const sitePauseStatus = settings
           ? getSitePauseStatus(
@@ -425,13 +489,17 @@ export default defineBackground(() => {
       if (!changeInfo.url) {
         return;
       }
+      tabPageUrls.set(tabId, changeInfo.url);
 
       const state = getTabObservationState(tabObservations, tabId);
-      clearTemporaryPauseForNavigation(
+      const clearedTemporaryPause = clearTemporaryPauseForNavigation(
         temporarySitePauses,
         tabId,
         changeInfo.url,
       );
+      if (clearedTemporaryPause) {
+        void persistTemporarySitePauses();
+      }
 
       if (state.pageUrl === changeInfo.url) {
         return;
@@ -455,8 +523,11 @@ export default defineBackground(() => {
     });
 
     browser.tabs.onRemoved.addListener((tabId) => {
+      removedTabIds.add(tabId);
+      tabPageUrls.remove(tabId);
       tabObservations.delete(tabId);
       temporarySitePauses.delete(tabId);
+      void persistTemporarySitePauses();
       actionBadgeUpdates.remove(tabId);
     });
 
@@ -465,7 +536,45 @@ export default defineBackground(() => {
 
   startBackgroundRuntime({
     registerListeners,
-    startSettings: () => settingsRuntime.start(readSettings),
+    startSettings: () => {
+      settingsRuntime.start(readSettings);
+      sessionStateReady = readSessionStateWithin()
+        .then(async (sessionState) => {
+          if (!sessionState) {
+            return;
+          }
+
+          temporarySitePauses.clear();
+          const restoredPauses = await Promise.all(
+            [...pausesFromSessionState(sessionState)].map(
+              async ([tabId, site]) => {
+                const currentUrl = await tabPageUrls.resolve(
+                  tabId,
+                  loadCurrentTabPageUrl,
+                );
+                return {
+                  tabId,
+                  site,
+                  isCurrent:
+                    !removedTabIds.has(tabId) &&
+                    normalizeSiteFromUrl(currentUrl) === site,
+                };
+              },
+            ),
+          );
+          let discardedStalePause = false;
+          for (const pause of restoredPauses) {
+            if (!pause.isCurrent) {
+              discardedStalePause = true;
+              continue;
+            }
+            temporarySitePauses.set(pause.tabId, pause.site);
+          }
+          if (discardedStalePause) {
+            void persistTemporarySitePauses();
+          }
+        });
+    },
     startFilterEngine: () => {
       void filterEngine.initialize(loadPackagedEasyPrivacyArtifact);
     },
@@ -473,29 +582,132 @@ export default defineBackground(() => {
       void initializeActionBadge();
     },
   });
+
+  function persistTemporarySitePauses(): Promise<void> {
+    const snapshot = sessionStateFromPauses(temporarySitePauses);
+    const write = sessionWriteTail.then(() => writeSessionState(snapshot));
+    sessionWriteTail = write.then(
+      () => undefined,
+      () => undefined,
+    );
+    return write.then(() => undefined);
+  }
 });
 
 async function sendSettingsResponse(
   loadSettings: () => Promise<Omit<SettingsResponse, "type">>,
   sendResponse: (response: SettingsResponse | SettingsErrorResponse) => void,
-  onSettingsLoaded?: (settings: TrackerBlockerSettings) => void,
+  onSettingsLoaded?: (
+    settings: TrackerBlockerSettings,
+  ) => void | Promise<void>,
   onSettingsError?: () => void,
 ): Promise<void> {
   try {
     const settings = await loadSettings();
-    onSettingsLoaded?.(settings);
+    await onSettingsLoaded?.(settings);
 
     sendResponse({
       type: SETTINGS_RESPONSE,
       ...settings,
     });
-  } catch {
-    onSettingsError?.();
+  } catch (error) {
+    if (!(error instanceof StalePageError)) {
+      onSettingsError?.();
+    }
     sendResponse({
       type: SETTINGS_ERROR_RESPONSE,
-      reason: "storage-unavailable",
+      reason:
+        error instanceof StalePageError ? "stale-page" : "storage-unavailable",
     });
   }
+}
+
+class StalePageError extends Error {}
+
+async function requireCurrentTabSite(tabId: number, site: string): Promise<void> {
+  const expectedSite = normalizeSettingsKey(site);
+
+  if (!expectedSite) {
+    throw new StalePageError();
+  }
+
+  try {
+    const tab = await browser.tabs.get(tabId);
+    if (normalizeSiteFromUrl(tab.url) !== expectedSite) {
+      throw new StalePageError();
+    }
+  } catch (error) {
+    if (error instanceof StalePageError) {
+      throw error;
+    }
+
+    throw new StalePageError();
+  }
+}
+
+async function requireCurrentSiteAllowContext(
+  message: SetSiteAllowMessage,
+  tabObservations: ReadonlyMap<number, TabObservationState>,
+): Promise<void> {
+  const hasContext =
+    message.tabId !== undefined ||
+    message.generation !== undefined ||
+    message.rowId !== undefined;
+
+  if (!hasContext) {
+    return;
+  }
+
+  const state = tabObservations.get(message.tabId!);
+  const expectedSite = normalizeSettingsKey(message.site);
+  const expectedDomain = normalizeSettingsKey(message.domain);
+  const row = state?.rows.get(message.rowId!);
+
+  if (
+    !state ||
+    state.generation !== message.generation ||
+    normalizeSiteFromUrl(state.pageUrl) !== expectedSite ||
+    row?.host !== expectedDomain
+  ) {
+    throw new StalePageError();
+  }
+
+  await requireCurrentTabSite(message.tabId!, expectedSite);
+}
+
+async function sendHealthResponse(
+  startedAt: string,
+  filterEngine: FilterEngine,
+  settingsRuntime: SettingsRuntime,
+  sendResponse: (response: HealthCheckResponse) => void,
+): Promise<void> {
+  let hostPermissionGranted = false;
+
+  try {
+    hostPermissionGranted = await browser.permissions.contains({
+      origins: ["<all_urls>"],
+    });
+  } catch {
+    // Diagnostics remain truthful when permission introspection is unavailable.
+  }
+
+  sendResponse({
+    type: HEALTH_CHECK_RESPONSE,
+    ok: true,
+    startedAt,
+    easyPrivacy: {
+      matchingEnabled: EASYPRIVACY_MATCHING_ENABLED,
+      engineHealth: filterEngine.health,
+      degradedReason: filterEngine.degradedReason,
+      provenance: filterEngine.provenance,
+      hostPermissionGranted,
+    },
+    settings: {
+      health: settingsRuntime.snapshot.health,
+      hasUsableSnapshot: settingsRuntime.snapshot.settings !== null,
+      degradedReason: settingsRuntime.snapshot.degradedReason,
+    },
+  });
 }
 
 async function getUsableRuntimeSettings(
@@ -540,6 +752,7 @@ function decideWebRequest(
     context,
     sitePaused,
     domainOverrides: settings.domainOverrides,
+    siteAllows: settings.siteAllows,
     easyPrivacyEnabled: EASYPRIVACY_MATCHING_ENABLED,
     filterMatch,
   });
@@ -616,16 +829,19 @@ function clearTemporaryPauseForNavigation(
   temporarySitePauses: Map<number, string>,
   tabId: number,
   nextUrl: string,
-): void {
+): boolean {
   const pausedSite = temporarySitePauses.get(tabId);
 
   if (!pausedSite) {
-    return;
+    return false;
   }
 
   if (normalizeSiteFromUrl(nextUrl) !== pausedSite) {
     temporarySitePauses.delete(tabId);
+    return true;
   }
+
+  return false;
 }
 
 async function initializeActionBadge(): Promise<void> {
@@ -637,6 +853,29 @@ async function initializeActionBadge(): Promise<void> {
       () => browser.action.setBadgeTextColor({ color: "#111827" }),
     ),
   ]);
+
+  try {
+    const tabs = await browser.tabs.query({});
+    await Promise.all(
+      tabs.flatMap((tab) =>
+        typeof tab.id === "number"
+          ? [
+              safelyUpdateActionBadge(() =>
+                browser.action.setBadgeText({ tabId: tab.id, text: "" }),
+              ),
+              safelyUpdateActionBadge(() =>
+                browser.action.setTitle({
+                  tabId: tab.id,
+                  title: "TrackerBlocker",
+                }),
+              ),
+            ]
+          : [],
+      ),
+    );
+  } catch {
+    // Stale badge cleanup is best-effort and must not affect protection.
+  }
 }
 
 async function updateActionBadgeForTab(
@@ -679,6 +918,24 @@ function normalizeSiteFromUrl(url: string | null | undefined): string | null {
   const site = formatUrlHost(url);
 
   return site ? normalizeSettingsKey(site) : null;
+}
+
+async function loadCurrentTabPageUrl(tabId: number): Promise<string | null> {
+  try {
+    const tab = await browser.tabs.get(tabId);
+    return typeof tab.url === "string" && tab.url ? tab.url : null;
+  } catch {
+    return null;
+  }
+}
+
+function synchronizeTabObservationPage(
+  state: TabObservationState,
+  pageUrl: string | null,
+): void {
+  if (pageUrl && state.pageUrl !== pageUrl) {
+    resetTabObservationState(state, pageUrl);
+  }
 }
 
 function getTabObservationState(

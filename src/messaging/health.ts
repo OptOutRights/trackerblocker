@@ -1,5 +1,12 @@
-import type { FilterEngineHealth } from "../shared/filterEngine";
-import type { SettingsRuntimeHealth } from "../storage/settingsRuntime";
+import type {
+  FilterEngineDegradedReason,
+  FilterEngineHealth,
+  FilterEngineProvenance,
+} from "../shared/filterEngine";
+import type {
+  SettingsRuntimeHealth,
+  SettingsRuntimeSnapshot,
+} from "../storage/settingsRuntime";
 
 export const HEALTH_CHECK_MESSAGE = "trackerblocker.healthCheck";
 export const HEALTH_CHECK_RESPONSE = "trackerblocker.healthCheckResponse";
@@ -15,10 +22,14 @@ export interface HealthCheckResponse {
   easyPrivacy: {
     matchingEnabled: boolean;
     engineHealth: FilterEngineHealth;
+    degradedReason: FilterEngineDegradedReason | null;
+    provenance: FilterEngineProvenance | null;
+    hostPermissionGranted: boolean;
   };
   settings: {
     health: SettingsRuntimeHealth;
     hasUsableSnapshot: boolean;
+    degradedReason: SettingsRuntimeSnapshot["degradedReason"];
   };
 }
 
