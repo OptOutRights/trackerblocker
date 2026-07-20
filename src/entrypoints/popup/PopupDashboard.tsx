@@ -1,5 +1,7 @@
 import type { DomainOverrideAction } from "../../shared/requestDecisions";
+import type { HealthCheckResponse } from "../../messaging/health";
 import type {
+  HostRequestDetails,
   ObservedRequestRow,
   TabRequestSummary,
 } from "../../shared/requestObservation";
@@ -15,10 +17,14 @@ export function PopupDashboard({
   activeHost,
   activeTabId,
   backgroundStatus,
+  diagnostics,
   expandedRowId,
+  hostDetails,
+  hostDetailsStatus,
   isPauseDisabled,
   onChangeRequestView,
   onSetDomainOverride,
+  onSetSiteAllow,
   onSetPause,
   onToggleRow,
   requestView,
@@ -29,12 +35,20 @@ export function PopupDashboard({
   activeHost: string;
   activeTabId: number | null;
   backgroundStatus: BackgroundStatus;
+  diagnostics: HealthCheckResponse | null;
   expandedRowId: string | null;
+  hostDetails: HostRequestDetails | null;
+  hostDetailsStatus: "idle" | "loading" | "ready" | "unavailable";
   isPauseDisabled: boolean;
   onChangeRequestView: (view: RequestView) => void;
   onSetDomainOverride: (
     domain: string,
     action: DomainOverrideAction | null,
+  ) => Promise<void>;
+  onSetSiteAllow: (
+    domain: string,
+    allowed: boolean,
+    rowId: string,
   ) => Promise<void>;
   onSetPause: (mode: SitePauseMode) => Promise<void>;
   onToggleRow: (rowId: string) => void;
@@ -82,10 +96,14 @@ export function PopupDashboard({
 
         {requestView !== "summary" && (
           <RequestRows
+            areSettingsControlsDisabled={settingsStatus === "unavailable"}
             expandedRowId={expandedRowId}
+            hostDetails={hostDetails}
+            hostDetailsStatus={hostDetailsStatus}
             rows={visibleRows}
             view={requestView}
             onSetDomainOverride={onSetDomainOverride}
+            onSetSiteAllow={onSetSiteAllow}
             onToggleRow={onToggleRow}
           />
         )}
@@ -97,21 +115,101 @@ export function PopupDashboard({
           </p>
         )}
 
-        {summary?.activeRequestEvidenceTruncated && (
-          <p class="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900">
-            Some request details were dropped to limit memory. Totals remain
-            accurate.
-          </p>
-        )}
-
         {hasSystemIssue && (
           <SystemNotice
             backgroundStatus={backgroundStatus}
             settingsStatus={settingsStatus}
           />
         )}
+
+        <Diagnostics
+          diagnostics={diagnostics}
+          hasIncompleteRequestHistory={
+            summary?.activeRequestEvidenceTruncated ?? false
+          }
+        />
       </section>
     </main>
+  );
+}
+
+function Diagnostics({
+  diagnostics,
+  hasIncompleteRequestHistory,
+}: {
+  diagnostics: HealthCheckResponse | null;
+  hasIncompleteRequestHistory: boolean;
+}) {
+  if (!diagnostics && !hasIncompleteRequestHistory) {
+    return null;
+  }
+
+  const provenance = diagnostics?.easyPrivacy.provenance;
+  return (
+    <details class="mt-3 border-t border-zinc-200 pt-3 text-xs text-zinc-600">
+      <summary class="cursor-pointer font-medium text-zinc-700">
+        Diagnostics
+      </summary>
+      <dl class="mt-2 grid gap-1.5">
+        {diagnostics && (
+          <>
+            <DiagnosticRow
+              label="EasyPrivacy"
+              value={
+                diagnostics.easyPrivacy.matchingEnabled
+                  ? "enabled for this build"
+                  : "disabled (default)"
+              }
+            />
+            <DiagnosticRow
+              label="Engine"
+              value={`${diagnostics.easyPrivacy.engineHealth}${
+                diagnostics.easyPrivacy.degradedReason
+                  ? ` (${diagnostics.easyPrivacy.degradedReason})`
+                  : ""
+              }`}
+            />
+            <DiagnosticRow
+              label="Site access"
+              value={
+                diagnostics.easyPrivacy.hostPermissionGranted
+                  ? "granted"
+                  : "missing"
+              }
+            />
+            <DiagnosticRow
+              label="Settings"
+              value={`${diagnostics.settings.health}${
+                diagnostics.settings.degradedReason
+                  ? ` (${diagnostics.settings.degradedReason})`
+                  : ""
+              }`}
+            />
+          </>
+        )}
+        {provenance && (
+          <DiagnosticRow
+            label="List"
+            value={`${provenance.upstreamVersion}; artifact ${provenance.artifactSha256.slice(0, 12)}; engine ${provenance.ghosteryPackageVersion}`}
+          />
+        )}
+        {hasIncompleteRequestHistory && (
+          <DiagnosticRow
+            label="Request history"
+            value="Some older request histories are incomplete. Blocking and totals are unaffected."
+          />
+        )}
+      </dl>
+    </details>
+  );
+}
+
+function DiagnosticRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div class="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+      <dt class="font-medium text-zinc-500">{label}</dt>
+      <dd class="m-0 min-w-0 break-words text-zinc-700">{value}</dd>
+    </div>
   );
 }
 
@@ -153,20 +251,12 @@ function ProtectionSummary({
     restricted: 0,
     allowed: 0,
   };
-  const blockedHostCount = summary?.hostCounts.blocked ?? 0;
-  const observedHostCount = summary?.hostCounts.observed ?? 0;
-  const hostSuffix = summary?.hostCounts.lowerBound ? "+" : "";
 
   return (
     <section class="tb-metric-panel mt-5" aria-label="Protection summary">
       <p class="tb-metric-value">{requestCounts.blocked}</p>
       <p class="tb-metric-label">
         {requestCounts.blocked === 1 ? "Request blocked" : "Requests blocked"}
-      </p>
-      <p class="tb-metric-context">
-        {blockedHostCount}
-        {hostSuffix} of {observedHostCount}
-        {hostSuffix} {observedHostCount === 1 ? "host" : "hosts"} affected
       </p>
 
       <dl class="tb-stat-grid" aria-label="Observed request totals">
@@ -216,6 +306,7 @@ function PauseControls({
         <PauseButton
           isDisabled={isDisabled}
           label="Resume protection"
+          tone="primary"
           onClick={() => void onSetPause(null)}
         />
       </div>
@@ -228,18 +319,21 @@ function PauseControls({
         <PauseButton
           isDisabled={isDisabled}
           label="Resume protection"
+          tone="primary"
           onClick={() => void onSetPause(null)}
         />
       ) : (
         <PauseButton
           isDisabled={isDisabled || activeTabId === null}
           label="Pause for this tab"
+          tone="primary"
           onClick={() => void onSetPause("once")}
         />
       )}
       <PauseButton
         isDisabled={isDisabled}
         label="Always pause site"
+        tone="secondary"
         onClick={() => void onSetPause("always")}
       />
     </div>
@@ -250,14 +344,16 @@ function PauseButton({
   isDisabled,
   label,
   onClick,
+  tone = "neutral",
 }: {
   isDisabled: boolean;
   label: string;
   onClick: () => void;
+  tone?: "neutral" | "primary" | "secondary";
 }) {
   return (
     <button
-      class="tb-command-button"
+      class={`tb-command-button is-${tone}`}
       disabled={isDisabled}
       type="button"
       onClick={onClick}
@@ -281,23 +377,28 @@ function RequestActions({
   totalCount: number;
 }) {
   return (
-    <section class="tb-action-grid mt-3" aria-label="Site inspection">
-      <RequestActionButton
-        count={blockedCount}
-        countIsLowerBound={countsAreLowerBounds}
-        isSelected={currentView === "blocked"}
-        label="Blocked hosts"
-        onSelect={() =>
-          onChange(currentView === "blocked" ? "summary" : "blocked")
-        }
-      />
-      <RequestActionButton
-        count={totalCount}
-        countIsLowerBound={countsAreLowerBounds}
-        isSelected={currentView === "all"}
-        label="All hosts"
-        onSelect={() => onChange(currentView === "all" ? "summary" : "all")}
-      />
+    <section class="mt-4" aria-labelledby="host-actions-heading">
+      <h2 id="host-actions-heading" class="tb-section-label">
+        Hosts
+      </h2>
+      <div class="tb-action-grid">
+        <RequestActionButton
+          count={blockedCount}
+          countIsLowerBound={countsAreLowerBounds}
+          isSelected={currentView === "blocked"}
+          label="Blocked hosts"
+          onSelect={() =>
+            onChange(currentView === "blocked" ? "summary" : "blocked")
+          }
+        />
+        <RequestActionButton
+          count={totalCount}
+          countIsLowerBound={countsAreLowerBounds}
+          isSelected={currentView === "all"}
+          label="All hosts"
+          onSelect={() => onChange(currentView === "all" ? "summary" : "all")}
+        />
+      </div>
     </section>
   );
 }
@@ -322,11 +423,11 @@ function RequestActionButton({
       type="button"
       onClick={onSelect}
     >
-      <span>{label}</span>
-      <span>
+      <span class="tb-action-count">
         {count}
         {countIsLowerBound ? "+" : ""}
       </span>
+      <span class="tb-action-label">{label}</span>
     </button>
   );
 }

@@ -6,6 +6,7 @@ import {
   RESET_SETTINGS_MESSAGE,
   SETTINGS_RESPONSE,
   SET_DOMAIN_OVERRIDE_MESSAGE,
+  SET_SITE_ALLOW_MESSAGE,
   UPDATE_SITE_PAUSE_MESSAGE,
   isSettingsErrorResponse,
   isSettingsResponse,
@@ -84,6 +85,26 @@ export function App() {
     }
   }
 
+  async function removeSiteAllow(site: string, domain: string) {
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: SET_SITE_ALLOW_MESSAGE,
+        site,
+        domain,
+        allowed: false,
+      });
+
+      if (isSettingsErrorResponse(response) || !isSettingsResponse(response)) {
+        setStatus("unavailable");
+        return;
+      }
+
+      await loadSettings();
+    } catch {
+      setStatus("unavailable");
+    }
+  }
+
   async function resetLocalSettings() {
     try {
       const response = await browser.runtime.sendMessage({
@@ -105,6 +126,15 @@ export function App() {
   const domainOverrides = Object.entries(settings?.domainOverrides ?? {}).sort(
     ([left], [right]) => left.localeCompare(right),
   );
+  const siteAllows = Object.entries(settings?.siteAllows ?? {})
+    .flatMap(([site, domains]) =>
+      Object.keys(domains).map((domain) => ({ site, domain })),
+    )
+    .sort(
+      (left, right) =>
+        left.site.localeCompare(right.site) ||
+        left.domain.localeCompare(right.domain),
+    );
 
   return (
     <main class="min-h-screen bg-zinc-50 text-zinc-950">
@@ -150,7 +180,23 @@ export function App() {
 
         <section class="mb-6">
           <h2 class="text-sm font-semibold uppercase text-zinc-500">
-            Hostname overrides
+            Allowed on one site
+          </h2>
+          <SettingRows
+            emptyText="No site-specific hostname allows."
+            items={siteAllows.map(({ site, domain }) => ({
+              id: `${site}:${domain}`,
+              label: domain,
+              value: `Allowed only on ${site}`,
+              actionLabel: "Remove",
+              onAction: () => void removeSiteAllow(site, domain),
+            }))}
+          />
+        </section>
+
+        <section class="mb-6">
+          <h2 class="text-sm font-semibold uppercase text-zinc-500">
+            Global hostname overrides
           </h2>
           <SettingRows
             emptyText="No hostname overrides."
@@ -165,8 +211,8 @@ export function App() {
         </section>
 
         <p class="border-t border-zinc-200 pt-4 text-sm text-zinc-600">
-          Settings and learned data stay on this device. TrackerBlocker does not
-          use telemetry, accounts, sync, remote classification, or runtime
+          Settings and local controls stay on this device. TrackerBlocker does
+          not use telemetry, accounts, sync, remote classification, or runtime
           explanation fetches.
         </p>
       </div>

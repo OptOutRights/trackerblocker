@@ -1,21 +1,35 @@
 import type { DomainOverrideAction } from "../../shared/requestDecisions";
 import type {
+  HostRequestDetails,
   ObservedRequestRow,
+  RequestAttemptExplanation,
   RequestRelationship,
 } from "../../shared/requestObservation";
 import type { RequestView } from "./PopupDashboard";
 
 export function RequestRows({
+  areSettingsControlsDisabled,
   expandedRowId,
+  hostDetails,
+  hostDetailsStatus,
   onSetDomainOverride,
+  onSetSiteAllow,
   onToggleRow,
   rows,
   view,
 }: {
+  areSettingsControlsDisabled: boolean;
   expandedRowId: string | null;
+  hostDetails: HostRequestDetails | null;
+  hostDetailsStatus: "idle" | "loading" | "ready" | "unavailable";
   onSetDomainOverride: (
     domain: string,
     action: DomainOverrideAction | null,
+  ) => Promise<void>;
+  onSetSiteAllow: (
+    domain: string,
+    allowed: boolean,
+    rowId: string,
   ) => Promise<void>;
   onToggleRow: (rowId: string) => void;
   rows: ObservedRequestRow[];
@@ -43,10 +57,14 @@ export function RequestRows({
       <div class="grid gap-2">
         {rows.map((row) => (
           <RequestRow
+            areSettingsControlsDisabled={areSettingsControlsDisabled}
             isExpanded={expandedRowId === row.id}
+            hostDetails={hostDetails?.rowId === row.id ? hostDetails : null}
+            hostDetailsStatus={hostDetailsStatus}
             key={row.id}
             row={row}
             onSetDomainOverride={onSetDomainOverride}
+            onSetSiteAllow={onSetSiteAllow}
             onToggle={() => onToggleRow(row.id)}
           />
         ))}
@@ -56,21 +74,39 @@ export function RequestRows({
 }
 
 function RequestRow({
+  areSettingsControlsDisabled,
   isExpanded,
+  hostDetails,
+  hostDetailsStatus,
   onSetDomainOverride,
+  onSetSiteAllow,
   onToggle,
   row,
 }: {
+  areSettingsControlsDisabled: boolean;
   isExpanded: boolean;
+  hostDetails: HostRequestDetails | null;
+  hostDetailsStatus: "idle" | "loading" | "ready" | "unavailable";
   onSetDomainOverride: (
     domain: string,
     action: DomainOverrideAction | null,
+  ) => Promise<void>;
+  onSetSiteAllow: (
+    domain: string,
+    allowed: boolean,
+    rowId: string,
   ) => Promise<void>;
   onToggle: () => void;
   row: ObservedRequestRow;
 }) {
   const selectedOverride = getSelectedOverride(row);
-  const canOverride = row.relationship === "third-party";
+  const canSetSiteAllow = Boolean(
+    row.host &&
+      (row.currentSiteAllow ||
+        row.actionCounts.blocked > 0 ||
+        row.actionCounts.restricted > 0),
+  );
+  const canSetGlobalOverride = row.relationship === "third-party";
 
   return (
     <article class={requestRowClass(row)}>
@@ -124,35 +160,170 @@ function RequestRow({
             <DetailRow label="Catalog basis" value={formatCatalogBasis(row)} />
           </dl>
 
-          {canOverride && (
-            <div class="mt-3 grid grid-cols-3 overflow-hidden border border-zinc-200 bg-white">
-              <OverrideButton
-                isSelected={selectedOverride === "auto"}
-                label="Auto"
-                onSelect={() =>
-                  void onSetDomainOverride(row.displayName, null)
-                }
-              />
-              <OverrideButton
-                isSelected={selectedOverride === "block"}
-                label="Block"
-                onSelect={() =>
-                  void onSetDomainOverride(row.displayName, "block")
-                }
-              />
-              <OverrideButton
-                isSelected={selectedOverride === "allow"}
-                label="Allow"
-                onSelect={() =>
-                  void onSetDomainOverride(row.displayName, "allow")
-                }
-              />
+          <RequestExplanations
+            details={hostDetails}
+            status={hostDetailsStatus}
+            row={row}
+          />
+
+          {(canSetSiteAllow || canSetGlobalOverride) && (
+            <div class="mt-3 grid gap-2">
+              {canSetSiteAllow && (
+                <button
+                  aria-pressed={row.currentSiteAllow}
+                  class="w-full border border-[#5db7dd] bg-[#dff5ff] px-3 py-2 font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={areSettingsControlsDisabled}
+                  type="button"
+                  onClick={() =>
+                    void onSetSiteAllow(
+                      row.displayName,
+                      !row.currentSiteAllow,
+                      row.id,
+                    )
+                  }
+                >
+                  {row.currentSiteAllow
+                    ? "Remove allow on this site"
+                    : "Allow on this site"}
+                </button>
+              )}
+              {canSetGlobalOverride && (
+                <details>
+                  <summary class="cursor-pointer font-medium text-zinc-600">
+                    Advanced global rule
+                  </summary>
+                  <p class="mt-1 leading-snug text-zinc-500">
+                    Applies to this hostname on every site. Changes affect
+                    future requests; refresh to retry this page.
+                  </p>
+                  <div class="mt-2 grid grid-cols-3 overflow-hidden border border-zinc-200 bg-white">
+                    <OverrideButton
+                      isDisabled={areSettingsControlsDisabled}
+                      isSelected={selectedOverride === "auto"}
+                      label="Auto"
+                      onSelect={() =>
+                        void onSetDomainOverride(row.displayName, null)
+                      }
+                    />
+                    <OverrideButton
+                      isDisabled={areSettingsControlsDisabled}
+                      isSelected={selectedOverride === "block"}
+                      label="Block"
+                      onSelect={() =>
+                        void onSetDomainOverride(row.displayName, "block")
+                      }
+                    />
+                    <OverrideButton
+                      isDisabled={areSettingsControlsDisabled}
+                      isSelected={selectedOverride === "allow"}
+                      label="Allow"
+                      onSelect={() =>
+                        void onSetDomainOverride(row.displayName, "allow")
+                      }
+                    />
+                  </div>
+                </details>
+              )}
             </div>
           )}
         </div>
       )}
     </article>
   );
+}
+
+function RequestExplanations({
+  details,
+  status,
+  row,
+}: {
+  details: HostRequestDetails | null;
+  status: "idle" | "loading" | "ready" | "unavailable";
+  row: ObservedRequestRow;
+}) {
+  if (row.requestSampleCount === 0) {
+    return null;
+  }
+
+  if (!details && status === "unavailable") {
+    return (
+      <p class="mt-3 text-zinc-500">
+        Request explanations are unavailable because the page changed or the
+        background restarted. Refresh this view to capture current requests.
+      </p>
+    );
+  }
+
+  if (!details) {
+    return <p class="mt-3 text-zinc-500">Loading request explanations…</p>;
+  }
+
+  return (
+    <section class="mt-3 border-t border-zinc-200 pt-3">
+      <p class="font-medium text-zinc-700">Representative requests</p>
+      <div class="mt-2 grid gap-2">
+        {details.samples.map((sample) => (
+          <div class="border-l-2 border-zinc-300 pl-2" key={sample.id}>
+            <p class="font-medium text-zinc-800">
+              {formatAttemptDecision(sample)}
+            </p>
+            <p class="mt-0.5 break-words text-zinc-500">
+              {sample.requestType}
+              {sample.pathHint ? ` · ${sample.pathHint}` : ""}
+              {sample.sourceHost ? ` · from ${sample.sourceHost}` : ""}
+            </p>
+            {sample.matchedFilter && (
+              <p class="mt-0.5 break-all text-zinc-500">
+                Rule {sample.matchedFilter.key}: {" "}
+                {sample.matchedFilter.normalizedSummary}
+              </p>
+            )}
+            {sample.matchedException && (
+              <p class="mt-0.5 break-all text-zinc-500">
+                Exception {sample.matchedException.key}: {" "}
+                {sample.matchedException.normalizedSummary}
+              </p>
+            )}
+            {sample.catalogEvidence && (
+              <p class="mt-0.5 text-zinc-500">
+                Local catalog: {sample.catalogEvidence.explanation}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+      {details.truncated && (
+        <p class="mt-2 text-amber-800">
+          Representative details are limited; host totals remain complete.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function formatAttemptDecision(sample: RequestAttemptExplanation): string {
+  const action =
+    sample.action === "allow"
+      ? "Allowed"
+      : sample.action === "block"
+        ? "Blocked"
+        : "Restricted";
+  const reason: Record<RequestAttemptExplanation["reason"], string> = {
+    "site-paused": "site protection was paused",
+    "site-allow": "allowed on this site",
+    "global-user-block": "global user block",
+    "global-user-allow": "global user allow",
+    "easyprivacy-exception": "EasyPrivacy exception",
+    "easyprivacy-block": "EasyPrivacy block",
+    "catalog-block": "local catalog block",
+    "catalog-restrict": "local catalog restriction",
+    "catalog-allow": "local catalog allow",
+    "first-party-default": "first-party default",
+    "no-supported-match": "no supported local rule matched",
+    "main-frame-automatic-disabled": "automatic top-level blocking is disabled",
+    "settings-unavailable": "settings were unavailable",
+  };
+  return `${action} — ${reason[sample.reason]}`;
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -258,10 +429,12 @@ export function formatCatalogBasis(row: ObservedRequestRow): string {
 }
 
 function OverrideButton({
+  isDisabled,
   isSelected,
   label,
   onSelect,
 }: {
+  isDisabled: boolean;
   isSelected: boolean;
   label: string;
   onSelect: () => void;
@@ -269,11 +442,12 @@ function OverrideButton({
   return (
     <button
       aria-pressed={isSelected}
-      class={`px-2 py-2 font-medium transition ${
+      class={`px-2 py-2 font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
         isSelected
           ? "bg-[#dff5ff] text-zinc-950"
           : "bg-white text-zinc-600 hover:bg-zinc-50"
       }`}
+      disabled={isDisabled}
       type="button"
       onClick={onSelect}
     >
@@ -325,6 +499,7 @@ function formatCategory(category: ObservedRequestRow["category"]): string {
 export function formatRuleSources(row: ObservedRequestRow): string {
   const labels: Array<[keyof ObservedRequestRow["sourceCounts"], string]> = [
     ["site-pause", "site pause"],
+    ["site-allow", "site allow"],
     ["user-block", "user block"],
     ["user-allow", "user allow"],
     ["settings-unavailable", "settings unavailable"],

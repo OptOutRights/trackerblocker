@@ -30,6 +30,7 @@ describe("mixed request presentation", () => {
       actionCounts: { total: 9, blocked: 3, restricted: 1, allowed: 5 },
       sourceCounts: {
         "site-pause": 0,
+        "site-allow": 2,
         "user-block": 0,
         "user-allow": 1,
         "settings-unavailable": 1,
@@ -43,7 +44,7 @@ describe("mixed request presentation", () => {
       "3 blocked, 1 restricted, 5 allowed",
     );
     expect(formatRuleSources(row)).toBe(
-      "user allow: 1, settings unavailable: 1, EasyPrivacy: 3, catalog: 1, default allow: 3",
+      "site allow: 2, user allow: 1, settings unavailable: 1, EasyPrivacy: 3, catalog: 1, default allow: 3",
     );
   });
 });

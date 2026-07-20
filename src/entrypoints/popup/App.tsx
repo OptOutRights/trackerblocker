@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
 
 import {
@@ -7,8 +7,11 @@ import {
   type HealthCheckResponse,
 } from "../../messaging/health";
 import {
+  GET_HOST_REQUEST_DETAILS_MESSAGE,
+  GET_HOST_REQUEST_DETAILS_RESPONSE,
   GET_TAB_REQUEST_SUMMARY_MESSAGE,
   GET_TAB_REQUEST_SUMMARY_RESPONSE,
+  isGetHostRequestDetailsResponse,
   isGetTabRequestSummaryResponse,
   type GetTabRequestSummaryResponse,
   type RuntimeSitePauseStatus,
@@ -17,12 +20,14 @@ import {
   GET_SETTINGS_MESSAGE,
   SETTINGS_RESPONSE,
   SET_DOMAIN_OVERRIDE_MESSAGE,
+  SET_SITE_ALLOW_MESSAGE,
   UPDATE_SITE_PAUSE_MESSAGE,
   isSettingsErrorResponse,
   isSettingsResponse,
 } from "../../messaging/settings";
 import { formatUrlHost } from "../../shared/domains";
 import type { DomainOverrideAction } from "../../shared/requestDecisions";
+import type { HostRequestDetails } from "../../shared/requestObservation";
 import type { SitePauseMode } from "../../storage/settings";
 import {
   PopupDashboard,
@@ -53,6 +58,16 @@ function isHealthCheckResponse(value: unknown): value is HealthCheckResponse {
     (value.easyPrivacy.engineHealth === "loading" ||
       value.easyPrivacy.engineHealth === "ready" ||
       value.easyPrivacy.engineHealth === "degraded") &&
+    "hostPermissionGranted" in value.easyPrivacy &&
+    typeof value.easyPrivacy.hostPermissionGranted === "boolean" &&
+    "degradedReason" in value.easyPrivacy &&
+    (value.easyPrivacy.degradedReason === null ||
+      value.easyPrivacy.degradedReason === "artifact-load-failed" ||
+      value.easyPrivacy.degradedReason === "artifact-invalid" ||
+      value.easyPrivacy.degradedReason === "engine-invalid") &&
+    "provenance" in value.easyPrivacy &&
+    (value.easyPrivacy.provenance === null ||
+      isFilterEngineProvenance(value.easyPrivacy.provenance)) &&
     "settings" in value &&
     typeof value.settings === "object" &&
     value.settings !== null &&
@@ -61,7 +76,128 @@ function isHealthCheckResponse(value: unknown): value is HealthCheckResponse {
       value.settings.health === "ready" ||
       value.settings.health === "degraded") &&
     "hasUsableSnapshot" in value.settings &&
-    typeof value.settings.hasUsableSnapshot === "boolean"
+    typeof value.settings.hasUsableSnapshot === "boolean" &&
+    "degradedReason" in value.settings &&
+    (value.settings.degradedReason === null ||
+      value.settings.degradedReason === "timeout" ||
+      value.settings.degradedReason === "storage-unavailable")
+  );
+}
+
+function isFilterEngineProvenance(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "upstreamVersion" in value &&
+    typeof value.upstreamVersion === "string" &&
+    "artifactSha256" in value &&
+    typeof value.artifactSha256 === "string" &&
+    "ghosteryPackageVersion" in value &&
+    typeof value.ghosteryPackageVersion === "string"
+  );
+}
+
+type HostDetailsStatus = "idle" | "loading" | "ready" | "unavailable";
+
+export interface HostDetailsRequestIdentity {
+  tabId: number;
+  generation: number;
+  rowId: string;
+}
+
+export interface HostDetailsState {
+  request: HostDetailsRequestIdentity | null;
+  status: HostDetailsStatus;
+  details: HostRequestDetails | null;
+}
+
+export type HostDetailsAction =
+  | { type: "start"; request: HostDetailsRequestIdentity }
+  | {
+      type: "resolve";
+      request: HostDetailsRequestIdentity;
+      details: HostRequestDetails | null;
+    }
+  | { type: "unavailable"; request: HostDetailsRequestIdentity }
+  | { type: "clear" }
+  | { type: "clear-unless-tab"; tabId: number | null }
+  | { type: "clear-unless-summary"; tabId: number; generation: number };
+
+export const IDLE_HOST_DETAILS_STATE: HostDetailsState = {
+  request: null,
+  status: "idle",
+  details: null,
+};
+
+export function hostDetailsReducer(
+  state: HostDetailsState,
+  action: HostDetailsAction,
+): HostDetailsState {
+  if (action.type === "start") {
+    return {
+      request: action.request,
+      status: "loading",
+      details: null,
+    };
+  }
+
+  if (action.type === "clear") {
+    return IDLE_HOST_DETAILS_STATE;
+  }
+
+  if (action.type === "clear-unless-tab") {
+    return state.request && state.request.tabId !== action.tabId
+      ? IDLE_HOST_DETAILS_STATE
+      : state;
+  }
+
+  if (action.type === "clear-unless-summary") {
+    return state.request &&
+      (state.request.tabId !== action.tabId ||
+        state.request.generation !== action.generation)
+      ? IDLE_HOST_DETAILS_STATE
+      : state;
+  }
+
+  if (!hasSameHostDetailsIdentity(state.request, action.request)) {
+    return state;
+  }
+
+  if (action.type === "unavailable") {
+    return {
+      request: action.request,
+      status: "unavailable",
+      details: null,
+    };
+  }
+
+  if (
+    !action.details ||
+    !hasSameHostDetailsIdentity(action.details, action.request)
+  ) {
+    return {
+      request: action.request,
+      status: "unavailable",
+      details: null,
+    };
+  }
+
+  return {
+    request: action.request,
+    status: "ready",
+    details: action.details,
+  };
+}
+
+function hasSameHostDetailsIdentity(
+  left: HostDetailsRequestIdentity | null,
+  right: HostDetailsRequestIdentity,
+): boolean {
+  return Boolean(
+    left &&
+      left.tabId === right.tabId &&
+      left.generation === right.generation &&
+      left.rowId === right.rowId,
   );
 }
 
@@ -77,20 +213,38 @@ export function App() {
     useState<RuntimeSitePauseStatus>("active");
   const [pauseRefreshHint, setPauseRefreshHint] = useState<string | null>(null);
   const [summary, setSummary] = useState<PopupSummary>(null);
+  const [diagnostics, setDiagnostics] = useState<HealthCheckResponse | null>(null);
+  const [hostDetailsState, dispatchHostDetails] = useReducer(
+    hostDetailsReducer,
+    IDLE_HOST_DETAILS_STATE,
+  );
   const [requestView, setRequestView] = useState<RequestView>("summary");
-  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const popupLoadGeneration = useRef(0);
+  const expandedRowId = hostDetailsState.request?.rowId ?? null;
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadPopupState() {
-      const tabs = await browser.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
+      const loadGeneration = ++popupLoadGeneration.current;
+      const isCurrentLoad = () =>
+        isMounted && loadGeneration === popupLoadGeneration.current;
+      const tabs = await browser.tabs
+        .query({ active: true, currentWindow: true })
+        .catch(() => null);
 
-      if (!isMounted) {
+      if (!tabs) {
+        if (isCurrentLoad()) {
+          dispatchHostDetails({ type: "clear" });
+          setActiveHost("Unavailable");
+          setBackgroundStatus("unavailable");
+          setSettingsStatus("unavailable");
+        }
+        return;
+      }
+
+      if (!isCurrentLoad()) {
         return;
       }
 
@@ -99,15 +253,23 @@ export function App() {
       setActiveHost(tabSite ?? "Unavailable");
       setActiveSite(tabSite);
       setActiveTabId(typeof activeTab?.id === "number" ? activeTab.id : null);
+      dispatchHostDetails({
+        type: "clear-unless-tab",
+        tabId: typeof activeTab?.id === "number" ? activeTab.id : null,
+      });
 
       try {
         const healthResponse = await browser.runtime.sendMessage({
           type: HEALTH_CHECK_MESSAGE,
         });
 
-        setBackgroundStatus(
-          isHealthCheckResponse(healthResponse) ? "ready" : "unavailable",
-        );
+        if (!isCurrentLoad()) {
+          return;
+        }
+
+        const validHealth = isHealthCheckResponse(healthResponse);
+        setBackgroundStatus(validHealth ? "ready" : "unavailable");
+        setDiagnostics(validHealth ? healthResponse : null);
 
         if (typeof activeTab?.id === "number") {
           const summaryResponse = await browser.runtime.sendMessage({
@@ -117,10 +279,15 @@ export function App() {
           });
 
           if (
-            isMounted &&
+            isCurrentLoad() &&
             isGetTabRequestSummaryResponse(summaryResponse) &&
             summaryResponse.type === GET_TAB_REQUEST_SUMMARY_RESPONSE
           ) {
+            dispatchHostDetails({
+              type: "clear-unless-summary",
+              tabId: summaryResponse.tabId,
+              generation: summaryResponse.generation,
+            });
             setSummary(summaryResponse);
             setSitePauseStatus(summaryResponse.sitePauseStatus);
           }
@@ -130,7 +297,7 @@ export function App() {
           type: GET_SETTINGS_MESSAGE,
         });
 
-        if (!isMounted) {
+        if (!isCurrentLoad()) {
           return;
         }
 
@@ -143,6 +310,10 @@ export function App() {
           setSettingsStatus("unavailable");
         }
       } catch {
+        if (!isCurrentLoad()) {
+          return;
+        }
+
         setBackgroundStatus("unavailable");
         setSettingsStatus("unavailable");
       }
@@ -188,6 +359,11 @@ export function App() {
         tabId: activeTabId ?? undefined,
       });
 
+      if (isSettingsErrorResponse(response) && response.reason === "stale-page") {
+        setReloadToken((token) => token + 1);
+        return;
+      }
+
       if (isSettingsErrorResponse(response) || !isSettingsResponse(response)) {
         setSettingsStatus("unavailable");
         return;
@@ -225,6 +401,92 @@ export function App() {
     }
   }
 
+  async function updateSiteAllow(
+    domain: string,
+    allowed: boolean,
+    rowId: string,
+  ) {
+    if (
+      !activeSite ||
+      activeTabId === null ||
+      !summary ||
+      summary.tabId !== activeTabId ||
+      summary.siteHost !== activeSite ||
+      !summary.rows.some((row) => row.id === rowId && row.host === domain)
+    ) {
+      setReloadToken((token) => token + 1);
+      return;
+    }
+
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: SET_SITE_ALLOW_MESSAGE,
+        site: activeSite,
+        domain,
+        allowed,
+        tabId: activeTabId,
+        generation: summary.generation,
+        rowId,
+      });
+
+      if (isSettingsErrorResponse(response) && response.reason === "stale-page") {
+        setReloadToken((token) => token + 1);
+        return;
+      }
+
+      if (isSettingsErrorResponse(response) || !isSettingsResponse(response)) {
+        setSettingsStatus("unavailable");
+        return;
+      }
+
+      setPauseRefreshHint("Refresh page to apply this site-specific change.");
+      setSettingsStatus("ready");
+      setReloadToken((token) => token + 1);
+    } catch {
+      setSettingsStatus("unavailable");
+    }
+  }
+
+  async function toggleRow(rowId: string) {
+    if (hostDetailsState.request?.rowId === rowId) {
+      dispatchHostDetails({ type: "clear" });
+      return;
+    }
+
+    if (activeTabId === null || !summary) {
+      dispatchHostDetails({ type: "clear" });
+      return;
+    }
+
+    const request: HostDetailsRequestIdentity = {
+      tabId: activeTabId,
+      generation: summary.generation,
+      rowId,
+    };
+    dispatchHostDetails({ type: "start", request });
+
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: GET_HOST_REQUEST_DETAILS_MESSAGE,
+        ...request,
+      });
+      if (
+        isGetHostRequestDetailsResponse(response) &&
+        response.type === GET_HOST_REQUEST_DETAILS_RESPONSE
+      ) {
+        dispatchHostDetails({
+          type: "resolve",
+          request,
+          details: response.details,
+        });
+      } else {
+        dispatchHostDetails({ type: "unavailable", request });
+      }
+    } catch {
+      dispatchHostDetails({ type: "unavailable", request });
+    }
+  }
+
   async function refreshActiveTab() {
     try {
       if (activeTabId === null) {
@@ -245,7 +507,10 @@ export function App() {
         activeHost={activeHost}
         activeTabId={activeTabId}
         backgroundStatus={backgroundStatus}
+        diagnostics={diagnostics}
         expandedRowId={expandedRowId}
+        hostDetails={hostDetailsState.details}
+        hostDetailsStatus={hostDetailsState.status}
         isPauseDisabled={!activeSite || settingsStatus === "unavailable"}
         requestView={requestView}
         summary={summary}
@@ -253,10 +518,9 @@ export function App() {
         sitePauseStatus={sitePauseStatus}
         onChangeRequestView={setRequestView}
         onSetDomainOverride={updateDomainOverride}
+        onSetSiteAllow={updateSiteAllow}
         onSetPause={updateSitePause}
-        onToggleRow={(rowId) =>
-          setExpandedRowId((current) => (current === rowId ? null : rowId))
-        }
+        onToggleRow={(rowId) => void toggleRow(rowId)}
       />
       <RefreshToast
         message={pauseRefreshHint}
