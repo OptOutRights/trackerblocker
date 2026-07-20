@@ -43,17 +43,20 @@ unavailable. No catalog or EasyPrivacy default is applied until settings are
 known, so unknown pauses and Allow overrides cannot be bypassed. Successful
 later reads recover the runtime without changing decisions already observed.
 
-Phase 3 accounts for each observed request attempt rather than assigning one
+The runtime accounts for each observed request attempt rather than assigning one
 decision to an entire hostname. Redirect attempts share the browser request ID
 for correlation but receive increasing attempt indexes and immutable actions.
 The badge counts blocked requests, while popup host counts are separately
 labelled and can represent mixed blocked, restricted, and allowed activity.
 All request evidence stays in bounded background memory; host-row, active
-request, redirect, context, and matched-rule truncation is disclosed in the
-popup. Only user settings remain in `browser.storage.local`.
+request, redirect, context, matched-rule, and representative-attempt truncation
+is disclosed in the popup. Durable user settings remain in
+`browser.storage.local`. Tab-scoped pause-once state uses
+`browser.storage.session` so a Firefox MV3 worker restart does not silently
+resume protection; it is cleared when the tab closes or navigates away.
 
-EasyPrivacy matching remains disabled by default. For local Phase 3 testing,
-opt in for one development session or build:
+EasyPrivacy matching remains disabled by default. For local opt-in testing, use
+the flag for one development session or build:
 
 ```sh
 WXT_EASYPRIVACY_MATCHING=true npm run dev:firefox
@@ -68,7 +71,7 @@ and cannot become runtime matches.
 When opted in, supported EasyPrivacy blocks and exceptions apply to
 subresources before the first-party default, including explicitly matched
 first-party subresources. EasyPrivacy is not evaluated for automatic
-`main_frame` cancellation in Phase 3. A global user Block override can still
+`main_frame` cancellation. A global user Block override can still
 cancel a matching top-level hostname; automatic top-level enforcement has a
 separate Phase 5 coverage, breakage, and recovery gate.
 

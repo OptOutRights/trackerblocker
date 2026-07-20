@@ -1,6 +1,9 @@
 # TrackerBlocker
 
-A Firefox extension that learns which companies are tracking you across the web, blocks them before they load, and sends privacy signals telling companies not to sell, share, or track your data.
+A Firefox-first extension that blocks and explains likely third-party trackers
+using local rules and packaged data.
+
+Requires Firefox 142 or later.
 
 ## Development
 
@@ -48,7 +51,7 @@ npm run zip:firefox
 
 ## MVP Behavior
 
-The popup shows hosts observed on the active tab, immutable blocked/restricted/allowed request counts, mixed-host activity, local catalog context, and expandable evidence. The badge counts blocked requests; the popup labels blocked-host counts separately. Users can pause protection once for the current tab/site, always pause the current site, or set a third-party hostname to Auto, Block, or Allow. The options page lists always-paused sites and hostname overrides, and can reset local settings. Settings stay in `browser.storage.local`; bounded request summaries, active decision correlation, and pause-once state stay in background memory.
+The popup shows hosts observed on the active tab, immutable blocked/restricted/allowed request counts, mixed-host activity, local catalog context, and bounded representative request explanations. The badge counts blocked requests; the popup labels blocked-host counts separately. “Allow on this site” is the primary recovery action, while global Auto/Block/Allow rules remain under an advanced control. The options page lists site-specific allows, always-paused sites, and global hostname overrides. Durable settings stay in `browser.storage.local`; pause-once state uses `browser.storage.session`; request observations and browsing evidence stay only in bounded background memory.
 
 ## EasyPrivacy Data
 

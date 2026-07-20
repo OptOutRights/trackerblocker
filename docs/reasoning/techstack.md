@@ -9,10 +9,15 @@ This project is a Firefox-first WebExtension that blocks likely third-party trac
 - **WebExtensions**: The correct platform API for Firefox extensions and the best path to future cross-browser support without designing around one vendor's runtime.
 - **Preact**: Best UI runtime for this scope. It gives React-like component ergonomics for popup, options, and onboarding screens with a smaller footprint.
 - **`browser.*` APIs**: Best native API style for Firefox. Promise-based APIs are clearer and align with Firefox's WebExtension implementation.
-- **`browser.storage.local` only**: Best privacy posture for an anti-tracking extension. Settings, site overrides, and learned observations should remain on-device. Built-in tracker data should ship as packaged JSON.
+- **`browser.storage.local` and `browser.storage.session`**: Durable settings
+  and site overrides stay on-device in local storage. Tab-scoped pause-once
+  state uses session storage so it survives background-worker restarts without
+  becoming browsing history. Request observations remain bounded in memory,
+  and built-in tracker data ships with the extension.
 - **Tailwind CSS**: Best styling option for a compact extension UI when used with restraint. It keeps styling local to components and avoids a large design-system dependency.
 - **Vitest**: Best test runner for pure TypeScript logic such as first-party detection, tracker classification, explanation generation, and storage migrations.
-- **Playwright**: Best option for UI smoke tests and screenshots of popup/options flows once the UI exists.
+- **Playwright**: Best option for future automated smoke tests and screenshots
+  of critical popup/options flows.
 - **tldts**: Best practical choice for eTLD+1/public-suffix-aware domain parsing. Third-party detection must not rely on naive string matching.
 - **web-ext**: Best Firefox-oriented CLI for running, validating, packaging, and eventually signing the extension.
 

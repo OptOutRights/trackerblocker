@@ -6,10 +6,11 @@ Tech stack:
 - WebExtensions with native `browser.*` APIs
 - Preact for popup/options/onboarding UI
 - Tailwind CSS for compact component styling
-- `browser.storage.local` only for user settings, site overrides, and learned data
+- `browser.storage.local` for durable user settings and site overrides
+- `browser.storage.session` for tab-scoped pause-once state
 - Packaged JSON for built-in tracker catalog and explanations
 - Vitest for core logic tests
-- Playwright for UI smoke tests when UI exists
+- Playwright for UI smoke tests when browser automation is added
 - tldts for public-suffix-aware domain parsing
 - web-ext for Firefox run, validation, packaging, and signing workflows
 

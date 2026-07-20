@@ -54,15 +54,19 @@ The main concurrency window is early: domain classification and local catalog ca
 - Use WXT/Vite entrypoints instead of custom build glue.
 - Keep tracker intelligence local and packaged.
 - Use `browser.*` APIs.
-- Store user settings and learned/local state only in `browser.storage.local`.
-- Treat current-tab observations as short-lived background state unless the MVP explicitly needs persistence.
+- Store durable user settings and site controls in `browser.storage.local`.
+- Use `browser.storage.session` only for tab-scoped state that must survive a
+  background-worker restart, such as pause once.
+- Keep request observations as short-lived, bounded background state.
 - Do not add telemetry, remote classification, accounts, sync, or runtime explanation fetches.
 
 Firefox MV3 details worth keeping in mind:
 
 - MV3 host access belongs in `host_permissions` or `optional_host_permissions`.
 - Required request observation needs both the relevant API permission and matching host permissions.
-- Firefox MV3 background pages are non-persistent, so register listeners at top level and persist important state to local storage.
+- Firefox MV3 background pages are non-persistent, so register listeners at top
+  level and persist only the state that must survive a worker restart, using the
+  appropriate local or session storage area.
 - Useful references: [Firefox MV3 migration guide](https://extensionworkshop.com/documentation/develop/manifest-v3-migration-guide/) and [MDN permissions](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/permissions).
 
 ### Phase 1: Domain Classification
@@ -231,7 +235,7 @@ Implementation details
 
 - Decision logic now lives in `src/shared/requestDecisions.ts` and stays browser-independent.
 - `RequestDecision` records action, source, relationship, EasyPrivacy evidence, catalog match, and optional header restriction.
-- Precedence is site pause, per-hostname block/allow override, EasyPrivacy exception, EasyPrivacy block, third-party catalog default, then default allow.
+- Precedence is site pause, site-scoped hostname allow, global per-hostname block/allow override, EasyPrivacy exception, EasyPrivacy block, third-party catalog default, then default allow.
 - Popup action and source counts are recorded from the request decision and are
   not recomputed after settings change. Only the current override control is
   overlaid on an existing host row.
@@ -272,8 +276,8 @@ Worktree suitability:
 
 TODO: implementation details
 
-- Settings live under the `trackerblocker:settings` key in `browser.storage.local` with schema version `1`.
-- `src/storage/settings.ts` stores only always-paused sites and per-hostname overrides; observed request summaries and pause-once state remain short-lived background memory.
+- Settings live under the `trackerblocker:settings` key in `browser.storage.local` with schema version `2`; version 1 migrates without changing existing pauses or global overrides.
+- `src/storage/settings.ts` stores always-paused sites, global per-hostname overrides, and exact-site hostname allows. Observed request summaries remain short-lived background memory; pause-once state uses `browser.storage.session` and is cleared at tab/navigation boundaries.
 - Storage accessors normalize settings, migrate unversioned local shapes, drop unknown future schema versions conservatively, and expose reset/update helpers.
 - Background messages can read settings, update site pauses, set/reset hostname overrides, and reset local settings.
 - Storage message failures return `trackerblocker.settingsErrorResponse` with `storage-unavailable` instead of hanging the popup/options request.
@@ -357,8 +361,8 @@ TODO: implementation details
   restricted, allowed, and total request counts, plus separately labelled
   blocked-host and all-host filters.
 - Popup protection controls support active, paused once, and paused always states. Pause once is tab-scoped and survives refresh on the same site, while always pause is stored locally.
-- Rows expand in-place to show entity, local explanation, request types, rule source, and per-hostname Auto/Block/Allow controls for third-party rows.
-- The site pause button writes through `trackerblocker.updateSitePause`; row controls write through `trackerblocker.setDomainOverride`, then refresh the summary from background state.
+- Rows expand in-place to show entity, local explanation, request types, rule source, and bounded representative request decisions. “Allow on this site” is primary; global per-hostname Auto/Block/Allow controls are explicitly advanced.
+- The site pause button writes through `trackerblocker.updateSitePause`; site recovery writes through `trackerblocker.setSiteAllow`; advanced global controls write through `trackerblocker.setDomainOverride`.
 - Summary responses preserve observed decisions immutably. Settings changes
   affect future requests, while the current Auto/Block/Allow selection updates
   without rewriting historical counts.
@@ -373,9 +377,10 @@ Work:
 
 - Add WXT options entrypoint.
 - List always-paused sites with remove controls.
-- List per-hostname overrides with reset-to-Auto controls.
+- List site-specific hostname allows with remove controls.
+- List global per-hostname overrides with reset-to-Auto controls.
 - Add reset local settings control.
-- State that settings and learned data stay on device.
+- State that settings and local controls stay on device.
 
 Acceptance:
 
@@ -396,9 +401,11 @@ TODO: implementation details
 
 - The options page entrypoint lives in `src/entrypoints/options/` and WXT builds it as `options.html`.
 - Options reads settings through `trackerblocker.getSettings` and uses the same background message handlers as the popup.
-- Always-paused sites can be resumed, hostname overrides can be reset to Auto, and all local settings can be reset.
+- Site-specific allows can be removed, always-paused sites can be resumed,
+  global hostname overrides can be reset to Auto, and all durable settings can
+  be reset.
 - Empty, loading, and storage-unavailable states are handled with compact inline UI.
-- The page states that settings and learned data stay on device and that the MVP does not use telemetry, accounts, sync, remote classification, or runtime explanation fetches.
+- The page states that settings and local controls stay on device and that the MVP does not use telemetry, accounts, sync, remote classification, or runtime explanation fetches.
 - Verification used Vitest, TypeScript, and Firefox build; options UI browser smoke checks remain part of Phase 9 QA.
 
 ### Phase 9: MVP QA And Packaging
@@ -447,9 +454,12 @@ TODO: implementation details
   EasyPrivacy subresource blocks and exceptions feed immutable request-level
   accounting; badge and popup count semantics are explicit; and all in-memory
   evidence is bounded with visible truncation.
-- EasyPrivacy remains disabled by default. Phase 4 owns narrow explanation and
-  recovery UX. Phase 5 owns coverage, breakage, licensing, release readiness,
-  and the separate decision about automatic `main_frame` enforcement.
+- Phase 4 completed on July 20, 2026: request-level explanations, site-scoped
+  recovery, advanced global controls, session-backed pause once, local
+  diagnostics, and responsive mixed-host presentation are implemented.
+- EasyPrivacy remains disabled by default. Phase 5 owns coverage, breakage,
+  licensing, release readiness, and the separate decision about automatic
+  `main_frame` enforcement.
 
 See `easyprivacy-filtering-proposal.md` and `docs/easyprivacy-updates.md` for
 the detailed gates and maintainer workflow.
@@ -513,9 +523,9 @@ The MVP is done when:
 - The popup shows third-party hostnames, counts, categories, statuses, and explanations.
 - Known block categories are blocked by default.
 - Unknown third parties are allowed by default and shown clearly.
-- Pause once, always pause, and per-hostname overrides work.
+- Pause once, always pause, site-scoped allows, and global per-hostname overrides work.
 - Options page can review and reset local controls.
-- Settings stay in `browser.storage.local`.
+- Durable settings stay in `browser.storage.local`; pause-once state stays in `browser.storage.session`.
 - Catalog and explanations are packaged local data.
 - Tests cover classification, catalog lookup, decision precedence, and storage.
 - Firefox MV3 build, lint, and local run workflow are documented and passing.
