@@ -245,6 +245,16 @@ function createProbePage(host, pathname, fixturePort) {
       ]);
     `);
   }
+  if (probe === "spa" && host === "publisher.test") {
+    return harness(`
+      setTimeout(() => {
+        history.pushState({}, "", "/probe/spa-updated" + location.search);
+        setTimeout(() => finish([
+          image("spa-image", "http://screen13.com/collect/spa-pixel?resource=image")
+        ]), 100);
+      }, 500);
+    `);
+  }
   if (probe === "frame-child" && (host === "eng-tips.com" || host === "other-frame.test")) {
     return `<!doctype html><script>
       window.__epFixtureScriptLoaded = false;

@@ -68,7 +68,8 @@ Firefox 142 and 152.0.6. It verifies:
 - image, XHR, and WebSocket blocks with wrong-type controls;
 - exceptions, top-level and framed source constraints, and first-party paths;
 - redirect-attempt correlation, exact mixed-host accounting, scrubbed evidence,
-  and automatic main-frame non-enforcement;
+  late-request isolation across same-site document generations, and automatic
+  main-frame non-enforcement;
 - exact-site recovery isolation, pause once/always, global Allow/Block,
   options removal, reset, and stale-popup rejection;
 - pause once across five forced MV3 worker terminations, tab closure,
@@ -96,8 +97,10 @@ deterministic runtime tests.
 An explicit `WXT_EASYPRIVACY_MATCHING=false` build also passed on both Firefox
 versions: catalog block/restriction remained active, EasyPrivacy-only traffic
 was allowed, engine health stayed visible, and automatic main-frame enforcement
-remained off. This proves the emergency runtime-policy rollback before changing
-the ordinary default.
+remained off. After the exact-candidate gate exposed a late prior-document
+accounting race, the corrected emergency-off probe passed 20 consecutive
+fresh-profile repetitions. This proves the emergency runtime-policy rollback
+without contaminating a new page generation.
 
 Commands:
 
@@ -161,12 +164,12 @@ artifact inside Firefox 152.0.6:
 
 `npm run test:easyprivacy:package` inspected the built package and source zip:
 
-- same-commit catalog-only counterfactual: 258,334 bytes;
-- same-commit EasyPrivacy package: 1,203,610 bytes;
-- complete compressed EasyPrivacy adapter, dependency, and data delta: 945,276
+- same-commit catalog-only counterfactual: 258,563 bytes;
+- same-commit EasyPrivacy package: 1,203,841 bytes;
+- complete compressed EasyPrivacy adapter, dependency, and data delta: 945,278
   bytes (threshold: less than
   1.5 MB);
-- Firefox zip: 1,196,408 bytes;
+- Firefox zip: 1,196,636 bytes;
 - source zip: approximately 1.56 MB (its exact compressed size changes when
   this included evidence report changes); and
 - unchanged permissions, no content scripts, and all required source/artifact

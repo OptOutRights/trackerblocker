@@ -45,7 +45,10 @@ import {
   type TabObservationState,
 } from "../shared/requestObservation";
 import { applyRequestHeaderRestriction } from "../shared/requestRestriction";
-import { TabPageUrlCache } from "../shared/tabPageUrls";
+import {
+  TabPageUrlCache,
+  isStaleTopLevelDocumentRequest,
+} from "../shared/tabPageUrls";
 import {
   createSettingsUnavailableDecision,
   decideMainFrameRequest,
@@ -325,6 +328,18 @@ export default defineBackground(() => {
         );
         synchronizeTabObservationPage(state, requestPageUrl);
         const observationGeneration = state.generation;
+        const explicitDocumentUrl = getRequestStringProperty(
+          details,
+          "documentUrl",
+        );
+        const staleTopLevelDocumentRequest =
+          isStaleTopLevelDocumentRequest({
+            frameId: details.frameId,
+            currentDocumentUrls: tabPageUrls.getCurrentDocumentUrls(
+              details.tabId,
+            ),
+            documentUrl: explicitDocumentUrl,
+          });
         const context = normalizeWebRequestContext(details, requestPageUrl);
         const sitePauseStatus = settings
           ? getSitePauseStatus(
@@ -344,7 +359,10 @@ export default defineBackground(() => {
             )
           : createSettingsUnavailableDecision(context);
 
-        if (state.generation === observationGeneration) {
+        if (
+          state.generation === observationGeneration &&
+          !staleTopLevelDocumentRequest
+        ) {
           recordObservedRequest(
             state,
             {
@@ -489,7 +507,7 @@ export default defineBackground(() => {
       if (!changeInfo.url) {
         return;
       }
-      tabPageUrls.set(tabId, changeInfo.url);
+      tabPageUrls.setSameDocument(tabId, changeInfo.url);
 
       const state = getTabObservationState(tabObservations, tabId);
       const clearedTemporaryPause = clearTemporaryPauseForNavigation(

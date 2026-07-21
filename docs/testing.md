@@ -27,7 +27,8 @@ Current test files:
 - `src/shared/backgroundStartup.test.ts`: listener registration completes before
   settings, filter-engine, and badge initialization begins without browser mocks.
 - `src/shared/tabPageUrls.test.ts`: cold top-level tab URL resolution, caching,
-  navigation races, and tab-removal races across background-worker restarts.
+  navigation races, late prior-document detection, and tab-removal races across
+  background-worker restarts.
 - `src/shared/trackerCatalog.test.ts`: packaged catalog validation, lookup matching, suffix boundaries, fallback explanation wording, and malformed catalog rejection.
 - `src/shared/buildFlags.test.ts`: default-on EasyPrivacy and explicit
   emergency-off build-flag semantics, including invalid-value handling.

@@ -325,6 +325,33 @@ async function runNetworkCoverage(current) {
   );
   checkpoint("framed source positive and negative controls");
 
+  assert.deepEqual(
+    await runProbe(current, fixture.url("publisher.test", "/probe/spa")),
+    { "spa-image": "blocked" },
+  );
+  current.lastProbeUrl = await current.protocol.evaluateJson(
+    current.fixtureTab,
+    "location.href",
+  );
+  const spaSummary = await sendMessage(current, {
+    type: GET_SUMMARY,
+    tabId: current.fixtureBrowserTabId,
+    pageUrl: current.lastProbeUrl,
+  });
+  assert.deepEqual(spaSummary.requestCounts, {
+    total: 1,
+    blocked: 1,
+    restricted: 0,
+    allowed: 0,
+  });
+  assert.deepEqual(spaSummary.rows[0]?.actionCounts, {
+    total: 1,
+    blocked: 1,
+    restricted: 0,
+    allowed: 0,
+  });
+  checkpoint("same-document navigation keeps current requests observable");
+
   const mainFrameUrl = fixture.url(
     "00px.net",
     "/main-frame",

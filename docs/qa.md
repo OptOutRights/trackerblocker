@@ -8,7 +8,7 @@ Last run on July 20, 2026:
 
 - `npm run verify:easyprivacy`: passed source provenance, byte-identical rebuild,
   deserialization, rule-count, dependency-version, and representative-match checks.
-- `npm test`: passed, 21 test files and 170 tests. Phase 3/4/5 coverage includes
+- `npm test`: passed, 21 test files and 175 tests. Phase 3/4/5 coverage includes
   synchronous startup ordering, the 500 ms settings gate, cold fail-open and
   last-known-good recovery, immutable mixed-host accounting, redirect-attempt
   correlation, bounded evidence and visible truncation flags, main-frame policy,
@@ -20,13 +20,13 @@ Last run on July 20, 2026:
   stale detail-response rejection.
 - `npm run typecheck`: passed.
 - `npm run lint:firefox`: passed with 0 errors, 0 notices, and 1 bundled-code warning for dynamic `innerHTML`.
-- `npm run zip:firefox`: passed and produced a 1,196,408-byte Firefox
+- `npm run zip:firefox`: passed and produced a 1,196,636-byte Firefox
   zip and an approximately 1.56 MB source zip. The Firefox zip includes the EasyPrivacy
   engine, metadata, capability report, and third-party notices; the source zip
   also includes the exact upstream source and generator.
-- The reproducible same-commit catalog-only counterfactual is 258,334 bytes;
+- The reproducible same-commit catalog-only counterfactual is 258,563 bytes;
   the complete compressed EasyPrivacy adapter, dependency, and data delta is
-  945,276 bytes, below the 1.5 MB gate.
+  945,278 bytes, below the 1.5 MB gate.
 - The default build embeds EasyPrivacy matching as enabled for supported
   subresources. The explicit `WXT_EASYPRIVACY_MATCHING=false` emergency-off
   build preserves catalog policy and also passes the Firefox matrix.
