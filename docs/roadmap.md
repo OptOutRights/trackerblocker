@@ -12,6 +12,13 @@ The MVP should become useful in three loops:
 
 Keep each loop shippable on its own. Avoid mixing blocking, catalog authoring, options UI, and popup polish in the same branch unless a small glue change demands it.
 
+EasyPrivacy Phases 0-5 and the development default are implemented. The
+[July 20, 2026 evidence report](easyprivacy-phase-5-evidence-2026-07-20.md)
+records the default-enabled development release candidate. Named
+licensing/attribution sign-off remains a pre-release TODO before public
+distribution. Automatic EasyPrivacy `main_frame` enforcement remains outside
+this release.
+
 The first engineering slice should be **domain classification**, even though the first user-visible loop is request observation. Request observation immediately depends on a reliable answer to "is this request third-party relative to the current page?", so the classifier should land before the observer starts aggregating data.
 
 ### MVP Phase Diagram
@@ -448,7 +455,7 @@ TODO: implementation details
 
 - Phase 1 reproducibly vendors and packages a supported-only EasyPrivacy engine.
 - Phase 2 validates and deserializes that engine behind a pure adapter and a
-  default-off build flag.
+  build flag that was default-off during integration.
 - Phase 3 completed on July 18, 2026: listeners register before asynchronous
   initialization; settings use a bounded last-known-good gate; supported
   EasyPrivacy subresource blocks and exceptions feed immutable request-level
@@ -457,9 +464,12 @@ TODO: implementation details
 - Phase 4 completed on July 20, 2026: request-level explanations, site-scoped
   recovery, advanced global controls, session-backed pause once, local
   diagnostics, and responsive mixed-host presentation are implemented.
-- EasyPrivacy remains disabled by default. Phase 5 owns coverage, breakage,
-  licensing, release readiness, and the separate decision about automatic
-  `main_frame` enforcement.
+- Phase 5 default-enables supported EasyPrivacy subresource matching after its
+  coverage, breakage, recovery, performance, package, offline/privacy, and
+  engineering licensing/source-archive gates passed. Explicit emergency-off
+  behavior remains tested. Named licensing/attribution sign-off is required
+  before public distribution, and automatic `main_frame` enforcement remains a
+  separately reviewed future decision.
 
 See `easyprivacy-filtering-proposal.md` and `docs/easyprivacy-updates.md` for
 the detailed gates and maintainer workflow.

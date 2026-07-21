@@ -13,7 +13,9 @@ License: GNU General Public License version 3 or later, or Creative Commons
 Attribution-ShareAlike version 3.0 or later, as described by the upstream
 licence page at https://easylist.to/pages/licence.html
 License selected by TrackerBlocker: GNU General Public License version 3 or
-later, matching TrackerBlocker's GPLv3 license.
+later, matching TrackerBlocker's GPLv3 license. The complete selected license
+text is distributed as LICENSE in the source archive and is also available at
+https://www.gnu.org/licenses/gpl-3.0.txt.
 
 Ghostery adblocker packages
 ---------------------------
@@ -24,14 +26,19 @@ Packages:
 - @ghostery/adblocker-extended-selectors 2.18.1
 - @ghostery/url-parser 1.3.1
 
-Copyright: Ghostery GmbH and contributors
-Source: https://github.com/ghostery/adblocker and
-https://github.com/ghostery/url-parser
-License: Mozilla Public License version 2.0
+Copyright: Copyright (c) 2017-present Ghostery GmbH. All rights reserved
+(@ghostery/adblocker packages); Copyright (c) 2017-2025 Ghostery GmbH. All
+rights reserved (@ghostery/url-parser).
+Version-specific corresponding source:
+- https://github.com/ghostery/adblocker/tree/v2.18.1
+- https://github.com/ghostery/url-parser/tree/v1.3.1
+License: Mozilla Public License version 2.0. The complete license text is at
+https://www.mozilla.org/MPL/2.0/ and is included in each npm package.
 
 The npm packages contain their MPL-2.0 license files. Their exact package
 versions and registry integrity hashes are pinned in TrackerBlocker's
-package-lock.json, and their source repositories are identified above.
+package-lock.json. The version-specific source tags above identify the
+corresponding source for the bundled executable code.
 
 TrackerBlocker does not modify or remotely update these works at runtime. The
 EasyPrivacy source, generated network-rule engine, generation scripts,

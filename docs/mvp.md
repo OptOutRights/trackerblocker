@@ -96,3 +96,11 @@ Agents should update this section as MVP pieces are started and completed. Keep 
 - [x] Options page: site-specific allows, always-paused sites, global hostname overrides, reset controls, and local-only privacy note.
 - [x] Local storage: versioned settings migration, serialized mutations, site/global overrides, always-paused sites, and session-only pause-once state.
 - [x] Tests: core classification, rule decisions, explanation lookup, and storage behavior.
+- [x] EasyPrivacy Phase 5 engineering evidence: production corpus, real Firefox
+  142/current behavior, recovery and worker lifecycle, paired-site breakage,
+  performance/package, and offline/privacy inspection.
+- [x] EasyPrivacy default enablement: supported subresource matching defaults
+  on, with automatic `main_frame` enforcement off and an explicit emergency-off
+  build value. Named licensing/attribution sign-off remains a pre-release TODO
+  before public distribution. See the
+  [dated Phase 5 evidence](easyprivacy-phase-5-evidence-2026-07-20.md).

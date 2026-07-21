@@ -1,6 +1,6 @@
 # EasyPrivacy Filtering Proposal
 
-Status: accepted; Phases 0–4 completed on July 16–20, 2026
+Status: accepted; Phases 0–5 completed on July 16–20, 2026
 
 Reviewed against: `main` at `8772a27` on July 16, 2026, after fetching `origin` (`HEAD` and `origin/main` were equal)
 
@@ -25,8 +25,8 @@ Phase 2 result: production now validates and deserializes the packaged artifact
 behind a browser-independent adapter, normalizes request contexts, produces one
 request-level decision, and reuses that decision for cancellation and header
 restriction. Engine health is explicit and all unavailable states fall back to
-the catalog. EasyPrivacy matching and enforcement remain disabled by default
-behind `WXT_EASYPRIVACY_MATCHING=true`.
+the catalog. At this checkpoint EasyPrivacy matching and enforcement were
+disabled by default behind `WXT_EASYPRIVACY_MATCHING=true`.
 
 Phase 3 result: listeners register synchronously, settings use a bounded
 last-known-good startup gate, enforcement and evidence are request-level, and
@@ -37,9 +37,13 @@ hostname allows provide narrow recovery, global rules are advanced controls,
 pause once survives worker restarts in session storage, and site-scoped policy
 uses the authoritative top-level tab URL. Firefox 142 is the declared minimum.
 
-Next phase: **Phase 5 — Coverage, Breakage, And Release Gate**. EasyPrivacy
-remains disabled by default until its coverage, performance, package cost,
-breakage, and recovery gates pass.
+Phase 5 result: the production corpus, Firefox 142/current local matrices,
+worker/recovery exercise, paired 14-site study, performance/package budgets,
+offline/privacy proof, and engineering licensing/source-archive inspection
+pass. Supported subresource matching is default-on with an explicit
+`WXT_EASYPRIVACY_MATCHING=false` emergency off value. Named
+licensing/attribution sign-off remains a pre-release requirement before public
+distribution; automatic `main_frame` enforcement remains deferred.
 
 ## Decision
 
@@ -248,7 +252,11 @@ Implemented work:
 - Active request decisions are reused by later listeners and removed on completion, failure, navigation, tab closure, age or capacity eviction, and worker restart. Missing or evicted decisions are not reclassified.
 - Per-tab host rows, active decisions, redirect hops, context evidence, and matched rule/exception IDs are bounded. Exact request totals survive host-row truncation; affected host counts are labelled as lower bounds and all truncation states are exposed in the popup.
 - Badge text counts blocked requests. Popup totals separately label blocked requests, blocked hosts, allowed requests, restricted requests, mixed hosts, and bounded evidence.
-- Automatic EasyPrivacy enforcement remains build-time opt-in and applies only to supported subresource matches, including supported first-party subresource matches. Automatic `main_frame` matching is not invoked; only an explicit user Block override can cancel top-level navigation.
+- Automatic EasyPrivacy enforcement defaults on and applies only to supported
+  subresource matches, including supported first-party subresource matches. An
+  explicit build-time false value disables it for emergency rollback.
+  Automatic `main_frame` matching is not invoked; only an explicit user Block
+  override can cancel top-level navigation.
 
 Exit gate: **met**. A mixed-use hostname can contain blocked and allowed requests without either action being misreported. First-party subresources are blocked only by an explicit supported list rule or user choice, and `main_frame` navigations are blocked only by an explicit user choice.
 
@@ -296,6 +304,17 @@ why might it be tracking, and how can I fix only this site?” entirely from loc
 data.
 
 ### Phase 5: Coverage, Breakage, And Release Gate
+
+Implementation status (July 20, 2026): the production corpus, Firefox
+142/current local matrices, worker/recovery exercise, paired 14-site study,
+performance/package budgets, and offline/privacy engineering inspection pass.
+Supported EasyPrivacy subresource matching is default-on in the development
+release candidate, with an explicit emergency-off value. Engineering licensing
+and source-archive inspection is sufficient for this development stage; named
+maintainer licensing/attribution sign-off is a required pre-release TODO before
+public distribution. Automatic EasyPrivacy `main_frame` enforcement is
+explicitly deferred. See
+[`docs/easyprivacy-phase-5-evidence-2026-07-20.md`](docs/easyprivacy-phase-5-evidence-2026-07-20.md).
 
 Goal: establish that the new coverage is materially better without unacceptable breakage.
 

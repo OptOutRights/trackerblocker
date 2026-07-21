@@ -57,8 +57,15 @@ The popup shows hosts observed on the active tab, immutable blocked/restricted/a
 
 The repository includes a reproducible, supported-network-rule EasyPrivacy
 artifact. The production background validates and loads the packaged artifact,
-but EasyPrivacy matching and enforcement remain disabled by default behind an
-explicit local build flag. The exact upstream source, checksum, capability
+and supported EasyPrivacy subresource matching is enabled by default after
+passing the Phase 5 Firefox, breakage, recovery, performance, package, offline,
+privacy, and engineering licensing/source-archive gates. Build explicitly with
+`WXT_EASYPRIVACY_MATCHING=false` for an emergency policy rollback. Named
+licensing/attribution sign-off remains a required pre-release TODO before any
+public distribution; see the
+[`dated evidence report`](docs/easyprivacy-phase-5-evidence-2026-07-20.md).
+Automatic EasyPrivacy top-level navigation enforcement remains out of scope.
+The exact upstream source, checksum, capability
 exclusions, generator, and open-source
 [`notices`](public/THIRD-PARTY-NOTICES.txt) are versioned alongside it. See
 [`docs/easyprivacy-updates.md`](docs/easyprivacy-updates.md) for the explicit

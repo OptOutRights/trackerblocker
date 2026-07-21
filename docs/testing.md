@@ -15,6 +15,9 @@ Current test files:
 - `scripts/easyprivacy/supply-chain.test.mjs`: retained-source provenance,
   source identity checks, unsupported-rule inventory, and byte-identical
   regeneration of the packaged EasyPrivacy outputs.
+- `scripts/easyprivacy/coverage.test.ts`: versioned Phase 5 production-artifact
+  comparator, constraint controls, redirects, mixed hosts, precedence,
+  fallback, unsupported actions, aggregates, and privacy-safe evidence.
 - `src/shared/domains.test.ts`: first-party vs third-party classification, URL normalization, WebSocket requests, public suffix cases, IPs, localhost, malformed inputs, and ignored schemes.
 - `src/shared/requestObservation.test.ts`: immutable request-attempt aggregation,
   mixed action/source counts, redirect correlation, bounded matched-rule,
@@ -26,13 +29,13 @@ Current test files:
 - `src/shared/tabPageUrls.test.ts`: cold top-level tab URL resolution, caching,
   navigation races, and tab-removal races across background-worker restarts.
 - `src/shared/trackerCatalog.test.ts`: packaged catalog validation, lookup matching, suffix boundaries, fallback explanation wording, and malformed catalog rejection.
-- `src/shared/buildFlags.test.ts`: explicit opt-in and default-off EasyPrivacy
-  build-flag semantics.
+- `src/shared/buildFlags.test.ts`: default-on EasyPrivacy and explicit
+  emergency-off build-flag semantics, including invalid-value handling.
 - `src/shared/filterEngine.test.ts`: packaged artifact validation, health,
   blocks, exceptions, request mapping, degraded fallback, and the production
   Ghostery import boundary.
 - `src/shared/requestDecisions.test.ts`: normalized request contracts, unified
-  precedence, default-off catalog compatibility, EasyPrivacy exceptions and
+  precedence, disabled-policy catalog compatibility, EasyPrivacy exceptions and
   first-party subresources, explicit settings-unavailable fail-open decisions,
   header restrictions, and user-only main-frame blocking.
 - `src/storage/settings.test.ts`: version 2 settings defaults, exact-hostname normalization, version 1 migration, serialized mutations, site-scoped allows, read/write helpers, updates, and reset behavior.
@@ -122,18 +125,51 @@ npm run web-ext:firefox
 
 Manual checks should be recorded in the relevant roadmap implementation notes when they cover behavior that Vitest cannot prove.
 
-EasyPrivacy matching is disabled when the build flag is absent. Use the
-explicit local flag only for adapter, policy, and enforcement smoke tests:
+EasyPrivacy matching is enabled when the build flag is absent. Use the ordinary
+development command for adapter, policy, and enforcement smoke tests:
 
 ```sh
-WXT_EASYPRIVACY_MATCHING=true npm run dev:firefox
+npm run dev:firefox
 ```
 
-Rebuild without the flag before release verification.
+Use `WXT_EASYPRIVACY_MATCHING=false` only for the explicit emergency-off build
+and its dedicated Firefox proof.
 
-Automatic EasyPrivacy `main_frame` enforcement is disabled even in an opt-in
+Automatic EasyPrivacy `main_frame` enforcement is disabled in the default
 build. Test top-level navigation cancellation with an explicit user
-Block override only; the automatic main-frame gate belongs to Phase 5.
+Block override only; automatic main-frame enforcement is a separately reviewed
+future project.
+
+### EasyPrivacy Phase 5 gates
+
+Run the non-interactive local/current-Firefox gate:
+
+```sh
+npm run test:easyprivacy:phase5
+```
+
+The individual Firefox, performance, package, offline, and corpus commands are
+available as `test:easyprivacy:*` package scripts. The public 14-site pair is a
+dated, networked check and stays explicit:
+
+```sh
+npm run test:easyprivacy:sites
+```
+
+`npm run test:easyprivacy:firefox:off` builds with the explicit emergency-off
+value and verifies catalog fallback plus main-frame non-enforcement in Firefox.
+
+Run the local matrix against the Firefox 142 binary separately:
+
+```sh
+FIREFOX_BINARY=/path/to/firefox-142/firefox npm run test:easyprivacy:firefox
+FIREFOX_BINARY=/path/to/firefox-142/firefox npm run test:easyprivacy:firefox:degraded
+FIREFOX_BINARY=/path/to/firefox-142/firefox npm run test:easyprivacy:firefox:permission
+FIREFOX_BINARY=/path/to/firefox-142/firefox npm run test:easyprivacy:firefox:off
+```
+
+Results and the development default-enablement decision are recorded in the
+[Phase 5 evidence report](easyprivacy-phase-5-evidence-2026-07-20.md).
 
 ### Future UI Smoke Tests
 

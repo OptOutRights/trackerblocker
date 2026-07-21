@@ -8,7 +8,7 @@ Last run on July 20, 2026:
 
 - `npm run verify:easyprivacy`: passed source provenance, byte-identical rebuild,
   deserialization, rule-count, dependency-version, and representative-match checks.
-- `npm test`: passed, 20 test files and 160 tests. Phase 3/4 coverage includes
+- `npm test`: passed, 21 test files and 170 tests. Phase 3/4/5 coverage includes
   synchronous startup ordering, the 500 ms settings gate, cold fail-open and
   last-known-good recovery, immutable mixed-host accounting, redirect-attempt
   correlation, bounded evidence and visible truncation flags, main-frame policy,
@@ -20,26 +20,32 @@ Last run on July 20, 2026:
   stale detail-response rejection.
 - `npm run typecheck`: passed.
 - `npm run lint:firefox`: passed with 0 errors, 0 notices, and 1 bundled-code warning for dynamic `innerHTML`.
-- `npm run zip:firefox`: passed and produced an approximately 1.19 MB Firefox
-  zip and 1.53 MB source zip. The Firefox zip includes the EasyPrivacy
+- `npm run zip:firefox`: passed and produced a 1,196,408-byte Firefox
+  zip and an approximately 1.56 MB source zip. The Firefox zip includes the EasyPrivacy
   engine, metadata, capability report, and third-party notices; the source zip
   also includes the exact upstream source and generator.
-- The Firefox zip is approximately 940 KB larger than the 247,134-byte Phase 0
-  TrackerBlocker baseline, below the 1.5 MB compressed-cost gate.
-- The default build embeds EasyPrivacy matching as disabled. An explicit
-  `WXT_EASYPRIVACY_MATCHING=true` Firefox build also completed and passed
-  `web-ext lint`; release verification then rebuilt default-off.
+- The reproducible same-commit catalog-only counterfactual is 258,334 bytes;
+  the complete compressed EasyPrivacy adapter, dependency, and data delta is
+  945,276 bytes, below the 1.5 MB gate.
+- The default build embeds EasyPrivacy matching as enabled for supported
+  subresources. The explicit `WXT_EASYPRIVACY_MATCHING=false` emergency-off
+  build preserves catalog policy and also passes the Firefox matrix.
 - Source inspection found only two runtime `fetch(...)` calls, both for the
   packaged `moz-extension:` engine and metadata. Manifest permissions are
   unchanged. Durable settings use `browser.storage.local`; pause-once state
   uses `browser.storage.session`; request evidence is not persisted. Firefox
   142 is the declared minimum required by the extension's storage and manifest
   usage.
-- A bounded `web-ext run` smoke installed the opt-in `.output/firefox-mv3`
+- A bounded `web-ext run` smoke installed the default `.output/firefox-mv3`
   build as a temporary add-on in Firefox 152.0.6 with automatic reload disabled.
 - The popup was rendered against a local mixed-host fixture at 380 px and 300
   px. Both widths had no horizontal overflow. Block and exception explanations,
   the primary “Allow on this site” control, and refresh feedback were exercised.
+- The production-artifact corpus, current stable and Firefox 142 local matrices,
+  five worker restarts, full-browser restarts, degraded and missing-permission
+  variants, 14-site paired study, current Firefox performance, package/source
+  inspection, and offline/privacy checks are recorded in the
+  [Phase 5 evidence report](easyprivacy-phase-5-evidence-2026-07-20.md).
 
 `rg "innerHTML|dangerouslySetInnerHTML" src` found no source-level usage related to the lint warning.
 
@@ -61,10 +67,10 @@ Use a fresh Firefox profile with `npm run dev:firefox` or the built `.output/fir
 - Always pause the current site, open it in another tab, and confirm the site remains paused until resumed.
 - Set a blocked third-party hostname to Allow, refresh, and confirm it is allowed.
 - Set an unknown third-party hostname to Block, refresh, and confirm it is blocked.
-- In an opt-in `WXT_EASYPRIVACY_MATCHING=true` build, confirm a supported
+- In the default build, confirm a supported
   subresource block is canceled, a supported exception is allowed, and an
   explicitly matched first-party subresource follows the EasyPrivacy result.
-- In the same opt-in build, confirm an EasyPrivacy-only `main_frame` match is
+- In the same build, confirm an EasyPrivacy-only `main_frame` match is
   not canceled, then confirm an explicit user Block override can cancel that
   top-level hostname.
 - If a stress fixture exceeds a memory bound, confirm the popup exposes the
@@ -81,7 +87,7 @@ Use a fresh Firefox profile with `npm run dev:firefox` or the built `.output/fir
   WXT build, `web-ext` validation, bounded Firefox launch, and checklist above.
 - The packaged catalog is intentionally conservative and endpoint-focused; broad mixed-use product domains remain out of the default block list.
 - Top-level navigations reset per-tab evidence and are not request rows, so redirect evidence covers tracked subresources rather than main-frame redirect chains.
-- Real cancellation timing, worker suspension/restart, session-pause recovery,
-  and host-permission revocation still need a dedicated fresh-profile Firefox
-  exercise; unit tests and successful temporary installation do not fully
-  simulate those lifecycle events.
+- EasyPrivacy is default-on for supported subresources. Named maintainer
+  licensing/attribution sign-off remains required before public release or
+  distribution. Automatic `main_frame` enforcement remains a separately gated
+  future project.

@@ -1,5 +1,5 @@
 export function isEasyPrivacyMatchingEnabled(value: unknown): boolean {
-  return value === "true";
+  return value === undefined || value === "true";
 }
 
 export const EASYPRIVACY_MATCHING_ENABLED = isEasyPrivacyMatchingEnabled(

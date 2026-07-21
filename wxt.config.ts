@@ -1,7 +1,17 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import preact from "@preact/preset-vite";
 import tailwindcss from "@tailwindcss/vite";
 import type { Plugin } from "vite";
 import { defineConfig } from "wxt";
+
+const packageBaseline =
+  process.env.TRACKERBLOCKER_QA_PACKAGE_BASELINE === "true";
+const packageBaselineFilterEngine = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "scripts/easyprivacy/package-baseline-filter-engine.ts",
+);
 
 function extensionDevServerCors(): Plugin {
   return {
@@ -21,6 +31,7 @@ export default defineConfig({
   manifestVersion: 3,
   zip: {
     excludeSources: [
+      "GOAL.md",
       "spikes/easyprivacy/fixtures/easyprivacy.txt",
       "spikes/easyprivacy/wxt/public/filter-data/easyprivacy.engine",
     ],
@@ -58,5 +69,19 @@ export default defineConfig({
   },
   vite: () => ({
     plugins: [preact(), tailwindcss(), extensionDevServerCors()],
+    resolve: packageBaseline
+      ? {
+          alias: [
+            {
+              find: "../shared/filterEngine",
+              replacement: packageBaselineFilterEngine,
+            },
+            {
+              find: /\/src\/shared\/filterEngine(?:\.ts)?$/,
+              replacement: packageBaselineFilterEngine,
+            },
+          ],
+        }
+      : undefined,
   }),
 });

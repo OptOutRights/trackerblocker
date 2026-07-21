@@ -55,12 +55,13 @@ is disclosed in the popup. Durable user settings remain in
 `browser.storage.session` so a Firefox MV3 worker restart does not silently
 resume protection; it is cleared when the tab closes or navigates away.
 
-EasyPrivacy matching remains disabled by default. For local opt-in testing, use
-the flag for one development session or build:
+Supported EasyPrivacy subresource matching is enabled by default. For an
+emergency policy rollback, use the explicit off value for one development
+session or build:
 
 ```sh
-WXT_EASYPRIVACY_MATCHING=true npm run dev:firefox
-WXT_EASYPRIVACY_MATCHING=true npm run build:firefox
+WXT_EASYPRIVACY_MATCHING=false npm run dev:firefox
+WXT_EASYPRIVACY_MATCHING=false npm run build:firefox
 ```
 
 The flag is build-time input, not a persisted extension setting. Do not commit
@@ -68,12 +69,19 @@ local `.env` flag files. The runtime does not load the capability report or the
 retained source: unsupported actions remain generation-time review information
 and cannot become runtime matches.
 
-When opted in, supported EasyPrivacy blocks and exceptions apply to
-subresources before the first-party default, including explicitly matched
+Supported EasyPrivacy blocks and exceptions apply to subresources before the
+first-party default, including explicitly matched
 first-party subresources. EasyPrivacy is not evaluated for automatic
 `main_frame` cancellation. A global user Block override can still
 cancel a matching top-level hostname; automatic top-level enforcement has a
 separate Phase 5 coverage, breakage, and recovery gate.
+
+The engineering portion of that gate is recorded in the
+[July 20, 2026 Phase 5 evidence report](easyprivacy-phase-5-evidence-2026-07-20.md).
+Engineering licensing and source-archive checks are sufficient for the current
+development default. A named maintainer licensing/attribution sign-off remains
+a mandatory pre-release TODO before public release or distribution. Automatic
+`main_frame` enforcement is not part of the default behavior.
 
 ## Refreshing EasyPrivacy
 
@@ -139,6 +147,24 @@ npm test
 npm run typecheck
 npm run lint:firefox
 npm run zip:firefox
+```
+
+The discoverable Phase 5 command runs the deterministic local/current-Firefox
+checks in order:
+
+```sh
+npm run test:easyprivacy:phase5
+```
+
+The public paired-site study and Firefox 142 run remain explicit; see the dated
+evidence report for their commands and results.
+
+For an emergency policy rollback, build explicitly with matching disabled and
+run its Firefox proof:
+
+```sh
+WXT_EASYPRIVACY_MATCHING=false npm run build:firefox
+npm run test:easyprivacy:firefox:off
 ```
 
 Confirm that the Firefox extension zip contains `filter-data/easyprivacy.engine`,

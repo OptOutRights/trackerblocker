@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { isEasyPrivacyMatchingEnabled } from "./buildFlags";
 
 describe("EasyPrivacy build flag", () => {
-  it("is enabled only by the explicit true string", () => {
+  it("defaults on and retains an explicit emergency-off value", () => {
+    expect(isEasyPrivacyMatchingEnabled(undefined)).toBe(true);
     expect(isEasyPrivacyMatchingEnabled("true")).toBe(true);
     expect(isEasyPrivacyMatchingEnabled("false")).toBe(false);
     expect(isEasyPrivacyMatchingEnabled(true)).toBe(false);
-    expect(isEasyPrivacyMatchingEnabled(undefined)).toBe(false);
+    expect(isEasyPrivacyMatchingEnabled("")).toBe(false);
+    expect(isEasyPrivacyMatchingEnabled("typo")).toBe(false);
   });
 });
