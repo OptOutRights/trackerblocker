@@ -171,7 +171,7 @@ function RequestRow({
               {canSetSiteAllow && (
                 <button
                   aria-pressed={row.currentSiteAllow}
-                  class="w-full border border-[#5db7dd] bg-[#dff5ff] px-3 py-2 font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                  class="w-full border border-[#2864fc] bg-[#edf2ff] px-3 py-2 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={areSettingsControlsDisabled}
                   type="button"
                   onClick={() =>
@@ -444,7 +444,7 @@ function OverrideButton({
       aria-pressed={isSelected}
       class={`px-2 py-2 font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
         isSelected
-          ? "bg-[#dff5ff] text-zinc-950"
+          ? "bg-[#edf2ff] text-zinc-950"
           : "bg-white text-zinc-600 hover:bg-zinc-50"
       }`}
       disabled={isDisabled}
@@ -575,14 +575,14 @@ function requestRowClass(row: ObservedRequestRow): string {
 
 function statusBadgeClass(row: ObservedRequestRow): string {
   const base =
-    "inline-flex min-w-8 justify-center border px-2 py-1 text-xs font-semibold leading-none";
+    "inline-flex min-w-8 justify-center border px-2 py-1 text-xs font-medium leading-none";
 
   if (row.isMixed) {
-    return `${base} border-[#8ab7c9] bg-[#eef9fc] text-zinc-950`;
+    return `${base} border-[#7f9ff5] bg-[#f4f7ff] text-zinc-950`;
   }
 
   if (row.actionCounts.blocked > 0) {
-    return `${base} border-[#5db7dd] bg-[#dff5ff] text-zinc-950`;
+    return `${base} border-[#2864fc] bg-[#edf2ff] text-zinc-950`;
   }
 
   if (row.actionCounts.restricted > 0) {
