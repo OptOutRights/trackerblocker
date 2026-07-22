@@ -54,7 +54,7 @@ export function RequestRows({
 
   return (
     <div class="mt-3 min-w-0">
-      <div class="grid gap-2">
+      <div class="tb-request-list">
         {rows.map((row) => (
           <RequestRow
             areSettingsControlsDisabled={areSettingsControlsDisabled}
@@ -111,38 +111,74 @@ function RequestRow({
   return (
     <article class={requestRowClass(row)}>
       <button
+        aria-label={`${row.displayName}; ${formatActionSummary(row).replaceAll(" · ", ", ")}`}
         aria-expanded={isExpanded}
-        class="flex w-full items-start justify-between gap-3 text-left"
+        class="tb-request-row-toggle"
         type="button"
         onClick={onToggle}
       >
-        <div class="min-w-0">
-          <p class="truncate text-sm font-medium text-zinc-950">
-            {row.displayName}
-          </p>
-          <p class="mt-1 text-xs text-zinc-500">
-            {formatRelationship(row.relationship)} -{" "}
-            {formatCategory(row.category)}
-            {row.entity ? ` by ${row.entity}` : ""} -{" "}
-            {row.requestTypes.join(", ")}
-          </p>
-        </div>
-        <div class="shrink-0 text-right">
-          <span class={statusBadgeClass(row)}>{row.requestCount}</span>
-          <p class="mt-1 text-xs font-medium text-zinc-500">
-            {formatActionSummary(row)}
-          </p>
-        </div>
+        <span class="tb-request-row-name" aria-hidden="true">
+          {row.displayName}
+        </span>
+        <span class="tb-request-row-summary" aria-hidden="true">
+          {formatActionSummary(row)}
+        </span>
+        <span class="tb-request-row-summary-compact" aria-hidden="true">
+          {formatCompactActionSummary(row)}
+        </span>
+        <svg
+          aria-hidden="true"
+          class="tb-request-row-chevron"
+          fill="none"
+          viewBox="0 0 20 20"
+        >
+          <path
+            d="m7.5 5 5 5-5 5"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.75"
+          />
+        </svg>
       </button>
 
       {isExpanded && (
-        <div class="mt-3 border-t border-zinc-200/80 pt-3 text-xs text-zinc-600">
+        <div class="tb-request-row-details border-t border-zinc-200/80 text-xs text-zinc-600">
+          {canSetSiteAllow && (
+            <button
+              aria-pressed={row.currentSiteAllow}
+              class="mb-3 w-full border border-[#2864fc] bg-[#edf2ff] px-3 py-2 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={areSettingsControlsDisabled}
+              type="button"
+              onClick={() =>
+                void onSetSiteAllow(
+                  row.displayName,
+                  !row.currentSiteAllow,
+                  row.id,
+                )
+              }
+            >
+              {row.currentSiteAllow
+                ? "Remove allow on this site"
+                : "Allow on this site"}
+            </button>
+          )}
+
           <dl class="grid gap-2">
+            <DetailRow
+              label="Relationship"
+              value={formatRelationship(row.relationship)}
+            />
+            <DetailRow label="Category" value={formatCategory(row.category)} />
             <DetailRow
               label="Entity"
               value={row.entity ?? "Not in local catalog"}
             />
             <DetailRow label="Explanation" value={row.explanation} />
+            <DetailRow
+              label="Requests"
+              value={`${row.requestCount} observed — ${formatActionSummary(row)}`}
+            />
             <DetailRow
               label="Request types"
               value={row.requestTypes.join(", ")}
@@ -166,65 +202,42 @@ function RequestRow({
             row={row}
           />
 
-          {(canSetSiteAllow || canSetGlobalOverride) && (
-            <div class="mt-3 grid gap-2">
-              {canSetSiteAllow && (
-                <button
-                  aria-pressed={row.currentSiteAllow}
-                  class="w-full border border-[#2864fc] bg-[#edf2ff] px-3 py-2 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={areSettingsControlsDisabled}
-                  type="button"
-                  onClick={() =>
-                    void onSetSiteAllow(
-                      row.displayName,
-                      !row.currentSiteAllow,
-                      row.id,
-                    )
+          {canSetGlobalOverride && (
+            <details class="mt-3">
+              <summary class="cursor-pointer font-medium text-zinc-600">
+                Advanced global rule
+              </summary>
+              <p class="mt-1 leading-snug text-zinc-500">
+                Applies to this hostname on every site. Changes affect future
+                requests; refresh to retry this page.
+              </p>
+              <div class="mt-2 grid grid-cols-3 overflow-hidden border border-zinc-200 bg-white">
+                <OverrideButton
+                  isDisabled={areSettingsControlsDisabled}
+                  isSelected={selectedOverride === "auto"}
+                  label="Auto"
+                  onSelect={() =>
+                    void onSetDomainOverride(row.displayName, null)
                   }
-                >
-                  {row.currentSiteAllow
-                    ? "Remove allow on this site"
-                    : "Allow on this site"}
-                </button>
-              )}
-              {canSetGlobalOverride && (
-                <details>
-                  <summary class="cursor-pointer font-medium text-zinc-600">
-                    Advanced global rule
-                  </summary>
-                  <p class="mt-1 leading-snug text-zinc-500">
-                    Applies to this hostname on every site. Changes affect
-                    future requests; refresh to retry this page.
-                  </p>
-                  <div class="mt-2 grid grid-cols-3 overflow-hidden border border-zinc-200 bg-white">
-                    <OverrideButton
-                      isDisabled={areSettingsControlsDisabled}
-                      isSelected={selectedOverride === "auto"}
-                      label="Auto"
-                      onSelect={() =>
-                        void onSetDomainOverride(row.displayName, null)
-                      }
-                    />
-                    <OverrideButton
-                      isDisabled={areSettingsControlsDisabled}
-                      isSelected={selectedOverride === "block"}
-                      label="Block"
-                      onSelect={() =>
-                        void onSetDomainOverride(row.displayName, "block")
-                      }
-                    />
-                    <OverrideButton
-                      isDisabled={areSettingsControlsDisabled}
-                      isSelected={selectedOverride === "allow"}
-                      label="Allow"
-                      onSelect={() =>
-                        void onSetDomainOverride(row.displayName, "allow")
-                      }
-                    />
-                  </div>
-                </details>
-              )}
-            </div>
+                />
+                <OverrideButton
+                  isDisabled={areSettingsControlsDisabled}
+                  isSelected={selectedOverride === "block"}
+                  label="Block"
+                  onSelect={() =>
+                    void onSetDomainOverride(row.displayName, "block")
+                  }
+                />
+                <OverrideButton
+                  isDisabled={areSettingsControlsDisabled}
+                  isSelected={selectedOverride === "allow"}
+                  label="Allow"
+                  onSelect={() =>
+                    void onSetDomainOverride(row.displayName, "allow")
+                  }
+                />
+              </div>
+            </details>
           )}
         </div>
       )}
@@ -552,7 +565,23 @@ export function formatActionSummary(row: ObservedRequestRow): string {
       : null,
   ]
     .filter((part): part is string => Boolean(part))
-    .join(", ");
+    .join(" · ");
+}
+
+export function formatCompactActionSummary(row: ObservedRequestRow): string {
+  return [
+    row.actionCounts.blocked > 0
+      ? `${row.actionCounts.blocked}B`
+      : null,
+    row.actionCounts.restricted > 0
+      ? `${row.actionCounts.restricted}R`
+      : null,
+    row.actionCounts.allowed > 0
+      ? `${row.actionCounts.allowed}A`
+      : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
 }
 
 function requestRowClass(row: ObservedRequestRow): string {
@@ -571,23 +600,4 @@ function requestRowClass(row: ObservedRequestRow): string {
   }
 
   return `${base} is-allowed`;
-}
-
-function statusBadgeClass(row: ObservedRequestRow): string {
-  const base =
-    "inline-flex min-w-8 justify-center border px-2 py-1 text-xs font-medium leading-none";
-
-  if (row.isMixed) {
-    return `${base} border-[#7f9ff5] bg-[#f4f7ff] text-zinc-950`;
-  }
-
-  if (row.actionCounts.blocked > 0) {
-    return `${base} border-[#2864fc] bg-[#edf2ff] text-zinc-950`;
-  }
-
-  if (row.actionCounts.restricted > 0) {
-    return `${base} border-[#d6c3a4] bg-[#fff8eb] text-[#6b4d21]`;
-  }
-
-  return `${base} border-zinc-200 bg-white text-zinc-700`;
 }

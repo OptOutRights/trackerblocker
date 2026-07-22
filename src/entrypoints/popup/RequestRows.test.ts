@@ -4,6 +4,7 @@ import type { ObservedRequestRow } from "../../shared/requestObservation";
 import {
   formatActionSummary,
   formatCatalogBasis,
+  formatCompactActionSummary,
   formatRuleSources,
 } from "./RequestRows";
 
@@ -41,7 +42,10 @@ describe("mixed request presentation", () => {
     } as ObservedRequestRow;
 
     expect(formatActionSummary(row)).toBe(
-      "3 blocked, 1 restricted, 5 allowed",
+      "3 blocked · 1 restricted · 5 allowed",
+    );
+    expect(formatCompactActionSummary(row)).toBe(
+      "3B · 1R · 5A",
     );
     expect(formatRuleSources(row)).toBe(
       "site allow: 2, user allow: 1, settings unavailable: 1, EasyPrivacy: 3, catalog: 1, default allow: 3",
