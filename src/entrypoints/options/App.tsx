@@ -171,7 +171,7 @@ export function App() {
       <div class="mx-auto max-w-3xl px-4 py-6">
         <header class="mb-6 flex items-start justify-between gap-4">
           <div>
-            <p class="text-xs font-semibold uppercase text-emerald-700">
+            <p class="text-xs font-medium uppercase text-emerald-700">
               TrackerBlocker
             </p>
             <h1 class="mt-1 text-2xl font-semibold">Options</h1>
@@ -193,7 +193,7 @@ export function App() {
         )}
 
         <section class="mb-6">
-          <h2 class="text-sm font-semibold uppercase text-zinc-500">
+          <h2 class="text-sm font-medium uppercase text-zinc-500">
             Always-paused sites
           </h2>
           <SettingRows
@@ -209,7 +209,7 @@ export function App() {
         </section>
 
         <section class="mb-6">
-          <h2 class="text-sm font-semibold uppercase text-zinc-500">
+          <h2 class="text-sm font-medium uppercase text-zinc-500">
             Allowed on one site
           </h2>
           <SettingRows
@@ -225,7 +225,7 @@ export function App() {
         </section>
 
         <section class="mb-6">
-          <h2 class="text-sm font-semibold uppercase text-zinc-500">
+          <h2 class="text-sm font-medium uppercase text-zinc-500">
             Global hostname overrides
           </h2>
           <SettingRows
