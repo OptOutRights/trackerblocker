@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   HEALTH_CHECK_MESSAGE,
+  HEALTH_CHECK_RESPONSE,
   type HealthCheckResponse,
   isHealthCheckMessage,
+  isHealthCheckResponse,
 } from "./health";
 
 describe("isHealthCheckMessage", () => {
@@ -42,5 +44,39 @@ describe("isHealthCheckMessage", () => {
       provenance: null,
       hostPermissionGranted: false,
     });
+  });
+});
+
+describe("isHealthCheckResponse", () => {
+  const response: HealthCheckResponse = {
+    type: HEALTH_CHECK_RESPONSE,
+    ok: true,
+    startedAt: "2026-07-17T00:00:00.000Z",
+    easyPrivacy: {
+      matchingEnabled: true,
+      engineHealth: "ready",
+      degradedReason: null,
+      provenance: null,
+      hostPermissionGranted: true,
+    },
+    settings: {
+      health: "ready",
+      hasUsableSnapshot: true,
+      degradedReason: null,
+    },
+  };
+
+  it("accepts a complete health response", () => {
+    expect(isHealthCheckResponse(response)).toBe(true);
+  });
+
+  it("rejects incomplete health responses", () => {
+    expect(
+      isHealthCheckResponse({
+        ...response,
+        easyPrivacy: { engineHealth: "ready" },
+      }),
+    ).toBe(false);
+    expect(isHealthCheckResponse(null)).toBe(false);
   });
 });
