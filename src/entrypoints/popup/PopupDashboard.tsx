@@ -1,5 +1,4 @@
 import type { DomainOverrideAction } from "../../shared/requestDecisions";
-import type { HealthCheckResponse } from "../../messaging/health";
 import type {
   HostRequestDetails,
   ObservedRequestRow,
@@ -17,12 +16,12 @@ export function PopupDashboard({
   activeHost,
   activeTabId,
   backgroundStatus,
-  diagnostics,
   expandedRowId,
   hostDetails,
   hostDetailsStatus,
   isPauseDisabled,
   onChangeRequestView,
+  onOpenSettings,
   onSetDomainOverride,
   onSetSiteAllow,
   onSetPause,
@@ -35,12 +34,12 @@ export function PopupDashboard({
   activeHost: string;
   activeTabId: number | null;
   backgroundStatus: BackgroundStatus;
-  diagnostics: HealthCheckResponse | null;
   expandedRowId: string | null;
   hostDetails: HostRequestDetails | null;
   hostDetailsStatus: "idle" | "loading" | "ready" | "unavailable";
   isPauseDisabled: boolean;
   onChangeRequestView: (view: RequestView) => void;
+  onOpenSettings: () => void;
   onSetDomainOverride: (
     domain: string,
     action: DomainOverrideAction | null,
@@ -71,171 +70,118 @@ export function PopupDashboard({
   return (
     <main class="tb-popup text-zinc-950">
       <section class="tb-shell">
-        <DashboardHeader
-          activeHost={activeHost}
-          isUnavailable={backgroundStatus === "unavailable"}
-          status={sitePauseStatus}
-        />
+        <div class="tb-fixed-region">
+          <DashboardHeader
+            activeHost={activeHost}
+            isUnavailable={backgroundStatus === "unavailable"}
+            onOpenSettings={onOpenSettings}
+            status={sitePauseStatus}
+          />
 
-        <ProtectionSummary summary={summary} />
+          <ProtectionSummary summary={summary} />
 
-        <PauseControls
-          activeTabId={activeTabId}
-          isDisabled={isPauseDisabled}
-          status={sitePauseStatus}
-          onSetPause={onSetPause}
-        />
+          <PauseControls
+            activeTabId={activeTabId}
+            isDisabled={isPauseDisabled}
+            status={sitePauseStatus}
+            onSetPause={onSetPause}
+          />
 
-        <RequestActions
-          blockedCount={summary?.hostCounts.blocked ?? 0}
-          countsAreLowerBounds={summary?.hostCounts.lowerBound ?? false}
-          currentView={requestView}
-          totalCount={summary?.hostCounts.observed ?? 0}
-          onChange={onChangeRequestView}
-        />
+          <RequestActions
+            blockedCount={summary?.hostCounts.blocked ?? 0}
+            countsAreLowerBounds={summary?.hostCounts.lowerBound ?? false}
+            currentView={requestView}
+            totalCount={summary?.hostCounts.observed ?? 0}
+            onChange={onChangeRequestView}
+          />
+
+          {hasSystemIssue && (
+            <SystemNotice
+              backgroundStatus={backgroundStatus}
+              onOpenSettings={onOpenSettings}
+              settingsStatus={settingsStatus}
+            />
+          )}
+        </div>
 
         {requestView !== "summary" && (
-          <RequestRows
-            areSettingsControlsDisabled={settingsStatus === "unavailable"}
-            expandedRowId={expandedRowId}
-            hostDetails={hostDetails}
-            hostDetailsStatus={hostDetailsStatus}
-            rows={visibleRows}
-            view={requestView}
-            onSetDomainOverride={onSetDomainOverride}
-            onSetSiteAllow={onSetSiteAllow}
-            onToggleRow={onToggleRow}
-          />
-        )}
+          <div class="tb-scroll-region">
+            <RequestRows
+              areSettingsControlsDisabled={settingsStatus === "unavailable"}
+              expandedRowId={expandedRowId}
+              hostDetails={hostDetails}
+              hostDetailsStatus={hostDetailsStatus}
+              rows={visibleRows}
+              view={requestView}
+              onSetDomainOverride={onSetDomainOverride}
+              onSetSiteAllow={onSetSiteAllow}
+              onToggleRow={onToggleRow}
+            />
+            {summary?.hostRowsTruncated && (
+              <p class="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900">
+                Showing a limited host list. {summary.omittedRequestCount} requests
+                are omitted below; totals above are complete.
+              </p>
+            )}
 
-        {summary?.hostRowsTruncated && (
-          <p class="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900">
-            Showing a limited host list. {summary.omittedRequestCount} requests
-            are omitted below; totals above are complete.
-          </p>
+            {summary?.activeRequestEvidenceTruncated && (
+              <p class="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900">
+                Some older request details are incomplete. Blocking and totals
+                are unaffected.
+              </p>
+            )}
+          </div>
         )}
-
-        {hasSystemIssue && (
-          <SystemNotice
-            backgroundStatus={backgroundStatus}
-            settingsStatus={settingsStatus}
-          />
-        )}
-
-        <Diagnostics
-          diagnostics={diagnostics}
-          hasIncompleteRequestHistory={
-            summary?.activeRequestEvidenceTruncated ?? false
-          }
-        />
       </section>
     </main>
-  );
-}
-
-function Diagnostics({
-  diagnostics,
-  hasIncompleteRequestHistory,
-}: {
-  diagnostics: HealthCheckResponse | null;
-  hasIncompleteRequestHistory: boolean;
-}) {
-  if (!diagnostics && !hasIncompleteRequestHistory) {
-    return null;
-  }
-
-  const provenance = diagnostics?.easyPrivacy.provenance;
-  return (
-    <details class="mt-3 border-t border-zinc-200 pt-3 text-xs text-zinc-600">
-      <summary class="cursor-pointer font-medium text-zinc-700">
-        Diagnostics
-      </summary>
-      <dl class="mt-2 grid gap-1.5">
-        {diagnostics && (
-          <>
-            <DiagnosticRow
-              label="EasyPrivacy"
-              value={
-                diagnostics.easyPrivacy.matchingEnabled
-                  ? "enabled for this build"
-                  : "disabled (default)"
-              }
-            />
-            <DiagnosticRow
-              label="Engine"
-              value={`${diagnostics.easyPrivacy.engineHealth}${
-                diagnostics.easyPrivacy.degradedReason
-                  ? ` (${diagnostics.easyPrivacy.degradedReason})`
-                  : ""
-              }`}
-            />
-            <DiagnosticRow
-              label="Site access"
-              value={
-                diagnostics.easyPrivacy.hostPermissionGranted
-                  ? "granted"
-                  : "missing"
-              }
-            />
-            <DiagnosticRow
-              label="Settings"
-              value={`${diagnostics.settings.health}${
-                diagnostics.settings.degradedReason
-                  ? ` (${diagnostics.settings.degradedReason})`
-                  : ""
-              }`}
-            />
-          </>
-        )}
-        {provenance && (
-          <DiagnosticRow
-            label="List"
-            value={`${provenance.upstreamVersion}; artifact ${provenance.artifactSha256.slice(0, 12)}; engine ${provenance.ghosteryPackageVersion}`}
-          />
-        )}
-        {hasIncompleteRequestHistory && (
-          <DiagnosticRow
-            label="Request history"
-            value="Some older request histories are incomplete. Blocking and totals are unaffected."
-          />
-        )}
-      </dl>
-    </details>
-  );
-}
-
-function DiagnosticRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div class="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
-      <dt class="font-medium text-zinc-500">{label}</dt>
-      <dd class="m-0 min-w-0 break-words text-zinc-700">{value}</dd>
-    </div>
   );
 }
 
 function DashboardHeader({
   activeHost,
   isUnavailable,
+  onOpenSettings,
   status,
 }: {
   activeHost: string;
   isUnavailable: boolean;
+  onOpenSettings: () => void;
   status: RuntimeSitePauseStatus;
 }) {
   const statusLabel = isUnavailable ? "Unavailable" : formatPauseStatus(status);
 
   return (
-    <header class="flex items-start justify-between gap-4">
-      <div class="min-w-0">
-        <p class="text-[13px] font-semibold text-zinc-900">TrackerBlocker</p>
-        <div class="mt-2.5 flex min-w-0 items-center gap-2 text-sm text-zinc-600">
-          <span class="tb-signal-dot" aria-hidden="true" />
-          <span class="truncate font-medium text-zinc-900">{activeHost}</span>
-        </div>
-      </div>
+    <header class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2.5">
+      <p class="min-w-0 text-[13px] font-semibold text-zinc-900">
+        TrackerBlocker
+      </p>
       <span class={pauseStatusClass(isUnavailable ? "unavailable" : status)}>
         {statusLabel}
       </span>
+      <div class="flex min-w-0 items-center gap-2 text-sm text-zinc-600">
+        <span class="tb-signal-dot" aria-hidden="true" />
+        <span class="truncate font-normal text-zinc-600">{activeHost}</span>
+      </div>
+      <button
+        aria-label="Open TrackerBlocker settings"
+        class="tb-settings-button justify-self-end"
+        title="Open settings"
+        type="button"
+        onClick={onOpenSettings}
+      >
+        <svg
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="1.75"
+          viewBox="0 0 24 24"
+        >
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      </button>
     </header>
   );
 }
@@ -245,35 +191,15 @@ function ProtectionSummary({
 }: {
   summary: TabRequestSummary | null;
 }) {
-  const requestCounts = summary?.requestCounts ?? {
-    total: 0,
-    blocked: 0,
-    restricted: 0,
-    allowed: 0,
-  };
+  const blockedCount = summary?.requestCounts.blocked ?? 0;
 
   return (
-    <section class="tb-metric-panel mt-5" aria-label="Protection summary">
-      <p class="tb-metric-value">{requestCounts.blocked}</p>
+    <section class="tb-metric-panel mt-1" aria-label="Protection summary">
+      <p class="tb-metric-value">{blockedCount}</p>
       <p class="tb-metric-label">
-        {requestCounts.blocked === 1 ? "Request blocked" : "Requests blocked"}
+        {blockedCount === 1 ? "Request blocked" : "Requests blocked"}
       </p>
-
-      <dl class="tb-stat-grid" aria-label="Observed request totals">
-        <Stat label="Allowed" value={requestCounts.allowed} />
-        <Stat label="Restricted" value={requestCounts.restricted} />
-        <Stat label="Total" value={requestCounts.total} />
-      </dl>
     </section>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div>
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
   );
 }
 
@@ -434,16 +360,27 @@ function RequestActionButton({
 
 function SystemNotice({
   backgroundStatus,
+  onOpenSettings,
   settingsStatus,
 }: {
   backgroundStatus: BackgroundStatus;
+  onOpenSettings: () => void;
   settingsStatus: SettingsStatus;
 }) {
   return (
-    <p class="mt-4 border-l-2 border-[#d9534f] bg-[#fff6f4] px-3 py-2 text-xs leading-snug text-[#7a2d2a]">
-      Protection is degraded. Background: {backgroundStatus}; settings:{" "}
-      {settingsStatus}.
-    </p>
+    <div class="mt-4 border-l-2 border-[#d9534f] bg-[#fff6f4] px-3 py-2 text-xs leading-snug text-[#7a2d2a]">
+      <p>
+        Protection needs attention. Background: {backgroundStatus}; settings:{" "}
+        {settingsStatus}.
+      </p>
+      <button
+        class="mt-1 font-medium text-[#7a2d2a] underline decoration-[#d9534f] underline-offset-2"
+        type="button"
+        onClick={onOpenSettings}
+      >
+        Open troubleshooting
+      </button>
+    </div>
   );
 }
 

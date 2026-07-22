@@ -11,10 +11,12 @@
 html,
 body,
 #app {
+  box-sizing: border-box;
   margin: 0;
-  width: min(380px, 100vw);
+  width: min(400px, 100vw);
   min-width: 280px;
   max-width: 100vw;
+  overflow: hidden;
 }
 
 body {
@@ -32,17 +34,46 @@ button {
 .tb-popup {
   box-sizing: border-box;
   width: 100%;
+  max-height: 600px;
+  overflow: hidden;
   padding: 12px;
   background: linear-gradient(145deg, #f8fbfc 0%, #edf5f8 100%);
 }
 
 .tb-shell {
   position: relative;
-  border: 1px solid #c8d7dd;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-height: 576px;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #d4d4d8;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 10px 28px rgba(14, 35, 45, 0.1);
   padding: 16px;
+}
+
+.tb-fixed-region {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.tb-scroll-region {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 0 2px;
+  scrollbar-color: #a1a1aa transparent;
+  scrollbar-width: thin;
+}
+
+.tb-scroll-region > * {
+  max-width: 100%;
 }
 
 .tb-shell::before {
@@ -53,6 +84,34 @@ button {
   height: 3px;
   background: #7dd3fc;
   content: "";
+}
+
+.tb-settings-button {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #71717a;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.tb-settings-button:hover {
+  border-color: #d4d4d8;
+  background: #f4f4f5;
+  color: #3f3f46;
+}
+
+.tb-settings-button svg {
+  width: 16px;
+  height: 16px;
 }
 
 .tb-status-pill {
@@ -121,48 +180,14 @@ button {
   line-height: 1.2;
 }
 
-.tb-stat-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  margin: 14px 0 0;
-  overflow: hidden;
-  border: 1px solid #d8e2e6;
-  border-radius: 8px;
-  background: #d8e2e6;
-}
-
-.tb-stat-grid > div {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
-  background: #f8fbfc;
-  padding: 8px 9px;
-}
-
-.tb-stat-grid dt {
-  min-width: 0;
-  color: #667078;
-  font-size: 11px;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.tb-stat-grid dd {
-  margin: 0;
-  color: #272d32;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  line-height: 1;
-}
-
 .tb-command-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+}
+
+.tb-command-grid.is-single {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .tb-command-button {
@@ -372,10 +397,6 @@ button:focus-visible {
 
   .tb-shell {
     padding: 14px;
-  }
-
-  .tb-stat-grid {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .tb-detail-row {

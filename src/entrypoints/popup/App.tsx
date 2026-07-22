@@ -154,7 +154,6 @@ export function App() {
     useState<RuntimeSitePauseStatus>("active");
   const [pauseRefreshHint, setPauseRefreshHint] = useState<string | null>(null);
   const [summary, setSummary] = useState<PopupSummary>(null);
-  const [diagnostics, setDiagnostics] = useState<HealthCheckResponse | null>(null);
   const [hostDetailsState, dispatchHostDetails] = useReducer(
     hostDetailsReducer,
     IDLE_HOST_DETAILS_STATE,
@@ -210,7 +209,6 @@ export function App() {
 
         const validHealth = isHealthCheckResponse(healthResponse);
         setBackgroundStatus(validHealth ? "ready" : "unavailable");
-        setDiagnostics(validHealth ? healthResponse : null);
 
         if (typeof activeTab?.id === "number") {
           const summaryResponse = await browser.runtime.sendMessage({
@@ -442,13 +440,20 @@ export function App() {
     }
   }
 
+  async function openSettings() {
+    try {
+      await browser.runtime.openOptionsPage();
+    } catch {
+      setBackgroundStatus("unavailable");
+    }
+  }
+
   return (
     <>
       <PopupDashboard
         activeHost={activeHost}
         activeTabId={activeTabId}
         backgroundStatus={backgroundStatus}
-        diagnostics={diagnostics}
         expandedRowId={expandedRowId}
         hostDetails={hostDetailsState.details}
         hostDetailsStatus={hostDetailsState.status}
@@ -458,6 +463,7 @@ export function App() {
         settingsStatus={settingsStatus}
         sitePauseStatus={sitePauseStatus}
         onChangeRequestView={setRequestView}
+        onOpenSettings={() => void openSettings()}
         onSetDomainOverride={updateDomainOverride}
         onSetSiteAllow={updateSiteAllow}
         onSetPause={updateSitePause}

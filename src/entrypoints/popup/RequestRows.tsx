@@ -53,7 +53,7 @@ export function RequestRows({
   }
 
   return (
-    <div class="mt-3 max-h-[320px] overflow-y-auto">
+    <div class="mt-3 min-w-0">
       <div class="grid gap-2">
         {rows.map((row) => (
           <RequestRow
