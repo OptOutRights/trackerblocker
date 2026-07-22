@@ -107,6 +107,7 @@ function RequestRow({
         row.actionCounts.restricted > 0),
   );
   const canSetGlobalOverride = row.relationship === "third-party";
+  const hasRuleControls = canSetSiteAllow || canSetGlobalOverride;
 
   return (
     <article class={requestRowClass(row)}>
@@ -144,24 +145,76 @@ function RequestRow({
 
       {isExpanded && (
         <div class="tb-request-row-details border-t border-zinc-200/80 text-xs text-zinc-600">
-          {canSetSiteAllow && (
-            <button
-              aria-pressed={row.currentSiteAllow}
-              class="mb-3 w-full border border-[#2864fc] bg-[#edf2ff] px-3 py-2 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={areSettingsControlsDisabled}
-              type="button"
-              onClick={() =>
-                void onSetSiteAllow(
-                  row.displayName,
-                  !row.currentSiteAllow,
-                  row.id,
-                )
-              }
+          {hasRuleControls && (
+            <section
+              aria-label="Rules"
+              class="mb-3 rounded-md border border-zinc-200 bg-zinc-50 p-3"
             >
-              {row.currentSiteAllow
-                ? "Remove allow on this site"
-                : "Allow on this site"}
-            </button>
+              <h3 class="font-medium text-zinc-800">Rules</h3>
+
+              {canSetSiteAllow && (
+                <div class="mt-2">
+                  <p class="mb-1 font-medium text-zinc-600">On this site</p>
+                  <button
+                    aria-pressed={row.currentSiteAllow}
+                    class="w-full border border-[#2864fc] bg-[#edf2ff] px-3 py-2 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={areSettingsControlsDisabled}
+                    type="button"
+                    onClick={() =>
+                      void onSetSiteAllow(
+                        row.displayName,
+                        !row.currentSiteAllow,
+                        row.id,
+                      )
+                    }
+                  >
+                    {row.currentSiteAllow
+                      ? "Remove allow on this site"
+                      : "Allow on this site"}
+                  </button>
+                </div>
+              )}
+
+              {canSetGlobalOverride && (
+                <div class={canSetSiteAllow ? "mt-3" : "mt-2"}>
+                  <p class="font-medium text-zinc-600">On every site</p>
+                  <p class="mt-1 leading-snug text-zinc-500">
+                    Applies to this hostname wherever it appears. Refresh to
+                    retry requests on this page.
+                  </p>
+                  <div
+                    aria-label="Rule on every site"
+                    class="mt-2 grid grid-cols-3 overflow-hidden border border-zinc-200 bg-white"
+                    role="group"
+                  >
+                    <OverrideButton
+                      isDisabled={areSettingsControlsDisabled}
+                      isSelected={selectedOverride === "auto"}
+                      label="Auto"
+                      onSelect={() =>
+                        void onSetDomainOverride(row.displayName, null)
+                      }
+                    />
+                    <OverrideButton
+                      isDisabled={areSettingsControlsDisabled}
+                      isSelected={selectedOverride === "block"}
+                      label="Block"
+                      onSelect={() =>
+                        void onSetDomainOverride(row.displayName, "block")
+                      }
+                    />
+                    <OverrideButton
+                      isDisabled={areSettingsControlsDisabled}
+                      isSelected={selectedOverride === "allow"}
+                      label="Allow"
+                      onSelect={() =>
+                        void onSetDomainOverride(row.displayName, "allow")
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+            </section>
           )}
 
           <dl class="grid gap-2">
@@ -201,44 +254,6 @@ function RequestRow({
             status={hostDetailsStatus}
             row={row}
           />
-
-          {canSetGlobalOverride && (
-            <details class="mt-3">
-              <summary class="cursor-pointer font-medium text-zinc-600">
-                Advanced global rule
-              </summary>
-              <p class="mt-1 leading-snug text-zinc-500">
-                Applies to this hostname on every site. Changes affect future
-                requests; refresh to retry this page.
-              </p>
-              <div class="mt-2 grid grid-cols-3 overflow-hidden border border-zinc-200 bg-white">
-                <OverrideButton
-                  isDisabled={areSettingsControlsDisabled}
-                  isSelected={selectedOverride === "auto"}
-                  label="Auto"
-                  onSelect={() =>
-                    void onSetDomainOverride(row.displayName, null)
-                  }
-                />
-                <OverrideButton
-                  isDisabled={areSettingsControlsDisabled}
-                  isSelected={selectedOverride === "block"}
-                  label="Block"
-                  onSelect={() =>
-                    void onSetDomainOverride(row.displayName, "block")
-                  }
-                />
-                <OverrideButton
-                  isDisabled={areSettingsControlsDisabled}
-                  isSelected={selectedOverride === "allow"}
-                  label="Allow"
-                  onSelect={() =>
-                    void onSetDomainOverride(row.displayName, "allow")
-                  }
-                />
-              </div>
-            </details>
-          )}
         </div>
       )}
     </article>
