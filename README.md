@@ -21,6 +21,11 @@ npm run lint:firefox
 npm run zip:firefox
 ```
 
+There is no `start`/`start:firefox` script. `npm run dev:firefox` builds and
+launches Firefox with live reload. To instead load a static build produced by
+`npm run build:firefox`, run `npm run web-ext:firefox`, which launches Firefox
+against `.output/firefox-mv3` without watching for changes.
+
 ## Behavior
 
 The popup reports immutable blocked, restricted, and allowed request attempts
