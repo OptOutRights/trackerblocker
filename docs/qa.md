@@ -24,6 +24,13 @@ behavior changes.
 - On a content page, confirm request totals, host totals, rule-source counts,
   statuses, and local explanations agree.
 - Confirm the badge counts blocked request attempts, not blocked hosts.
+- After blocking requests, force-restart the MV3 background and confirm the
+  popup and badge retain the same count when native document identifiers are
+  available, or report the count unavailable on older Firefox versions.
+- Confirm pushState and hash changes preserve the count, while full navigation,
+  reload, pause, permission loss, and tab closure invalidate or reset it.
+- On an `about:` or extension page, confirm the badge and popup report the
+  blocked count unavailable rather than claiming an active zero.
 - Confirm a mixed-use hostname retains separate blocked and allowed attempts.
 - Expand representative attempts and inspect action, source, request type,
   scrubbed path hint, and EasyPrivacy rule or exception evidence.

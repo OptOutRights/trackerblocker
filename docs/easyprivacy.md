@@ -46,12 +46,18 @@ later reads recover the runtime without changing decisions already observed.
 The runtime accounts for each observed request attempt rather than assigning one
 decision to an entire hostname. Redirect attempts share the browser request ID
 for correlation but receive increasing attempt indexes and immutable actions.
-The badge counts blocked requests, while popup host counts are separately
-labelled and can represent mixed blocked, restricted, and allowed activity.
-All request evidence stays in bounded background memory; host-row, active
-request, redirect, context, matched-rule, and representative-attempt truncation
-is disclosed in the popup. Durable user settings remain in
-`browser.storage.local`. Tab-scoped pause-once state uses
+The badge and popup protection total read the same per-document enforcement
+ledger and count only request paths that return a cancellation to Firefox.
+The ledger stores only Firefox's opaque document identifier and blocked-request
+count in `browser.storage.session`. The count survives an MV3 worker restart
+only when Firefox exposes the current native identifier for verification; older
+versions report it as unavailable after restart. The entry is removed when
+protection continuity is lost instead of claiming zero. Popup host counts are
+separately labelled and can represent mixed blocked, restricted, and allowed activity. All detailed
+request evidence stays in bounded background memory; host-row, active request,
+redirect, context, matched-rule, and representative-attempt truncation is
+disclosed in the popup. Durable user settings remain in
+`browser.storage.local`. Tab-scoped pause-once state also uses
 `browser.storage.session` so a Firefox MV3 worker restart does not silently
 resume protection; it is cleared when the tab closes or navigates away.
 

@@ -35,9 +35,10 @@ notices when a summary is incomplete.
 
 “Allow on this site” is the primary recovery action. Users can also pause a
 site once or always, or set advanced global hostname overrides. Durable settings
-stay in `browser.storage.local`; tab-scoped pause-once state uses
-`browser.storage.session`; request evidence stays only in bounded background
-memory.
+stay in `browser.storage.local`. Tab-scoped pause-once state and a minimal
+per-document enforcement ledger use `browser.storage.session`; that ledger
+contains only Firefox's opaque document identifier and blocked-request count.
+Detailed request evidence stays only in bounded background memory.
 
 ## EasyPrivacy
 

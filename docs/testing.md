@@ -16,7 +16,8 @@ Run one test file with `npx vitest run path/to/file.test.ts`.
 The unit suite covers domain classification, packaged catalog and filter-engine
 validation, rule precedence, immutable request evidence, redirect and page
 generation handling, storage schemas and migrations, startup races, bounded
-memory, message contracts, and UI state shaping.
+memory, enforcement-ledger concurrency and failure behavior, message contracts,
+and UI state shaping.
 
 ## EasyPrivacy Supply Chain
 
