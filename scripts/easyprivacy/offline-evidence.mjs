@@ -28,7 +28,6 @@ for (const file of ["generate.mjs", "verify.mjs"]) {
 
 const packageJson = JSON.parse(await readFile(path.join(ROOT, "package.json"), "utf8"));
 const normalCommands = [
-  "build",
   "build:firefox",
   "test",
   "typecheck",

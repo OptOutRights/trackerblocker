@@ -12,6 +12,6 @@ Tech stack:
 - Vitest for core logic tests
 - Playwright for UI smoke tests when browser automation is added
 - tldts for public-suffix-aware domain parsing
-- web-ext for Firefox run, validation, packaging, and signing workflows
+- web-ext for Firefox run, validation, and packaging workflows
 
 Core rule: do not add telemetry, remote classification, or network-dependent tracker explanations without explicit user approval.

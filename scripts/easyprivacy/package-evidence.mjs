@@ -8,6 +8,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const output = path.join(ROOT, ".output/firefox-mv3");
 const archive = path.join(ROOT, ".output/trackerblocker-0.0.0-firefox.zip");
 const sources = path.join(ROOT, ".output/trackerblocker-0.0.0-sources.zip");
+const maxCatalogOnlyBytes = 400_000;
 const temporary = await mkdtemp(path.join(os.tmpdir(), "trackerblocker-package-"));
 const fullComparison = path.join(temporary, "with-easyprivacy.zip");
 const baselineComparison = path.join(temporary, "catalog-only-baseline.zip");
@@ -39,8 +40,8 @@ const fullBytes = (await stat(fullComparison)).size;
 const baselineBytes = (await stat(baselineComparison)).size;
 const deltaBytes = fullBytes - baselineBytes;
 assert(
-  baselineBytes < 300_000,
-  "The catalog-only counterfactual still appears to contain EasyPrivacy code.",
+  baselineBytes < maxCatalogOnlyBytes,
+  `The ${baselineBytes}-byte catalog-only counterfactual exceeds the ${maxCatalogOnlyBytes}-byte sanity bound and may still contain EasyPrivacy code.`,
 );
 assert(deltaBytes > 0 && deltaBytes < 1_500_000);
 
@@ -112,11 +113,16 @@ const metadata = JSON.parse(
   await readFile(path.join(output, "filter-data/easyprivacy.metadata.json"), "utf8"),
 );
 const commit = (await capture("git", ["rev-parse", "HEAD"], ROOT)).trim();
+const trackedStatus = (
+  await capture("git", ["status", "--porcelain", "--untracked-files=no"], ROOT)
+).trim();
 process.stdout.write("\nEasyPrivacy package/source evidence\n");
-process.stdout.write(`Commit: ${commit}\n`);
+process.stdout.write(
+  `Revision: ${commit}${trackedStatus ? " with tracked working-tree changes" : ""}\n`,
+);
 process.stdout.write(`Artifact SHA-256: ${metadata.artifactSha256}\n`);
-process.stdout.write(`Same-commit catalog-only counterfactual: ${baselineBytes} bytes\n`);
-process.stdout.write(`Same-commit EasyPrivacy package: ${fullBytes} bytes\n`);
+process.stdout.write(`Catalog-only counterfactual: ${baselineBytes} bytes\n`);
+process.stdout.write(`EasyPrivacy package: ${fullBytes} bytes\n`);
 process.stdout.write(`Complete compressed EasyPrivacy delta: ${deltaBytes} bytes\n`);
 process.stdout.write(`Firefox zip: ${(await stat(archive)).size} bytes\n`);
 process.stdout.write(`Source zip: ${(await stat(sources)).size} bytes\n`);

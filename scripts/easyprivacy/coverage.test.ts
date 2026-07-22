@@ -107,7 +107,7 @@ beforeAll(async () => {
   }
 });
 
-describe("EasyPrivacy Phase 5 production coverage corpus", () => {
+describe("EasyPrivacy production coverage corpus", () => {
   it("is pinned to the exact retained source and production artifact", () => {
     expect(corpus.reviewedArtifact).toEqual({
       upstreamVersion: metadata.upstreamVersion,
@@ -152,10 +152,10 @@ describe("EasyPrivacy Phase 5 production coverage corpus", () => {
   it("keeps loading and degraded engines on complete catalog fallback", () => {
     const fallbackCatalog: TrackerCatalogEntry[] = [
       {
-        id: "phase5-fallback",
+        id: "production-fallback",
         matchType: "domain",
         domain: "functional.test",
-        entity: "Phase 5 fixture",
+        entity: "Coverage fixture",
         category: "analytics",
         defaultAction: "block",
         explanation: "Synthetic local fallback fixture.",
@@ -370,7 +370,7 @@ describe("EasyPrivacy Phase 5 production coverage corpus", () => {
       report.catalogOnly.blockedRequests,
     );
     process.stdout.write(
-      `EasyPrivacy Phase 5 coverage report\n${JSON.stringify(report, null, 2)}\n`,
+      `EasyPrivacy production coverage report\n${JSON.stringify(report, null, 2)}\n`,
     );
   });
 });

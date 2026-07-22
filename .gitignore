@@ -2,9 +2,10 @@ node_modules/
 .output/
 .wxt/
 
-# Local build flags
-.env.local
-.env.*.local
+# Local build flags and credentials
+.env
+.env.*
+!.env.example
 
 .DS_Store
 npm-debug.log*
