@@ -251,14 +251,14 @@ function PauseControls({
       ) : (
         <PauseButton
           isDisabled={isDisabled || activeTabId === null}
-          label="Pause for this tab"
+          label="Pause once"
           tone="primary"
           onClick={() => void onSetPause("once")}
         />
       )}
       <PauseButton
         isDisabled={isDisabled}
-        label="Always pause site"
+        label="Always pause"
         tone="secondary"
         onClick={() => void onSetPause("always")}
       />
