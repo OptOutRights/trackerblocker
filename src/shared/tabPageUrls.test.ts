@@ -2,8 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   TabPageUrlCache,
+  isEnforceablePageUrl,
   isStaleTopLevelDocumentRequest,
 } from "./tabPageUrls";
+
+describe("isEnforceablePageUrl", () => {
+  it("accepts HTTP(S) pages and rejects unsupported or malformed URLs", () => {
+    expect(isEnforceablePageUrl("https://publisher.test/article")).toBe(true);
+    expect(isEnforceablePageUrl("http://publisher.test/article")).toBe(true);
+    expect(isEnforceablePageUrl("about:preferences")).toBe(false);
+    expect(isEnforceablePageUrl("moz-extension://trackerblocker/options.html")).toBe(false);
+    expect(isEnforceablePageUrl("file:///tmp/article.html")).toBe(false);
+    expect(isEnforceablePageUrl("not a url")).toBe(false);
+    expect(isEnforceablePageUrl(null)).toBe(false);
+  });
+});
 
 describe("isStaleTopLevelDocumentRequest", () => {
   it("detects a late request from the previous top-level document", () => {

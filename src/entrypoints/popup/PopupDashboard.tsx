@@ -4,13 +4,17 @@ import type {
   ObservedRequestRow,
   TabRequestSummary,
 } from "../../shared/requestObservation";
-import type { RuntimeSitePauseStatus } from "../../messaging/requestSummary";
+import type {
+  EnforcementSummary,
+  RuntimeSitePauseStatus,
+} from "../../messaging/requestSummary";
 import type { SitePauseMode } from "../../storage/settings";
 import { RequestRows } from "./RequestRows";
 
 export type BackgroundStatus = "checking" | "ready" | "unavailable";
 export type SettingsStatus = "ready" | "unavailable";
 export type RequestView = "summary" | "blocked" | "all";
+type DashboardSummary = TabRequestSummary & { enforcement: EnforcementSummary };
 
 export function PopupDashboard({
   activeHost,
@@ -52,7 +56,7 @@ export function PopupDashboard({
   onSetPause: (mode: SitePauseMode) => Promise<void>;
   onToggleRow: (rowId: string) => void;
   requestView: RequestView;
-  summary: TabRequestSummary | null;
+  summary: DashboardSummary | null;
   settingsStatus: SettingsStatus;
   sitePauseStatus: RuntimeSitePauseStatus;
 }) {
@@ -189,18 +193,41 @@ function DashboardHeader({
 function ProtectionSummary({
   summary,
 }: {
-  summary: TabRequestSummary | null;
+  summary: DashboardSummary | null;
 }) {
-  const blockedCount = summary?.requestCounts.blocked ?? 0;
+  const presentation = formatProtectionSummary(summary);
 
   return (
     <section class="tb-metric-panel mt-1" aria-label="Protection summary">
-      <p class="tb-metric-value">{blockedCount}</p>
-      <p class="tb-metric-label">
-        {blockedCount === 1 ? "Request blocked" : "Requests blocked"}
-      </p>
+      <p class="tb-metric-value">{presentation.value}</p>
+      <p class="tb-metric-label">{presentation.label}</p>
     </section>
   );
+}
+
+export function formatProtectionSummary(
+  summary: DashboardSummary | null,
+): { value: string; label: string } {
+  if (!summary) {
+    return { value: "—", label: "Checking blocked count" };
+  }
+
+  if (summary.enforcement.status === "paused") {
+    return { value: "—", label: "Protection paused" };
+  }
+
+  if (
+    summary.enforcement.status !== "active" ||
+    summary.enforcement.blockedCount === null
+  ) {
+    return { value: "—", label: "Blocked count unavailable" };
+  }
+
+  const blockedCount = summary.enforcement.blockedCount;
+  return {
+    value: String(blockedCount),
+    label: blockedCount === 1 ? "Request blocked" : "Requests blocked",
+  };
 }
 
 function PauseControls({

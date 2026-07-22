@@ -255,6 +255,9 @@ function createProbePage(host, pathname, fixturePort) {
       }, 500);
     `);
   }
+  if (probe === "quiet" && host === "publisher.test") {
+    return harness(`finish([]);`);
+  }
   if (probe === "frame-child" && (host === "eng-tips.com" || host === "other-frame.test")) {
     return `<!doctype html><script>
       window.__epFixtureScriptLoaded = false;

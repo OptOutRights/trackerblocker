@@ -50,7 +50,11 @@ async function main() {
       return;
     }
     if (!EXPECTED_HOST_PERMISSION) {
+      await delay(100);
+      const sessionState = await getStoredSessionState(session);
+      assert.deepEqual(sessionState.enforcementLedger, {});
       checkpoint("missing host permission is visible in extension health");
+      checkpoint("missing host permission leaves no active blocked-count ledger");
       report();
       return;
     }
@@ -65,6 +69,7 @@ async function main() {
       return;
     }
     await runNetworkCoverage(session);
+    await runBlockedCountLifecycleCoverage(session);
     await runRecoveryCoverage(session);
     await stopSession(session);
     session = await startSession();
@@ -137,6 +142,206 @@ async function startSession() {
     remote,
     running,
   };
+}
+
+async function runBlockedCountLifecycleCoverage(current) {
+  await sendMessage(current, { type: RESET });
+  const publisherUrl = fixture.url("publisher.test", "/probe/control");
+  assert.deepEqual(await runProbe(current, publisherUrl), {
+    "screen13-image": "blocked",
+  });
+
+  let summary = await getCurrentSummary(current);
+  assert.deepEqual(summary.enforcement, { status: "active", blockedCount: 1 });
+  assert.deepEqual(await getBadgePresentation(current), {
+    text: "1",
+    title: "TrackerBlocker - 1 request blocked",
+  });
+  assert.deepEqual(await readPopupProtection(current), {
+    value: "1",
+    label: "Request blocked",
+  });
+  const nativeDocumentIds = await supportsNativeDocumentIds(current);
+  const activeSession = await getStoredSessionState(current);
+  assert.equal(
+    String(current.fixtureBrowserTabId) in activeSession.enforcementLedger,
+    nativeDocumentIds,
+  );
+
+  await switchAwayAndBack(current);
+  assert.equal((await getCurrentSummary(current)).enforcement.blockedCount, 1);
+  await terminateBackground(current);
+  if (nativeDocumentIds) {
+    assert.deepEqual(await readPopupProtection(current), {
+      value: "1",
+      label: "Request blocked",
+    });
+    assert.deepEqual(await getBadgePresentation(current), {
+      text: "1",
+      title: "TrackerBlocker - 1 request blocked",
+    });
+    checkpoint("native document id restores the count after MV3 termination");
+  } else {
+    assert.deepEqual(await readPopupProtection(current), {
+      value: "—",
+      label: "Blocked count unavailable",
+    });
+    assert.equal((await getBadgePresentation(current)).text, "!");
+    checkpoint("unverifiable count becomes unavailable after MV3 termination");
+  }
+
+  await terminateBackground(current);
+  const coldOutcome = await current.protocol.evaluateJson(
+    current.fixtureTab,
+    `new Promise(resolve => {
+      const image = new Image();
+      image.onload = () => resolve("loaded");
+      image.onerror = () => resolve("blocked");
+      image.src = "http://screen13.com/collect/cold-start?resource=image&qa=" + Math.random();
+    })`,
+  );
+  assert.equal(coldOutcome, "blocked");
+  summary = await getCurrentSummary(current);
+  if (nativeDocumentIds) {
+    assert.deepEqual(summary.enforcement, { status: "active", blockedCount: 2 });
+    assert.equal((await getBadgePresentation(current)).text, "2");
+    checkpoint("cold EasyPrivacy-only request increments the restored count");
+  } else {
+    assert.deepEqual(summary.enforcement, {
+      status: "unavailable",
+      blockedCount: null,
+    });
+    assert.equal((await getBadgePresentation(current)).text, "!");
+    checkpoint("cold blocking continues while the count remains unavailable");
+  }
+
+  current.lastProbeUrl = await current.protocol.evaluateJson(
+    current.fixtureTab,
+    `(() => {
+      history.pushState({}, "", "/probe/control?lifecycle=push");
+      location.hash = "preserved";
+      return location.href;
+    })()`,
+  );
+  await delay(100);
+  summary = await getCurrentSummary(current);
+  assert.equal(
+    summary.enforcement.blockedCount,
+    nativeDocumentIds ? 2 : null,
+  );
+  assert.equal(
+    (await getBadgePresentation(current)).text,
+    nativeDocumentIds ? "2" : "!",
+  );
+  checkpoint("same-document navigation preserves count availability");
+
+  assert.deepEqual(
+    await runProbe(current, fixture.url("publisher.test", "/probe/quiet")),
+    {},
+  );
+  summary = await getCurrentSummary(current);
+  assert.deepEqual(summary.enforcement, { status: "active", blockedCount: 0 });
+  assert.equal((await getBadgePresentation(current)).text, "");
+  checkpoint("full navigation resets blocked count");
+
+  assert.deepEqual(await runProbe(current, publisherUrl), {
+    "screen13-image": "blocked",
+  });
+  const reloadUrl = current.lastProbeUrl;
+  await current.protocol.navigate(current.fixtureTab, reloadUrl);
+  assert.deepEqual(await current.protocol.waitForFixture(current.fixtureTab), {
+    "screen13-image": "blocked",
+  });
+  current.lastProbeUrl = reloadUrl;
+  assert.equal((await getCurrentSummary(current)).enforcement.blockedCount, 1);
+  checkpoint("reload starts a new blocked count");
+  if (nativeDocumentIds) {
+    const staleSession = await getStoredSessionState(current);
+    staleSession.enforcementLedger[String(current.fixtureBrowserTabId)] = {
+      documentId: "stale-document-id",
+      blockedCount: 99,
+    };
+    await setStoredSessionState(current, staleSession);
+    await terminateBackground(current);
+    assert.deepEqual((await getCurrentSummary(current)).enforcement, {
+      status: "unavailable",
+      blockedCount: null,
+    });
+    assert.equal(
+      String(current.fixtureBrowserTabId) in
+        (await getStoredSessionState(current)).enforcementLedger,
+      false,
+    );
+    checkpoint("mismatched native document id cannot restore a stale count");
+  }
+  await sendMessage(current, {
+    type: UPDATE_PAUSE,
+    site: "publisher.test",
+    mode: "once",
+    tabId: current.fixtureBrowserTabId,
+  });
+  summary = await getCurrentSummary(current);
+  assert.deepEqual(summary.enforcement, { status: "paused", blockedCount: null });
+  assert.deepEqual(await getBadgePresentation(current), {
+    text: "",
+    title: "TrackerBlocker - protection paused",
+  });
+  const pausedSession = await getStoredSessionState(current);
+  assert.equal(
+    String(current.fixtureBrowserTabId) in pausedSession.enforcementLedger,
+    false,
+  );
+  checkpoint("site pause deletes the active blocked count");
+
+  const closeUrl = fixture.url("publisher.test", "/probe/control?ledger-close=1");
+  const closeTab = await current.protocol.evaluateJson(
+    current.controlTab,
+    `browser.tabs.create({ active: false, url: ${JSON.stringify(closeUrl)} })`,
+  );
+  const closeRdp = await waitForBrowserTab(current, closeTab.id, closeUrl);
+  assert.deepEqual(await current.protocol.waitForFixture(closeRdp), {
+    "screen13-image": "blocked",
+  });
+  await current.protocol.evaluateJson(
+    current.controlTab,
+    `(await browser.tabs.remove(${closeTab.id}), true)`,
+  );
+  await waitForLedgerRemoval(current, closeTab.id);
+  checkpoint("tab closure deletes its blocked-count ledger entry");
+
+  await sendMessage(current, {
+    type: UPDATE_PAUSE,
+    site: "publisher.test",
+    mode: null,
+    tabId: current.fixtureBrowserTabId,
+  });
+
+  const unsupportedTab = await current.protocol.evaluateJson(
+    current.controlTab,
+    "browser.tabs.create({ active: false, url: 'about:blank' })",
+  );
+  await delay(100);
+  assert.deepEqual(
+    (
+      await sendMessage(current, {
+        type: GET_SUMMARY,
+        tabId: unsupportedTab.id,
+        pageUrl: "about:blank",
+      })
+    ).enforcement,
+    { status: "unavailable", blockedCount: null },
+  );
+  assert.equal((await getBadgePresentation(current, unsupportedTab.id)).text, "!");
+  assert.equal(
+    String(unsupportedTab.id) in
+      (await getStoredSessionState(current)).enforcementLedger,
+    false,
+  );
+  await current.protocol.evaluateJson(
+    current.controlTab,
+    `(await browser.tabs.remove(${unsupportedTab.id}), true)`,
+  );
+  checkpoint("unsupported pages never claim an active blocked count");
 }
 
 async function stopSession(current) {
@@ -388,6 +593,24 @@ async function runDegradedCoverage(current) {
     ({ host }) => host === "functional.sentry.io",
   );
   assert.equal(sentry?.actionCounts.restricted, 1);
+  assert.deepEqual(summary.enforcement, {
+    status: "unavailable",
+    blockedCount: null,
+  });
+  assert.deepEqual(await getBadgePresentation(current), {
+    text: "!",
+    title: "TrackerBlocker - blocked count unavailable",
+  });
+  assert.deepEqual(await readPopupProtection(current), {
+    value: "—",
+    label: "Blocked count unavailable",
+  });
+  const session = await getStoredSessionState(current);
+  assert.equal(
+    String(current.fixtureBrowserTabId) in session.enforcementLedger,
+    false,
+  );
+  checkpoint("degraded protection invalidates the blocked count");
   checkpoint("degraded catalog restriction strips Referer");
 }
 
@@ -634,7 +857,21 @@ async function runDurablePauseRestartCoverage(current) {
   assert.deepEqual(Object.keys(storage.local), ["trackerblocker:settings"]);
   assert.deepEqual(Object.keys(storage.session), ["trackerblocker:session-state"]);
   assert.equal(storage.local["trackerblocker:settings"].schemaVersion, 2);
-  assert.equal(storage.session["trackerblocker:session-state"].schemaVersion, 1);
+  assert.equal(storage.session["trackerblocker:session-state"].schemaVersion, 3);
+  const sessionKeys = Object.keys(
+    storage.session["trackerblocker:session-state"],
+  ).sort();
+  assert.deepEqual(sessionKeys, [
+    "enforcementLedger",
+    "enforcementLedgerInitialized",
+    "schemaVersion",
+    "temporarySitePauses",
+  ]);
+  for (const entry of Object.values(
+    storage.session["trackerblocker:session-state"].enforcementLedger,
+  )) {
+    assert.deepEqual(Object.keys(entry).sort(), ["blockedCount", "documentId"]);
+  }
   const serialized = JSON.stringify(storage);
   for (const forbidden of ["person%40example.test", "private-value", "token="]) {
     assert.equal(serialized.includes(forbidden), false);
@@ -680,6 +917,138 @@ async function runOptionsCoverage(current) {
   settings = await sendMessage(current, { type: GET_SETTINGS });
   assert.deepEqual(settings.domainOverrides, {});
   checkpoint("options removals and full settings reset recover cleanly");
+}
+
+async function getCurrentSummary(current) {
+  return sendMessage(current, {
+    type: GET_SUMMARY,
+    tabId: current.fixtureBrowserTabId,
+    pageUrl: current.lastProbeUrl,
+  });
+}
+
+async function getBadgePresentation(
+  current,
+  tabId = current.fixtureBrowserTabId,
+) {
+  return current.protocol.evaluateJson(
+    current.controlTab,
+    `({
+      text: await browser.action.getBadgeText({ tabId: ${tabId} }),
+      title: await browser.action.getTitle({ tabId: ${tabId} }),
+    })`,
+  );
+}
+
+async function readPopupProtection(current) {
+  return current.protocol.evaluateJson(
+    current.controlTab,
+    `(async () => {
+      await browser.tabs.update(${current.fixtureBrowserTabId}, { active: true });
+      await browser.action.openPopup();
+      let last = null;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const popup = browser.extension.getViews({ type: "popup" })[0];
+        if (popup) {
+          last = {
+            value: popup.document.querySelector(".tb-metric-value")?.textContent?.trim() ?? null,
+            label: popup.document.querySelector(".tb-metric-label")?.textContent?.trim() ?? null,
+          };
+          if (last.label && last.label !== "Checking blocked count") {
+            popup.close();
+            return last;
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error("Popup did not render: " + JSON.stringify(last));
+    })()`,
+  );
+}
+
+async function switchAwayAndBack(current) {
+  const browserTabs = await current.protocol.evaluateJson(
+    current.controlTab,
+    "browser.tabs.query({})",
+  );
+  const controlBrowserTab = browserTabs.find(
+    ({ id }) => id !== current.fixtureBrowserTabId,
+  );
+  assert(controlBrowserTab);
+  await current.protocol.evaluateJson(
+    current.controlTab,
+    `(await browser.tabs.update(${controlBrowserTab.id}, { active: true }), true)`,
+  );
+  await delay(50);
+  await current.protocol.evaluateJson(
+    current.controlTab,
+    `(await browser.tabs.update(${current.fixtureBrowserTabId}, { active: true }), true)`,
+  );
+  const fixtureTab = browserTabs.find(
+    ({ id }) => id === current.fixtureBrowserTabId,
+  );
+  assert(fixtureTab);
+  const otherWindow = await current.protocol.evaluateJson(
+    current.controlTab,
+    "browser.windows.create({ url: 'about:blank', focused: true })",
+  );
+  await delay(50);
+  await current.protocol.evaluateJson(
+    current.controlTab,
+    `(await browser.windows.update(${fixtureTab.windowId}, { focused: true }), await browser.windows.remove(${otherWindow.id}), true)`,
+  );
+}
+
+async function terminateBackground(current) {
+  await withTimeout(
+    current.remote.client.request({
+      to: current.addon.actor,
+      type: "terminateBackgroundScript",
+    }),
+    10_000,
+    "Background did not terminate in time.",
+  );
+}
+
+async function getStoredSessionState(current) {
+  const stored = await current.protocol.evaluateJson(
+    current.controlTab,
+    "browser.storage.session.get('trackerblocker:session-state')",
+  );
+  return stored["trackerblocker:session-state"];
+}
+
+async function setStoredSessionState(current, state) {
+  return current.protocol.evaluateJson(
+    current.controlTab,
+    `(await browser.storage.session.set({
+      "trackerblocker:session-state": ${JSON.stringify(state)},
+    }), true)`,
+  );
+}
+
+async function supportsNativeDocumentIds(current) {
+  return current.protocol.evaluateJson(
+    current.controlTab,
+    `(async () => {
+      const frame = await browser.webNavigation.getFrame({
+        tabId: ${current.fixtureBrowserTabId},
+        frameId: 0,
+      });
+      return typeof frame?.documentId === "string" && frame.documentId.length > 0;
+    })()`,
+  );
+}
+
+async function waitForLedgerRemoval(current, tabId) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const session = await getStoredSessionState(current);
+    if (!(String(tabId) in session.enforcementLedger)) {
+      return;
+    }
+    await delay(25);
+  }
+  throw new Error(`Ledger state for closed tab ${tabId} was not removed.`);
 }
 
 async function runProbe(current, url) {
@@ -847,11 +1216,15 @@ class FirefoxProtocol {
   async waitForFixture(tab) {
     let state;
     for (let attempt = 0; attempt < 120; attempt += 1) {
-      state = await this.evaluateJson(tab, `({
-        complete: document.documentElement.dataset.fixtureComplete === "true",
-        results: document.querySelector("#results")?.textContent ?? null,
-      })`);
-      if (state.complete) return JSON.parse(state.results);
+      try {
+        state = await this.evaluateJson(tab, `({
+          complete: document.documentElement.dataset.fixtureComplete === "true",
+          results: document.querySelector("#results")?.textContent ?? null,
+        })`);
+        if (state.complete) return JSON.parse(state.results);
+      } catch {
+        // The frame actor can be replaced between navigation and evaluation.
+      }
       await delay(50);
     }
     throw new Error(`Fixture did not complete: ${JSON.stringify(state)}`);

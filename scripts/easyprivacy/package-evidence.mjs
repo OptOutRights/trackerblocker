@@ -49,6 +49,7 @@ const manifest = JSON.parse(await readFile(path.join(output, "manifest.json"), "
 assert.deepEqual(manifest.permissions, [
   "activeTab",
   "storage",
+  "webNavigation",
   "webRequest",
   "webRequestBlocking",
 ]);
@@ -126,7 +127,7 @@ process.stdout.write(`EasyPrivacy package: ${fullBytes} bytes\n`);
 process.stdout.write(`Complete compressed EasyPrivacy delta: ${deltaBytes} bytes\n`);
 process.stdout.write(`Firefox zip: ${(await stat(archive)).size} bytes\n`);
 process.stdout.write(`Source zip: ${(await stat(sources)).size} bytes\n`);
-process.stdout.write("Manifest permissions unchanged; no content scripts; package/source contents and private-build exclusions inspected.\n");
+process.stdout.write("Manifest permissions match the reviewed minimal set; no content scripts; package/source contents and private-build exclusions inspected.\n");
 
 function run(command, args, cwd, env = process.env) {
   return new Promise((resolve, reject) => {

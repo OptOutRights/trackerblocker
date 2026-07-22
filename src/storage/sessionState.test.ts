@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   SESSION_STATE_STORAGE_KEY,
+  enforcementLedgerFromSessionState,
   normalizeSessionState,
   pausesFromSessionState,
   readSessionState,
   readSessionStateWithin,
   sessionStateFromPauses,
+  sessionStateFromRuntime,
   writeSessionState,
   type SessionStorageArea,
 } from "./sessionState";
@@ -27,21 +29,25 @@ class MemorySessionStorage implements SessionStorageArea {
   }
 }
 
-describe("session pause state", () => {
+describe("session state", () => {
   it("normalizes tab-scoped pauses and drops malformed values", () => {
     expect(
       normalizeSessionState({
-        schemaVersion: 1,
+        schemaVersion: 3,
         temporarySitePauses: {
           "12": " Publisher.Test. ",
           "-1": "bad.test",
           tab: "bad.test",
           "13": "bad_domain",
         },
+        enforcementLedgerInitialized: true,
+        enforcementLedger: {},
       }),
     ).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 3,
       temporarySitePauses: { "12": "publisher.test" },
+      enforcementLedgerInitialized: true,
+      enforcementLedger: {},
     });
   });
 
@@ -59,10 +65,84 @@ describe("session pause state", () => {
     );
   });
 
-  it("fails closed to an empty session shape for unknown schemas", () => {
+  it("fails closed to unavailable counts for unknown schemas", () => {
     expect(normalizeSessionState({ schemaVersion: 99 })).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 3,
       temporarySitePauses: {},
+      enforcementLedgerInitialized: true,
+      enforcementLedger: {},
+    });
+  });
+
+  it("migrates legacy pauses without trusting extension-owned document tokens", () => {
+    expect(
+      normalizeSessionState({
+        schemaVersion: 1,
+        temporarySitePauses: { "12": "publisher.test" },
+      }),
+    ).toEqual({
+      schemaVersion: 3,
+      temporarySitePauses: { "12": "publisher.test" },
+      enforcementLedgerInitialized: true,
+      enforcementLedger: {},
+    });
+
+    expect(
+      normalizeSessionState({
+        schemaVersion: 2,
+        temporarySitePauses: { "13": "example.test" },
+        enforcementLedgerInitialized: true,
+        enforcementLedger: {
+          "13": { documentToken: "unverifiable-token", blockedCount: 4 },
+        },
+      }),
+    ).toEqual({
+      schemaVersion: 3,
+      temporarySitePauses: { "13": "example.test" },
+      enforcementLedgerInitialized: true,
+      enforcementLedger: {},
+    });
+  });
+
+  it("retains only opaque document ids and valid blocked counts", () => {
+    const state = sessionStateFromRuntime(
+      new Map(),
+      true,
+      new Map([
+        [12, { documentId: "document-12", blockedCount: 3 }],
+        [13, { documentId: "document-13", blockedCount: 0 }],
+      ]),
+    );
+
+    expect(enforcementLedgerFromSessionState(state)).toEqual(
+      new Map([
+        [12, { documentId: "document-12", blockedCount: 3 }],
+        [13, { documentId: "document-13", blockedCount: 0 }],
+      ]),
+    );
+    expect(Object.keys(state).sort()).toEqual([
+      "enforcementLedger",
+      "enforcementLedgerInitialized",
+      "schemaVersion",
+      "temporarySitePauses",
+    ]);
+  });
+
+  it("drops malformed ledger entries", () => {
+    const state = normalizeSessionState({
+      schemaVersion: 3,
+      temporarySitePauses: {},
+      enforcementLedgerInitialized: true,
+      enforcementLedger: {
+        "12": { documentId: "document-12", blockedCount: 2 },
+        "13": { documentId: "", blockedCount: 1 },
+        "14": { documentId: "document-14", blockedCount: -1 },
+        tab: { documentId: "document-tab", blockedCount: 1 },
+      },
+    });
+
+    expect(state.enforcementLedger).toEqual({
+      "12": { documentId: "document-12", blockedCount: 2 },
     });
   });
 
@@ -86,7 +166,7 @@ describe("session pause state", () => {
     await expect(pending).resolves.toBeNull();
   });
 
-  it("continues with protection active when session storage rejects", async () => {
+  it("reports session storage rejection to the runtime", async () => {
     const storage: SessionStorageArea = {
       get: async () => {
         throw new Error("session storage unavailable");
@@ -113,13 +193,21 @@ describe("session pause state", () => {
 
     resolveRead?.({
       [SESSION_STATE_STORAGE_KEY]: {
-        schemaVersion: 1,
+        schemaVersion: 3,
         temporarySitePauses: { "12": "publisher.test" },
+        enforcementLedgerInitialized: true,
+        enforcementLedger: {
+          "12": { documentId: "document-12", blockedCount: 3 },
+        },
       },
     });
     await expect(pending).resolves.toEqual({
-      schemaVersion: 1,
+      schemaVersion: 3,
       temporarySitePauses: { "12": "publisher.test" },
+      enforcementLedgerInitialized: true,
+      enforcementLedger: {
+        "12": { documentId: "document-12", blockedCount: 3 },
+      },
     });
   });
 
@@ -141,8 +229,10 @@ describe("session pause state", () => {
     await expect(pending).resolves.toBeNull();
     resolveRead?.({
       [SESSION_STATE_STORAGE_KEY]: {
-        schemaVersion: 1,
+        schemaVersion: 3,
         temporarySitePauses: { "12": "publisher.test" },
+        enforcementLedgerInitialized: true,
+        enforcementLedger: {},
       },
     });
     await Promise.resolve();

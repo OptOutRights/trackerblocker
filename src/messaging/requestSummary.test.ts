@@ -56,6 +56,7 @@ describe("request summary messaging", () => {
         generation: 0,
         sitePauseStatus: "active",
         settingsHealth: "ready",
+        enforcement: { status: "active", blockedCount: 0 },
         requestCounts: { total: 0, blocked: 0, restricted: 0, allowed: 0 },
         hostCounts: {
           observed: 0,
@@ -74,6 +75,45 @@ describe("request summary messaging", () => {
         rows: [],
       }),
     ).toBe(true);
+  });
+
+  it("requires unavailable counts to be null", () => {
+    const base = {
+      type: GET_TAB_REQUEST_SUMMARY_RESPONSE,
+      tabId: 1,
+      generation: 0,
+      sitePauseStatus: "active",
+      settingsHealth: "ready",
+      requestCounts: { total: 0, blocked: 0, restricted: 0, allowed: 0 },
+      hostCounts: {
+        observed: 0,
+        thirdParty: 0,
+        unknown: 0,
+        firstParty: 0,
+        blocked: 0,
+        restricted: 0,
+        allowed: 0,
+        mixed: 0,
+        lowerBound: false,
+      },
+      hostRowsTruncated: false,
+      omittedRequestCount: 0,
+      activeRequestEvidenceTruncated: false,
+      rows: [],
+    };
+
+    expect(
+      isGetTabRequestSummaryResponse({
+        ...base,
+        enforcement: { status: "unavailable", blockedCount: null },
+      }),
+    ).toBe(true);
+    expect(
+      isGetTabRequestSummaryResponse({
+        ...base,
+        enforcement: { status: "unavailable", blockedCount: 0 },
+      }),
+    ).toBe(false);
   });
 
   it("rejects invalid request summary responses", () => {

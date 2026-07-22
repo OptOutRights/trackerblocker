@@ -6,6 +6,12 @@ import type { SitePauseStatus } from "../storage/settings";
 import type { SettingsRuntimeHealth } from "../storage/settingsRuntime";
 
 export type RuntimeSitePauseStatus = SitePauseStatus | "unknown";
+export type EnforcementStatus = "active" | "paused" | "unavailable";
+
+export interface EnforcementSummary {
+  status: EnforcementStatus;
+  blockedCount: number | null;
+}
 
 export const GET_TAB_REQUEST_SUMMARY_MESSAGE =
   "trackerblocker.getTabRequestSummary";
@@ -26,6 +32,7 @@ export interface GetTabRequestSummaryResponse extends TabRequestSummary {
   type: typeof GET_TAB_REQUEST_SUMMARY_RESPONSE;
   sitePauseStatus: RuntimeSitePauseStatus;
   settingsHealth: SettingsRuntimeHealth;
+  enforcement: EnforcementSummary;
 }
 
 export interface GetHostRequestDetailsMessage {
@@ -146,7 +153,25 @@ export function isGetTabRequestSummaryResponse(
     "settingsHealth" in value &&
     (value.settingsHealth === "loading" ||
       value.settingsHealth === "ready" ||
-      value.settingsHealth === "degraded")
+      value.settingsHealth === "degraded") &&
+    "enforcement" in value &&
+    isEnforcementSummary(value.enforcement)
+  );
+}
+
+function isEnforcementSummary(value: unknown): value is EnforcementSummary {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "status" in value &&
+    (value.status === "active" ||
+      value.status === "paused" ||
+      value.status === "unavailable") &&
+    "blockedCount" in value &&
+    (value.status === "active"
+      ? Number.isSafeInteger(value.blockedCount) &&
+        (value.blockedCount as number) >= 0
+      : value.blockedCount === null)
   );
 }
 

@@ -8,6 +8,21 @@ export interface StaleTopLevelDocumentRequestInput {
   documentUrl?: string | null;
 }
 
+export function isEnforceablePageUrl(
+  url: string | null | undefined,
+): boolean {
+  if (!url) {
+    return false;
+  }
+
+  try {
+    const protocol = new URL(url).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function isStaleTopLevelDocumentRequest({
   frameId,
   currentDocumentUrls,

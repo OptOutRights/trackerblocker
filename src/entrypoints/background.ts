@@ -10,6 +10,7 @@ import {
   GET_TAB_REQUEST_SUMMARY_RESPONSE,
   isGetHostRequestDetailsMessage,
   isGetTabRequestSummaryMessage,
+  type EnforcementSummary,
   type GetTabRequestSummaryResponse,
   type RuntimeSitePauseStatus,
 } from "../messaging/requestSummary";
@@ -25,7 +26,10 @@ import {
   type SettingsResponse,
   type SetSiteAllowMessage,
 } from "../messaging/settings";
-import { ActionBadgeUpdateQueue } from "../shared/actionBadge";
+import {
+  ActionBadgeUpdateQueue,
+  type ActionBadgeState,
+} from "../shared/actionBadge";
 import { startBackgroundRuntime } from "../shared/backgroundStartup";
 import { EASYPRIVACY_MATCHING_ENABLED } from "../shared/buildFlags";
 import { formatUrlHost } from "../shared/domains";
@@ -47,6 +51,7 @@ import {
 import { applyRequestHeaderRestriction } from "../shared/requestRestriction";
 import {
   TabPageUrlCache,
+  isEnforceablePageUrl,
   isStaleTopLevelDocumentRequest,
 } from "../shared/tabPageUrls";
 import {
@@ -57,6 +62,11 @@ import {
   type RequestDecision,
 } from "../shared/requestDecisions";
 import {
+  EnforcementLedger,
+  canRestoreEnforcementEntry,
+  recordCancellationDecision,
+} from "../storage/enforcementLedger";
+import {
   SETTINGS_STORAGE_KEY,
   normalizeSettings,
   normalizeSettingsKey,
@@ -66,9 +76,10 @@ import {
   type TrackerBlockerSettings,
 } from "../storage/settings";
 import {
+  enforcementLedgerFromSessionState,
   pausesFromSessionState,
   readSessionStateWithin,
-  sessionStateFromPauses,
+  sessionStateFromRuntime,
   writeSessionState,
 } from "../storage/sessionState";
 import { SettingsRuntime } from "../storage/settingsRuntime";
@@ -77,14 +88,21 @@ export default defineBackground(() => {
   const startedAt = new Date().toISOString();
   const tabObservations = new Map<number, TabObservationState>();
   const actionBadgeUpdates = new ActionBadgeUpdateQueue();
+  const enforcementLedger = new EnforcementLedger();
   const filterEngine = new FilterEngine();
   const settingsRuntime = new SettingsRuntime();
   const temporarySitePauses = new Map<number, string>();
   const removedTabIds = new Set<number>();
   const tabPageUrls = new TabPageUrlCache();
+  const tabDocumentIds = new Map<number, string>();
+  const persistableDocumentTabIds = new Set<number>();
+  const pendingTopLevelNavigations = new Set<number>();
   const settingsMutations = new SettingsMutationQueue();
   let sessionStateReady: Promise<void> = Promise.resolve();
   let sessionWriteTail: Promise<void> = Promise.resolve();
+  let filterEngineReady: Promise<void> = Promise.resolve();
+  let hostPermissionReady: Promise<boolean> = Promise.resolve(false);
+  let hostPermissionGranted = false;
 
   const registerListeners = () => {
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -99,33 +117,8 @@ export default defineBackground(() => {
       }
 
       if (isGetTabRequestSummaryMessage(message)) {
-        const state = getTabObservationState(
-          tabObservations,
-          message.tabId,
-          message.pageUrl,
-        );
-        const settings = settingsRuntime.snapshot.settings;
-        const sitePauseStatus: RuntimeSitePauseStatus = settings
-          ? getSitePauseStatus(
-              temporarySitePauses,
-              message.tabId,
-              state.pageUrl ?? message.pageUrl,
-              settings,
-            )
-          : "unknown";
-        const summary = summarizeTabObservation(state, {
-          domainOverrides: settings?.domainOverrides,
-          siteAllows: settings?.siteAllows,
-        });
-        const response: GetTabRequestSummaryResponse = {
-          type: GET_TAB_REQUEST_SUMMARY_RESPONSE,
-          sitePauseStatus,
-          settingsHealth: settingsRuntime.snapshot.health,
-          ...summary,
-        };
-
-        sendResponse(response);
-        return false;
+        void sendTabRequestSummary(message.tabId, message.pageUrl, sendResponse);
+        return true;
       }
 
       if (isGetHostRequestDetailsMessage(message)) {
@@ -167,7 +160,8 @@ export default defineBackground(() => {
                   message.tabId,
                   message.site,
                 );
-                await persistTemporarySitePauses();
+                invalidateEnforcementForTab(message.tabId, "paused");
+                await persistRuntimeSessionState(message.tabId);
               }
             },
             () => settingsRuntime.degrade("storage-unavailable"),
@@ -185,13 +179,15 @@ export default defineBackground(() => {
           sendResponse,
           async (settings) => {
             settingsRuntime.accept(settings);
-            if (
-              (message.mode === null || message.mode === "always") &&
-              typeof message.tabId === "number"
-            ) {
+            if (message.mode === null || message.mode === "always") {
               await sessionStateReady;
-              temporarySitePauses.delete(message.tabId);
-              await persistTemporarySitePauses();
+              if (typeof message.tabId === "number") {
+                temporarySitePauses.delete(message.tabId);
+              }
+              await invalidateEnforcementForSite(
+                message.site,
+                message.mode === "always" ? "paused" : "unavailable",
+              );
             }
           },
           () => settingsRuntime.degrade("storage-unavailable"),
@@ -242,7 +238,7 @@ export default defineBackground(() => {
             settingsRuntime.accept(settings);
             await sessionStateReady;
             temporarySitePauses.clear();
-            await persistTemporarySitePauses();
+            await invalidateAllEnforcementCounts();
           },
           () => settingsRuntime.degrade("storage-unavailable"),
         );
@@ -266,6 +262,8 @@ export default defineBackground(() => {
           const [settings] = await Promise.all([
             settingsRuntime.waitForUsableSettings(),
             sessionStateReady,
+            filterEngineReady,
+            hostPermissionReady,
           ]);
           const state = getTabObservationState(
             tabObservations,
@@ -296,10 +294,21 @@ export default defineBackground(() => {
               details.url,
             );
             if (clearedTemporaryPause) {
-              void persistTemporarySitePauses();
+              void persistRuntimeSessionState(details.tabId);
             }
             tabPageUrls.set(details.tabId, details.url);
             resetTabObservationState(state, details.url);
+            pendingTopLevelNavigations.add(details.tabId);
+            tabDocumentIds.delete(details.tabId);
+            persistableDocumentTabIds.delete(details.tabId);
+            enforcementLedger.markUnavailable(details.tabId);
+            await persistRuntimeSessionState(details.tabId);
+            // Until the navigation commits, the old page is still visible and
+            // must not inherit the new document's zero count.
+            await updateActionBadgeForEnforcement(
+              details.tabId,
+              { status: "unavailable", blockedCount: null },
+            );
           }
 
           recordUnobservedRequestAttempt(
@@ -309,17 +318,19 @@ export default defineBackground(() => {
             details.timeStamp,
           );
           enforceGlobalActiveRequestLimit(tabObservations.values());
-          void updateActionBadgeForTab(
-            state,
-            actionBadgeUpdates,
-          );
-          return decision.action === "block" ? { cancel: true } : undefined;
+          if (decision.action === "block") {
+            const cancellation = await recordEnforcedBlock(details.tabId);
+            return { cancel: cancellation.cancel };
+          }
+          return undefined;
         }
 
         const [settings, requestPageUrl] = await Promise.all([
           settingsRuntime.waitForUsableSettings(),
           tabPageUrls.resolve(details.tabId, loadCurrentTabPageUrl),
           sessionStateReady,
+          filterEngineReady,
+          hostPermissionReady,
         ]);
         const state = getTabObservationState(
           tabObservations,
@@ -391,12 +402,15 @@ export default defineBackground(() => {
           );
         }
         enforceGlobalActiveRequestLimit(tabObservations.values());
-        void updateActionBadgeForTab(
-          state,
-          actionBadgeUpdates,
-        );
+        if (decision.action === "block") {
+          const cancellation = await recordEnforcedBlock(
+            details.tabId,
+            !staleTopLevelDocumentRequest,
+          );
+          return { cancel: cancellation.cancel };
+        }
 
-        return decision.action === "block" ? { cancel: true } : undefined;
+        return undefined;
       }) as unknown as (
         details: Browser.webRequest.OnBeforeRequestDetails,
       ) => Browser.webRequest.BlockingResponse | undefined,
@@ -423,10 +437,6 @@ export default defineBackground(() => {
           statusCode: details.statusCode,
           timestamp: details.timeStamp,
         });
-        void updateActionBadgeForTab(
-          state,
-          actionBadgeUpdates,
-        );
       },
       { urls: ["<all_urls>"] },
     );
@@ -471,10 +481,6 @@ export default defineBackground(() => {
           requestId: details.requestId,
           timestamp: details.timeStamp,
         });
-        void updateActionBadgeForTab(
-          state,
-          actionBadgeUpdates,
-        );
       },
       { urls: ["<all_urls>"] },
     );
@@ -483,6 +489,20 @@ export default defineBackground(() => {
       (details) => {
         if (details.tabId < 0) {
           return;
+        }
+
+        if (
+          details.type === "main_frame" &&
+          pendingTopLevelNavigations.delete(details.tabId)
+        ) {
+          tabDocumentIds.delete(details.tabId);
+          persistableDocumentTabIds.delete(details.tabId);
+          enforcementLedger.markUnavailable(details.tabId);
+          void persistRuntimeSessionState(details.tabId);
+          void updateActionBadgeForEnforcement(details.tabId, {
+            status: "unavailable",
+            blockedCount: null,
+          });
         }
 
         const state = tabObservations.get(details.tabId);
@@ -495,10 +515,6 @@ export default defineBackground(() => {
           requestId: details.requestId,
           timestamp: details.timeStamp,
         });
-        void updateActionBadgeForTab(
-          state,
-          actionBadgeUpdates,
-        );
       },
       { urls: ["<all_urls>"] },
     );
@@ -516,17 +532,51 @@ export default defineBackground(() => {
         changeInfo.url,
       );
       if (clearedTemporaryPause) {
-        void persistTemporarySitePauses();
+        void persistRuntimeSessionState(tabId);
       }
 
-      if (state.pageUrl === changeInfo.url) {
+      // URL-only changes can be history.pushState or fragment navigation.
+      // Full-document resets are owned by main-frame and webNavigation events.
+      state.pageUrl = changeInfo.url;
+    });
+
+    browser.webNavigation.onCommitted.addListener((details) => {
+      if (details.frameId !== 0 || details.tabId < 0) {
         return;
       }
 
-      resetTabObservationState(state, changeInfo.url);
-      void updateActionBadgeForTab(
-        state,
-        actionBadgeUpdates,
+      const previousDocumentId = tabDocumentIds.get(details.tabId);
+      pendingTopLevelNavigations.delete(details.tabId);
+      const nativeDocumentId = getStringProperty(details, "documentId");
+      const documentId = nativeDocumentId ?? createEphemeralDocumentId();
+      tabDocumentIds.set(details.tabId, documentId);
+      if (nativeDocumentId) {
+        persistableDocumentTabIds.add(details.tabId);
+      } else {
+        persistableDocumentTabIds.delete(details.tabId);
+      }
+      // Firefox resets per-tab action presentation on navigation.
+      actionBadgeUpdates.remove(details.tabId);
+      tabPageUrls.set(details.tabId, details.url);
+
+      const state = getTabObservationState(
+        tabObservations,
+        details.tabId,
+        details.url,
+      );
+      if (
+        previousDocumentId !== undefined &&
+        previousDocumentId !== documentId
+      ) {
+        resetTabObservationState(state, details.url);
+      } else {
+        state.pageUrl = details.url;
+      }
+
+      void establishEnforcementForCommittedDocument(
+        details.tabId,
+        documentId,
+        details.url,
       );
     });
 
@@ -544,9 +594,25 @@ export default defineBackground(() => {
       removedTabIds.add(tabId);
       tabPageUrls.remove(tabId);
       tabObservations.delete(tabId);
+      tabDocumentIds.delete(tabId);
+      persistableDocumentTabIds.delete(tabId);
+      pendingTopLevelNavigations.delete(tabId);
+      enforcementLedger.remove(tabId);
       temporarySitePauses.delete(tabId);
-      void persistTemporarySitePauses();
+      void persistRuntimeSessionState();
       actionBadgeUpdates.remove(tabId);
+    });
+
+    browser.permissions.onRemoved.addListener(() => {
+      void refreshHostPermission().then((granted) => {
+        if (!granted) {
+          void invalidateAllEnforcementCounts();
+        }
+      });
+    });
+
+    browser.permissions.onAdded.addListener(() => {
+      hostPermissionReady = refreshHostPermission();
     });
 
     console.info(`[TrackerBlocker] Background ready at ${startedAt}`);
@@ -556,13 +622,21 @@ export default defineBackground(() => {
     registerListeners,
     startSettings: () => {
       settingsRuntime.start(readSettings);
+      hostPermissionReady = refreshHostPermission();
       sessionStateReady = readSessionStateWithin()
         .then(async (sessionState) => {
           if (!sessionState) {
+            tabDocumentIds.clear();
+            persistableDocumentTabIds.clear();
+            enforcementLedger.restore(true, new Map());
             return;
           }
 
           temporarySitePauses.clear();
+          enforcementLedger.restore(
+            sessionState.enforcementLedgerInitialized,
+            enforcementLedgerFromSessionState(sessionState),
+          );
           const restoredPauses = await Promise.all(
             [...pausesFromSessionState(sessionState)].map(
               async ([tabId, site]) => {
@@ -588,27 +662,371 @@ export default defineBackground(() => {
             }
             temporarySitePauses.set(pause.tabId, pause.site);
           }
-          if (discardedStalePause) {
-            void persistTemporarySitePauses();
+          const ledgerChanged = await reconcileRestoredEnforcementLedger();
+          if (discardedStalePause || ledgerChanged) {
+            await persistRuntimeSessionState();
           }
         });
     },
     startFilterEngine: () => {
-      void filterEngine.initialize(loadPackagedEasyPrivacyArtifact);
+      filterEngineReady = filterEngine.initialize(
+        loadPackagedEasyPrivacyArtifact,
+      );
     },
     initializeBadge: () => {
-      void initializeActionBadge();
+      void initializeActionBadgePresentation();
     },
   });
 
-  function persistTemporarySitePauses(): Promise<void> {
-    const snapshot = sessionStateFromPauses(temporarySitePauses);
+  async function persistRuntimeSessionState(
+    affectedTabId?: number,
+  ): Promise<boolean> {
+    const snapshot = sessionStateFromRuntime(
+      temporarySitePauses,
+      enforcementLedger.initialized,
+      new Map(
+        [...enforcementLedger.entries()].filter(([tabId]) =>
+          persistableDocumentTabIds.has(tabId),
+        ),
+      ),
+    );
     const write = sessionWriteTail.then(() => writeSessionState(snapshot));
     sessionWriteTail = write.then(
       () => undefined,
       () => undefined,
     );
-    return write.then(() => undefined);
+    try {
+      await write;
+      return true;
+    } catch {
+      if (affectedTabId !== undefined) {
+        enforcementLedger.markUnavailable(affectedTabId);
+        persistableDocumentTabIds.delete(affectedTabId);
+        await updateActionBadgeForEnforcement(affectedTabId, {
+          status: "unavailable",
+          blockedCount: null,
+        });
+      }
+      return false;
+    }
+  }
+
+  async function reconcileRestoredEnforcementLedger(): Promise<boolean> {
+    const tabs = await browser.tabs.query({}).catch(() => []);
+    const openTabIds = new Set<number>();
+    let changed = false;
+
+    tabDocumentIds.clear();
+    persistableDocumentTabIds.clear();
+
+    for (const tab of tabs) {
+      if (typeof tab.id !== "number") {
+        continue;
+      }
+
+      openTabIds.add(tab.id);
+      const stored = enforcementLedger.entries().get(tab.id);
+      if (!stored) {
+        continue;
+      }
+
+      const currentDocument = await loadCurrentTopLevelDocument(tab.id);
+      if (
+        canRestoreEnforcementEntry({
+          storedDocumentId: stored.documentId,
+          currentDocumentId: currentDocument?.documentId ?? null,
+          pageUrl: currentDocument?.url ?? null,
+        })
+      ) {
+        tabDocumentIds.set(tab.id, stored.documentId);
+        persistableDocumentTabIds.add(tab.id);
+      } else {
+        enforcementLedger.remove(tab.id);
+        changed = true;
+      }
+    }
+
+    for (const tabId of enforcementLedger.entries().keys()) {
+      if (!openTabIds.has(tabId)) {
+        enforcementLedger.remove(tabId);
+        changed = true;
+      }
+    }
+
+    if (!enforcementLedger.initialized) {
+      enforcementLedger.finishInitialization();
+      changed = true;
+    }
+
+    return changed;
+  }
+
+  async function refreshHostPermission(): Promise<boolean> {
+    try {
+      hostPermissionGranted = await browser.permissions.contains({
+        origins: ["<all_urls>"],
+      });
+    } catch {
+      hostPermissionGranted = false;
+    }
+    return hostPermissionGranted;
+  }
+
+  function isProtectionRuntimeAvailable(): boolean {
+    return (
+      hostPermissionGranted &&
+      settingsRuntime.snapshot.settings !== null &&
+      (!EASYPRIVACY_MATCHING_ENABLED || filterEngine.health === "ready")
+    );
+  }
+
+  function resolveDocumentId(tabId: number): string | null {
+    return tabDocumentIds.get(tabId) ?? null;
+  }
+
+  async function recordEnforcedBlock(
+    tabId: number,
+    countForCurrentDocument = true,
+  ) {
+    if (!countForCurrentDocument) {
+      return {
+        cancel: true as const,
+        count: { status: "unavailable" as const, blockedCount: null },
+      };
+    }
+
+    const documentId = resolveDocumentId(tabId);
+    const cancellation = await recordCancellationDecision({
+      ledger: enforcementLedger,
+      tabId,
+      documentId,
+      countingAvailable: isProtectionRuntimeAvailable(),
+      // The helper owns document-scoped failure invalidation and cleanup. A
+      // lifecycle write for a newer document must not be invalidated here.
+      persist: () => persistRuntimeSessionState(),
+    });
+    if (
+      resolveDocumentId(tabId) === documentId &&
+      !pendingTopLevelNavigations.has(tabId)
+    ) {
+      await updateActionBadgeForEnforcement(tabId, cancellation.count);
+    }
+    return cancellation;
+  }
+
+  async function establishEnforcementForCommittedDocument(
+    tabId: number,
+    documentId: string,
+    pageUrl: string,
+  ): Promise<void> {
+    const settings = settingsRuntime.snapshot.settings;
+    const pauseStatus = settings
+      ? getSitePauseStatus(temporarySitePauses, tabId, pageUrl, settings)
+      : "unknown";
+
+    if (
+      isEnforceablePageUrl(pageUrl) &&
+      pauseStatus === "active" &&
+      isProtectionRuntimeAvailable()
+    ) {
+      enforcementLedger.startDocument(tabId, documentId);
+    } else {
+      enforcementLedger.markUnavailable(tabId);
+      persistableDocumentTabIds.delete(tabId);
+    }
+
+    await persistRuntimeSessionState(tabId);
+    await updateActionBadgeForCurrentTab(tabId);
+  }
+
+  function invalidateEnforcementForTab(
+    tabId: number,
+    status: "paused" | "unavailable" = "unavailable",
+  ): void {
+    enforcementLedger.markUnavailable(tabId);
+    persistableDocumentTabIds.delete(tabId);
+    void updateActionBadgeForEnforcement(tabId, {
+      status,
+      blockedCount: null,
+    });
+  }
+
+  async function invalidateAllEnforcementCounts(): Promise<void> {
+    const affected = [
+      ...new Set([
+        ...tabDocumentIds.keys(),
+        ...enforcementLedger.entries().keys(),
+      ]),
+    ];
+    for (const tabId of affected) {
+      enforcementLedger.markUnavailable(tabId);
+      persistableDocumentTabIds.delete(tabId);
+    }
+    await persistRuntimeSessionState();
+    await Promise.all(
+      affected.map((tabId) =>
+        updateActionBadgeForEnforcement(tabId, {
+          status: "unavailable",
+          blockedCount: null,
+        }),
+      ),
+    );
+  }
+
+  async function invalidateEnforcementForSite(
+    site: string,
+    status: "paused" | "unavailable",
+  ): Promise<void> {
+    const normalizedSite = normalizeSettingsKey(site);
+    const tabs = await browser.tabs.query({}).catch(() => []);
+    const affected = tabs.flatMap((tab) =>
+      typeof tab.id === "number" &&
+      normalizeSiteFromUrl(tab.url ?? tabPageUrls.get(tab.id)) === normalizedSite
+        ? [tab.id]
+        : [],
+    );
+
+    for (const tabId of affected) {
+      enforcementLedger.markUnavailable(tabId);
+      persistableDocumentTabIds.delete(tabId);
+    }
+    await persistRuntimeSessionState();
+    await Promise.all(
+      affected.map((tabId) =>
+        updateActionBadgeForEnforcement(tabId, {
+          status,
+          blockedCount: null,
+        }),
+      ),
+    );
+  }
+
+  async function getEnforcementSummary(
+    tabId: number,
+    sitePauseStatus: RuntimeSitePauseStatus,
+    pageUrl: string | null | undefined,
+  ): Promise<EnforcementSummary> {
+    if (sitePauseStatus === "paused-once" || sitePauseStatus === "paused-always") {
+      if (enforcementLedger.hasEntry(tabId)) {
+        enforcementLedger.markUnavailable(tabId);
+        persistableDocumentTabIds.delete(tabId);
+        await persistRuntimeSessionState(tabId);
+      }
+      return { status: "paused", blockedCount: null };
+    }
+
+    await Promise.all([sessionStateReady, filterEngineReady, hostPermissionReady]);
+    if (
+      pendingTopLevelNavigations.has(tabId) ||
+      !isEnforceablePageUrl(pageUrl)
+    ) {
+      if (enforcementLedger.hasEntry(tabId)) {
+        enforcementLedger.markUnavailable(tabId);
+        persistableDocumentTabIds.delete(tabId);
+        void persistRuntimeSessionState(tabId);
+      }
+      return { status: "unavailable", blockedCount: null };
+    }
+    const documentId = resolveDocumentId(tabId);
+    if (!documentId || !isProtectionRuntimeAvailable()) {
+      if (enforcementLedger.hasEntry(tabId)) {
+        enforcementLedger.markUnavailable(tabId);
+        persistableDocumentTabIds.delete(tabId);
+        void persistRuntimeSessionState(tabId);
+      }
+      return { status: "unavailable", blockedCount: null };
+    }
+
+    const count = enforcementLedger.getCount(tabId, documentId);
+    if (count.status === "available") {
+      return { status: "active", blockedCount: count.blockedCount };
+    }
+
+    if (enforcementLedger.hasEntry(tabId)) {
+      enforcementLedger.markUnavailable(tabId);
+      persistableDocumentTabIds.delete(tabId);
+      void persistRuntimeSessionState(tabId);
+    }
+    return { status: "unavailable", blockedCount: null };
+  }
+
+  async function sendTabRequestSummary(
+    tabId: number,
+    pageUrl: string | null | undefined,
+    sendResponse: (response: GetTabRequestSummaryResponse) => void,
+  ): Promise<void> {
+    await sessionStateReady;
+    const state = getTabObservationState(tabObservations, tabId, pageUrl);
+    const settings = settingsRuntime.snapshot.settings;
+    const sitePauseStatus: RuntimeSitePauseStatus = settings
+      ? getSitePauseStatus(
+          temporarySitePauses,
+          tabId,
+          state.pageUrl ?? pageUrl,
+          settings,
+        )
+      : "unknown";
+    const summary = summarizeTabObservation(state, {
+      domainOverrides: settings?.domainOverrides,
+      siteAllows: settings?.siteAllows,
+    });
+    const enforcement = await getEnforcementSummary(
+      tabId,
+      sitePauseStatus,
+      state.pageUrl ?? pageUrl,
+    );
+    await updateActionBadgeForEnforcement(tabId, toBadgeCountStatus(enforcement));
+
+    sendResponse({
+      type: GET_TAB_REQUEST_SUMMARY_RESPONSE,
+      sitePauseStatus,
+      settingsHealth: settingsRuntime.snapshot.health,
+      enforcement,
+      ...summary,
+    });
+  }
+
+  async function updateActionBadgeForCurrentTab(tabId: number): Promise<void> {
+    const tab = await browser.tabs.get(tabId).catch(() => null);
+    const settings = settingsRuntime.snapshot.settings;
+    const pauseStatus = settings
+      ? getSitePauseStatus(temporarySitePauses, tabId, tab?.url, settings)
+      : "unknown";
+    const enforcement = await getEnforcementSummary(
+      tabId,
+      pauseStatus,
+      tab?.url,
+    );
+    await updateActionBadgeForEnforcement(tabId, toBadgeCountStatus(enforcement));
+  }
+
+  async function updateActionBadgeForEnforcement(
+    tabId: number,
+    state: ActionBadgeState,
+  ): Promise<void> {
+    try {
+      await actionBadgeUpdates.update(tabId, state, async (badge) => {
+        await Promise.all([
+          browser.action.setBadgeText({ tabId, text: badge.text }),
+          browser.action.setTitle({ tabId, title: badge.title }),
+        ]);
+      });
+    } catch {
+      // Badge UI is helpful but should never interfere with request blocking.
+    }
+  }
+
+  async function initializeActionBadgePresentation(): Promise<void> {
+    await Promise.all([sessionStateReady, filterEngineReady, hostPermissionReady]);
+    await initializeActionBadgeColors();
+    const tabs = await browser.tabs.query({}).catch(() => []);
+    await Promise.all(
+      tabs.flatMap((tab) =>
+        typeof tab.id === "number"
+          ? [updateActionBadgeForCurrentTab(tab.id)]
+          : [],
+      ),
+    );
   }
 });
 
@@ -862,7 +1280,7 @@ function clearTemporaryPauseForNavigation(
   return false;
 }
 
-async function initializeActionBadge(): Promise<void> {
+async function initializeActionBadgeColors(): Promise<void> {
   await Promise.all([
     safelyUpdateActionBadge(
       () => browser.action.setBadgeBackgroundColor({ color: "#2864fc" }),
@@ -871,55 +1289,6 @@ async function initializeActionBadge(): Promise<void> {
       () => browser.action.setBadgeTextColor({ color: "#ffffff" }),
     ),
   ]);
-
-  try {
-    const tabs = await browser.tabs.query({});
-    await Promise.all(
-      tabs.flatMap((tab) =>
-        typeof tab.id === "number"
-          ? [
-              safelyUpdateActionBadge(() =>
-                browser.action.setBadgeText({ tabId: tab.id, text: "" }),
-              ),
-              safelyUpdateActionBadge(() =>
-                browser.action.setTitle({
-                  tabId: tab.id,
-                  title: "TrackerBlocker",
-                }),
-              ),
-            ]
-          : [],
-      ),
-    );
-  } catch {
-    // Stale badge cleanup is best-effort and must not affect protection.
-  }
-}
-
-async function updateActionBadgeForTab(
-  state: TabObservationState,
-  actionBadgeUpdates: ActionBadgeUpdateQueue,
-): Promise<void> {
-  try {
-    await actionBadgeUpdates.update(
-      state.tabId,
-      state.requestCounts.blocked,
-      async (badge) => {
-        await Promise.all([
-          browser.action.setBadgeText({
-            tabId: state.tabId,
-            text: badge.text,
-          }),
-          browser.action.setTitle({
-            tabId: state.tabId,
-            title: badge.title,
-          }),
-        ]);
-      },
-    );
-  } catch {
-    // Badge UI is helpful but should never interfere with request blocking.
-  }
 }
 
 async function safelyUpdateActionBadge(
@@ -947,12 +1316,53 @@ async function loadCurrentTabPageUrl(tabId: number): Promise<string | null> {
   }
 }
 
+async function loadCurrentTopLevelDocument(
+  tabId: number,
+): Promise<{ documentId: string | null; url: string | null } | null> {
+  try {
+    const frame = await browser.webNavigation.getFrame({ tabId, frameId: 0 });
+    if (!frame) {
+      return null;
+    }
+
+    return {
+      documentId: getStringProperty(frame, "documentId") ?? null,
+      url: getStringProperty(frame, "url") ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function createEphemeralDocumentId(): string {
+  return crypto.randomUUID();
+}
+
+function toBadgeCountStatus(
+  enforcement: EnforcementSummary,
+): ActionBadgeState {
+  if (
+    enforcement.status === "active" &&
+    enforcement.blockedCount !== null
+  ) {
+    return {
+      status: "available",
+      blockedCount: enforcement.blockedCount,
+    };
+  }
+
+  return {
+    status: enforcement.status === "paused" ? "paused" : "unavailable",
+    blockedCount: null,
+  };
+}
+
 function synchronizeTabObservationPage(
   state: TabObservationState,
   pageUrl: string | null,
 ): void {
   if (pageUrl && state.pageUrl !== pageUrl) {
-    resetTabObservationState(state, pageUrl);
+    state.pageUrl = pageUrl;
   }
 }
 
@@ -1008,11 +1418,18 @@ function getRequestStringProperty(
   details: unknown,
   property: "documentUrl" | "originUrl" | "initiator",
 ): string | undefined {
-  if (typeof details !== "object" || details === null) {
+  return getStringProperty(details, property);
+}
+
+function getStringProperty(
+  value: unknown,
+  property: string,
+): string | undefined {
+  if (typeof value !== "object" || value === null) {
     return undefined;
   }
 
-  const record = details as Record<string, unknown>;
+  const record = value as Record<string, unknown>;
 
   if (property in record && typeof record[property] === "string") {
     return record[property];

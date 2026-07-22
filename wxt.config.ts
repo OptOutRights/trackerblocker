@@ -41,7 +41,13 @@ export default defineConfig({
     name: "TrackerBlocker",
     description: "Blocks and explains likely third-party trackers.",
     version: "0.0.0",
-    permissions: ["activeTab", "storage", "webRequest", "webRequestBlocking"],
+    permissions: [
+      "activeTab",
+      "storage",
+      "webNavigation",
+      "webRequest",
+      "webRequestBlocking",
+    ],
     host_permissions: ["<all_urls>"],
     action: {
       default_title: "TrackerBlocker",
