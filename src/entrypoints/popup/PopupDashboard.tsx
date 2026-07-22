@@ -197,6 +197,10 @@ function ProtectionSummary({
 }) {
   const presentation = formatProtectionSummary(summary);
 
+  if (!presentation) {
+    return null;
+  }
+
   return (
     <section class="tb-metric-panel mt-1" aria-label="Protection summary">
       <p class="tb-metric-value">{presentation.value}</p>
@@ -207,13 +211,13 @@ function ProtectionSummary({
 
 export function formatProtectionSummary(
   summary: DashboardSummary | null,
-): { value: string; label: string } {
+): { value: string; label: string } | null {
   if (!summary) {
     return { value: "—", label: "Checking blocked count" };
   }
 
   if (summary.enforcement.status === "paused") {
-    return { value: "—", label: "Protection paused" };
+    return null;
   }
 
   if (

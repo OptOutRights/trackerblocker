@@ -55,11 +55,11 @@ describe("formatProtectionSummary", () => {
     ).toEqual({ value: "—", label: "Blocked count unavailable" });
   });
 
-  it("labels paused protection explicitly", () => {
+  it("omits the redundant metric when protection is paused", () => {
     expect(
       formatProtectionSummary(
         createSummary({ status: "paused", blockedCount: null }),
       ),
-    ).toEqual({ value: "—", label: "Protection paused" });
+    ).toBeNull();
   });
 });

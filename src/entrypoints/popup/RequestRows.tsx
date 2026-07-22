@@ -53,22 +53,20 @@ export function RequestRows({
   }
 
   return (
-    <div class="mt-3 min-w-0">
-      <div class="tb-request-list">
-        {rows.map((row) => (
-          <RequestRow
-            areSettingsControlsDisabled={areSettingsControlsDisabled}
-            isExpanded={expandedRowId === row.id}
-            hostDetails={hostDetails?.rowId === row.id ? hostDetails : null}
-            hostDetailsStatus={hostDetailsStatus}
-            key={row.id}
-            row={row}
-            onSetDomainOverride={onSetDomainOverride}
-            onSetSiteAllow={onSetSiteAllow}
-            onToggle={() => onToggleRow(row.id)}
-          />
-        ))}
-      </div>
+    <div class="tb-request-list mt-3 min-w-0">
+      {rows.map((row) => (
+        <RequestRow
+          areSettingsControlsDisabled={areSettingsControlsDisabled}
+          isExpanded={expandedRowId === row.id}
+          hostDetails={hostDetails?.rowId === row.id ? hostDetails : null}
+          hostDetailsStatus={hostDetailsStatus}
+          key={row.id}
+          row={row}
+          onSetDomainOverride={onSetDomainOverride}
+          onSetSiteAllow={onSetSiteAllow}
+          onToggle={() => onToggleRow(row.id)}
+        />
+      ))}
     </div>
   );
 }
@@ -148,7 +146,7 @@ function RequestRow({
           {hasRuleControls && (
             <section
               aria-label="Rules"
-              class="mb-3 rounded-md border border-zinc-200 bg-zinc-50 p-3"
+              class="mb-3 border-b border-zinc-200 pb-3"
             >
               <h3 class="font-medium text-zinc-800">Rules</h3>
 
@@ -157,7 +155,7 @@ function RequestRow({
                   <p class="mb-1 font-medium text-zinc-600">On this site</p>
                   <button
                     aria-pressed={row.currentSiteAllow}
-                    class="w-full border border-[#2864fc] bg-[#edf2ff] px-3 py-2 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                    class="w-full rounded-md border border-[#2864fc] bg-[#edf2ff] px-3 py-2 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={areSettingsControlsDisabled}
                     type="button"
                     onClick={() =>
@@ -184,7 +182,7 @@ function RequestRow({
                   </p>
                   <div
                     aria-label="Rule on every site"
-                    class="mt-2 grid grid-cols-3 overflow-hidden border border-zinc-200 bg-white"
+                    class="mt-2 grid grid-cols-3 overflow-hidden rounded-md border border-zinc-300 bg-white"
                     role="group"
                   >
                     <OverrideButton
@@ -217,7 +215,7 @@ function RequestRow({
             </section>
           )}
 
-          <dl class="grid gap-2">
+          <dl class="grid gap-2" aria-label="Host summary">
             <DetailRow
               label="Relationship"
               value={formatRelationship(row.relationship)}
@@ -233,27 +231,41 @@ function RequestRow({
               value={`${row.requestCount} observed — ${formatActionSummary(row)}`}
             />
             <DetailRow
-              label="Request types"
-              value={row.requestTypes.join(", ")}
-            />
-            <DetailRow label="Lifecycle" value={formatLifecycle(row)} />
-            <DetailRow label="Visibility" value={formatVisibilityNotes(row)} />
-            <DetailRow label="Context" value={formatContextEvidence(row)} />
-            <DetailRow label="Frames" value={formatFrameContexts(row)} />
-            <DetailRow label="Path hints" value={formatPathHints(row)} />
-            <DetailRow label="Redirects" value={formatRedirects(row)} />
-            <DetailRow
               label="Rule source"
               value={formatRuleSources(row)}
             />
-            <DetailRow label="Catalog basis" value={formatCatalogBasis(row)} />
           </dl>
 
-          <RequestExplanations
-            details={hostDetails}
-            status={hostDetailsStatus}
-            row={row}
-          />
+          <details class="tb-technical-details mt-3">
+            <summary>Technical details</summary>
+            <div class="pt-3">
+              <dl class="grid gap-2">
+                <DetailRow
+                  label="Request types"
+                  value={row.requestTypes.join(", ")}
+                />
+                <DetailRow label="Lifecycle" value={formatLifecycle(row)} />
+                <DetailRow
+                  label="Visibility"
+                  value={formatVisibilityNotes(row)}
+                />
+                <DetailRow label="Context" value={formatContextEvidence(row)} />
+                <DetailRow label="Frames" value={formatFrameContexts(row)} />
+                <DetailRow label="Path hints" value={formatPathHints(row)} />
+                <DetailRow label="Redirects" value={formatRedirects(row)} />
+                <DetailRow
+                  label="Catalog basis"
+                  value={formatCatalogBasis(row)}
+                />
+              </dl>
+
+              <RequestExplanations
+                details={hostDetails}
+                status={hostDetailsStatus}
+                row={row}
+              />
+            </div>
+          </details>
         </div>
       )}
     </article>
@@ -290,8 +302,11 @@ function RequestExplanations({
     <section class="mt-3 border-t border-zinc-200 pt-3">
       <p class="font-medium text-zinc-700">Representative requests</p>
       <div class="mt-2 grid gap-2">
-        {details.samples.map((sample) => (
-          <div class="border-l-2 border-zinc-300 pl-2" key={sample.id}>
+        {details.samples.map((sample, index) => (
+          <div
+            class={index === 0 ? "" : "border-t border-zinc-200 pt-2"}
+            key={sample.id}
+          >
             <p class="font-medium text-zinc-800">
               {formatAttemptDecision(sample)}
             </p>
