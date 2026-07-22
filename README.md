@@ -1,75 +1,50 @@
 # TrackerBlocker
 
 A Firefox-first extension that blocks and explains likely third-party trackers
-using local rules and packaged data.
-
-Requires Firefox 142 or later.
+using local rules and packaged data. It requires Firefox 142 or later.
 
 ## Development
 
-Install dependencies:
+Install the locked dependencies and run the extension:
 
 ```sh
-npm install
-```
-
-Run the extension in Firefox during development:
-
-```sh
+npm ci
 npm run dev:firefox
 ```
 
-Build the Firefox extension:
-
-```sh
-npm run build:firefox
-```
-
-Check TypeScript:
-
-```sh
-npm run typecheck
-```
-
-Run tests:
+Common checks:
 
 ```sh
 npm test
-```
-
-Lint the built Firefox extension:
-
-```sh
+npm run typecheck
 npm run lint:firefox
-```
-
-Package the Firefox extension:
-
-```sh
 npm run zip:firefox
 ```
 
-## MVP Behavior
+## Behavior
 
-The popup shows hosts observed on the active tab, immutable blocked/restricted/allowed request counts, mixed-host activity, local catalog context, and bounded representative request explanations. The badge counts blocked requests; the popup labels blocked-host counts separately. “Allow on this site” is the primary recovery action, while global Auto/Block/Allow rules remain under an advanced control. The options page lists site-specific allows, always-paused sites, and global hostname overrides. Durable settings stay in `browser.storage.local`; pause-once state uses `browser.storage.session`; request observations and browsing evidence stay only in bounded background memory.
+The popup reports immutable blocked, restricted, and allowed request attempts
+for the active tab. It keeps host totals separate from request totals, explains
+representative decisions using packaged local data, and exposes bounded-data
+notices when a summary is incomplete.
 
-## EasyPrivacy Data
+“Allow on this site” is the primary recovery action. Users can also pause a
+site once or always, or set advanced global hostname overrides. Durable settings
+stay in `browser.storage.local`; tab-scoped pause-once state uses
+`browser.storage.session`; request evidence stays only in bounded background
+memory.
 
-The repository includes a reproducible, supported-network-rule EasyPrivacy
-artifact. The production background validates and loads the packaged artifact,
-and supported EasyPrivacy subresource matching is enabled by default after
-passing the Phase 5 Firefox, breakage, recovery, performance, package, offline,
-privacy, and engineering licensing/source-archive gates. Build explicitly with
-`WXT_EASYPRIVACY_MATCHING=false` for an emergency policy rollback. Named
-licensing/attribution sign-off remains a required pre-release TODO before any
-public distribution; see the
-[`dated evidence report`](docs/easyprivacy-phase-5-evidence-2026-07-20.md).
-Automatic EasyPrivacy top-level navigation enforcement remains out of scope.
-The exact upstream source, checksum, capability
-exclusions, generator, and open-source
-[`notices`](public/THIRD-PARTY-NOTICES.txt) are versioned alongside it. See
-[`docs/easyprivacy-updates.md`](docs/easyprivacy-updates.md) for the explicit
-networked update command and offline verification workflow.
+## EasyPrivacy
+
+Supported EasyPrivacy network blocks and exceptions are packaged locally and
+enabled by default for subresources. Automatic EasyPrivacy `main_frame`
+enforcement remains disabled. Build with `WXT_EASYPRIVACY_MATCHING=false` for an
+emergency policy rollback.
+
+The exact upstream source, checksums, capability exclusions, generator, and
+[third-party notices](public/THIRD-PARTY-NOTICES.txt) are versioned with the
+artifact. See the [EasyPrivacy maintenance guide](docs/easyprivacy.md) for
+update, verification, package, and rollback instructions.
 
 ## Maintainer
 

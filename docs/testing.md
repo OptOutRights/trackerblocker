@@ -1,166 +1,66 @@
 # Testing
 
-This project should keep tests lightweight, local-first, and focused on privacy-sensitive behavior. Prefer fast unit tests for pure logic, then add browser/UI checks only where WebExtension runtime behavior matters.
+Keep checks local-first and proportional to the behavior under test. Pure policy
+and data handling belong in Vitest; Firefox automation is reserved for browser
+APIs, request cancellation, worker lifecycle, permissions, and packaging.
 
-## Test Structure
-
-- `src/**/*.test.ts`: Vitest unit tests colocated with the code they cover.
-- `src/shared/*.test.ts`: framework-independent core logic tests, such as domain classification.
-- `src/messaging/*.test.ts`: message shape and type guard tests.
-- Future UI smoke tests should live under a dedicated Playwright test area when
-  the critical popup/options workflows justify browser automation.
-
-Current test files:
-
-- `scripts/easyprivacy/supply-chain.test.mjs`: retained-source provenance,
-  source identity checks, unsupported-rule inventory, and byte-identical
-  regeneration of the packaged EasyPrivacy outputs.
-- `scripts/easyprivacy/coverage.test.ts`: versioned Phase 5 production-artifact
-  comparator, constraint controls, redirects, mixed hosts, precedence,
-  fallback, unsupported actions, aggregates, and privacy-safe evidence.
-- `src/shared/domains.test.ts`: first-party vs third-party classification, URL normalization, WebSocket requests, public suffix cases, IPs, localhost, malformed inputs, and ignored schemes.
-- `src/shared/requestObservation.test.ts`: immutable request-attempt aggregation,
-  mixed action/source counts, redirect correlation, bounded matched-rule,
-  redirect, host-row, active-request and context evidence, bounded privacy-safe
-  representative explanations, stale-generation rejection, lifecycle cleanup,
-  lower-bound summaries, classification, resets, and empty summaries.
-- `src/shared/backgroundStartup.test.ts`: listener registration completes before
-  settings, filter-engine, and badge initialization begins without browser mocks.
-- `src/shared/tabPageUrls.test.ts`: cold top-level tab URL resolution, caching,
-  navigation races, late prior-document detection, and tab-removal races across
-  background-worker restarts.
-- `src/shared/trackerCatalog.test.ts`: packaged catalog validation, lookup matching, suffix boundaries, fallback explanation wording, and malformed catalog rejection.
-- `src/shared/buildFlags.test.ts`: default-on EasyPrivacy and explicit
-  emergency-off build-flag semantics, including invalid-value handling.
-- `src/shared/filterEngine.test.ts`: packaged artifact validation, health,
-  blocks, exceptions, request mapping, degraded fallback, and the production
-  Ghostery import boundary.
-- `src/shared/requestDecisions.test.ts`: normalized request contracts, unified
-  precedence, disabled-policy catalog compatibility, EasyPrivacy exceptions and
-  first-party subresources, explicit settings-unavailable fail-open decisions,
-  header restrictions, and user-only main-frame blocking.
-- `src/storage/settings.test.ts`: version 2 settings defaults, exact-hostname normalization, version 1 migration, serialized mutations, site-scoped allows, read/write helpers, updates, and reset behavior.
-- `src/storage/sessionState.test.ts`: pause-once normalization and round trips through session-only storage.
-- `src/storage/settingsRuntime.test.ts`: 500 ms cold-start timeout, late-read
-  recovery, last-known-good retention, retry throttling, and stale-read races.
-- `src/messaging/health.test.ts`: background health-check message guard behavior.
-- `src/messaging/requestSummary.test.ts`: request summary message and response guard behavior.
-- `src/messaging/settings.test.ts`: settings message and response guard behavior.
-
-## Types Of Tests
-
-### Unit Tests
-
-Use Vitest for pure TypeScript logic. These tests should not require Firefox, extension permissions, network access, or persisted browser storage.
-
-Good candidates:
-
-- Domain and URL classification.
-- Passive request evidence normalization and aggregation.
-- Catalog lookup and explanation fallback.
-- Rule decision precedence.
-- Storage schema normalization and migrations.
-- Message type guards and request/response shapes.
-
-Run all unit tests:
+## Fast Checks
 
 ```sh
 npm test
+npm run typecheck
 ```
 
-Run one test file:
+Run one test file with `npx vitest run path/to/file.test.ts`.
 
-```sh
-npx vitest run src/shared/domains.test.ts
-```
+The unit suite covers domain classification, packaged catalog and filter-engine
+validation, rule precedence, immutable request evidence, redirect and page
+generation handling, storage schemas and migrations, startup races, bounded
+memory, message contracts, and UI state shaping.
 
-Verify the committed EasyPrivacy engine from its retained source without
-contacting the network:
+## EasyPrivacy Supply Chain
+
+Verify provenance, regenerate the engine in memory, compare generated bytes,
+deserialize the artifact, and run representative matches without network
+access:
 
 ```sh
 npm run verify:easyprivacy
 ```
 
-### Type Checking
+Only `npm run update:easyprivacy` downloads the upstream list. Review all
+versioned source and generated outputs together after an update.
 
-Use TypeScript to catch API contract issues across shared modules, background code, and UI code.
-
-```sh
-npm run typecheck
-```
-
-### Extension Build Checks
-
-Use WXT to confirm the extension bundles for Firefox MV3.
+## Firefox Build and Validation
 
 ```sh
 npm run build:firefox
-```
-
-This is useful after changing shared modules imported by entrypoints, manifest-affecting code, or dependencies.
-
-### Firefox Extension Validation
-
-Use `web-ext` linting against the built Firefox output.
-
-```sh
 npm run lint:firefox
+npm run zip:firefox
 ```
 
-This command builds first, then validates `.output/firefox-mv3`.
+`lint:firefox` builds before running `web-ext lint`. `zip:firefox` creates the
+extension and source archives.
 
-### Manual Firefox Runtime Checks
-
-Use this when behavior depends on real browser APIs or extension pages.
+For an interactive runtime:
 
 ```sh
 npm run dev:firefox
 ```
 
-For a packaged output with `web-ext`:
+## EasyPrivacy Runtime Checks
+
+Run the local, non-interactive current-Firefox checks in order:
 
 ```sh
-npm run build:firefox
-npm run web-ext:firefox
+npm run test:easyprivacy
 ```
 
-Manual checks should be recorded in the relevant roadmap implementation notes when they cover behavior that Vitest cannot prove.
+Individual `test:easyprivacy:*` scripts cover the production corpus, ordinary
+and degraded Firefox behavior, missing permissions, emergency-off behavior,
+performance, offline boundaries, and package/source contents.
 
-EasyPrivacy matching is enabled when the build flag is absent. Use the ordinary
-development command for adapter, policy, and enforcement smoke tests:
-
-```sh
-npm run dev:firefox
-```
-
-Use `WXT_EASYPRIVACY_MATCHING=false` only for the explicit emergency-off build
-and its dedicated Firefox proof.
-
-Automatic EasyPrivacy `main_frame` enforcement is disabled in the default
-build. Test top-level navigation cancellation with an explicit user
-Block override only; automatic main-frame enforcement is a separately reviewed
-future project.
-
-### EasyPrivacy Phase 5 gates
-
-Run the non-interactive local/current-Firefox gate:
-
-```sh
-npm run test:easyprivacy:phase5
-```
-
-The individual Firefox, performance, package, offline, and corpus commands are
-available as `test:easyprivacy:*` package scripts. The public 14-site pair is a
-dated, networked check and stays explicit:
-
-```sh
-npm run test:easyprivacy:sites
-```
-
-`npm run test:easyprivacy:firefox:off` builds with the explicit emergency-off
-value and verifies catalog fallback plus main-frame non-enforcement in Firefox.
-
-Run the local matrix against the Firefox 142 binary separately:
+Run the local Firefox matrix against the declared minimum version separately:
 
 ```sh
 FIREFOX_BINARY=/path/to/firefox-142/firefox npm run test:easyprivacy:firefox
@@ -169,52 +69,19 @@ FIREFOX_BINARY=/path/to/firefox-142/firefox npm run test:easyprivacy:firefox:per
 FIREFOX_BINARY=/path/to/firefox-142/firefox npm run test:easyprivacy:firefox:off
 ```
 
-Results and the development default-enablement decision are recorded in the
-[Phase 5 evidence report](easyprivacy-phase-5-evidence-2026-07-20.md).
+EasyPrivacy matching is enabled when the build flag is absent. Use
+`WXT_EASYPRIVACY_MATCHING=false` only for the emergency-off build. Automatic
+EasyPrivacy `main_frame` enforcement is disabled in both modes; test top-level
+cancellation through an explicit user Block override.
 
-### Future UI Smoke Tests
+## Verification by Change
 
-Once popup/options pages contain real workflows, add Playwright smoke tests for critical UI behavior.
+- Pure policy, storage, or evidence logic: `npm test` and `npm run typecheck`.
+- Entrypoint or UI code: add `npm run build:firefox` and relevant browser checks.
+- Manifest, permissions, packaging, filter artifacts, or Firefox runtime:
+  `npm run test:easyprivacy` plus the applicable minimum-version checks.
+- EasyPrivacy refresh: regenerate, inspect capability deltas, run the full local
+  EasyPrivacy command, and perform the manual release sampling in `docs/qa.md`.
 
-Good candidates:
-
-- Popup renders current site status.
-- Observed third-party rows aggregate correctly.
-- Expanded row details show category, explanation, request types, and rule source.
-- Pause/allow/block controls update visible state.
-
-Keep Playwright tests small and focused. Pure logic should stay in Vitest.
-
-## Recommended Verification Flow
-
-For pure logic changes:
-
-```sh
-npm test
-npm run typecheck
-```
-
-For changes imported by extension entrypoints:
-
-```sh
-npm test
-npm run typecheck
-npm run build:firefox
-```
-
-For manifest, permissions, packaging, or Firefox runtime changes:
-
-```sh
-npm test
-npm run typecheck
-npm run lint:firefox
-```
-
-## Testing Principles
-
-- Keep tracker classification and decision logic browser-independent whenever possible.
-- Treat malformed, missing, and unsupported inputs as first-class test cases.
-- Test public-suffix-aware domain behavior instead of relying on naive hostname examples.
-- Do not add tests that require runtime network calls or remote classification.
-- Prefer local fixture data for tracker catalog and explanation tests.
-- Add regression tests for bugs before changing the behavior they cover.
+Do not add runtime network dependencies, remote classification, personal
+browsing data, or sensitive request URLs to test evidence.

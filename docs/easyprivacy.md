@@ -1,4 +1,4 @@
-# EasyPrivacy supply chain
+# EasyPrivacy
 
 TrackerBlocker versions the exact EasyPrivacy source used to produce its
 packaged network-rule engine. Normal installation, builds, tests, verification,
@@ -20,8 +20,8 @@ sidecar for unsupported actions.
 - `public/filter-data/easyprivacy.engine`: serialized supported-only engine.
 - `public/filter-data/easyprivacy.metadata.json`: generator, dependency,
   configuration, provenance, artifact checksum, and summary counts.
-- `public/filter-data/easyprivacy.capabilities.json`: supported, excluded, and
-  unparsed rule inventory with bounded samples.
+- `vendor/easyprivacy/easyprivacy.capabilities.json`: supported, excluded, and
+  unparsed rule inventory with bounded samples for supply-chain review.
 - `public/THIRD-PARTY-NOTICES.txt`: attribution and license information shipped
   in both the extension and Firefox source archive.
 
@@ -73,15 +73,14 @@ Supported EasyPrivacy blocks and exceptions apply to subresources before the
 first-party default, including explicitly matched
 first-party subresources. EasyPrivacy is not evaluated for automatic
 `main_frame` cancellation. A global user Block override can still
-cancel a matching top-level hostname; automatic top-level enforcement has a
-separate Phase 5 coverage, breakage, and recovery gate.
+cancel a matching top-level hostname. Automatic top-level enforcement is not
+enabled and would require a separate explanation, recovery, and breakage
+evaluation.
 
-The engineering portion of that gate is recorded in the
-[July 20, 2026 Phase 5 evidence report](easyprivacy-phase-5-evidence-2026-07-20.md).
-Engineering licensing and source-archive checks are sufficient for the current
-development default. A named maintainer licensing/attribution sign-off remains
-a mandatory pre-release TODO before public release or distribution. Automatic
-`main_frame` enforcement is not part of the default behavior.
+Distribution checks are objective: the exact source, checksums, notices,
+required license texts, generated artifact, and reproducible source archive
+must be present and internally consistent. A missing or ambiguous obligation is
+a concrete issue to resolve, not a named-approval gate.
 
 ## Refreshing EasyPrivacy
 
@@ -149,15 +148,16 @@ npm run lint:firefox
 npm run zip:firefox
 ```
 
-The discoverable Phase 5 command runs the deterministic local/current-Firefox
-checks in order:
+The EasyPrivacy command runs the deterministic local/current-Firefox checks in
+order:
 
 ```sh
-npm run test:easyprivacy:phase5
+npm run test:easyprivacy
 ```
 
-The public paired-site study and Firefox 142 run remain explicit; see the dated
-evidence report for their commands and results.
+Run the Firefox 142 matrix separately using the commands in `docs/testing.md`.
+Before a public release, also sample representative content, commerce, login,
+and quiet first-party sites using the checklist in `docs/qa.md`.
 
 For an emergency policy rollback, build explicitly with matching disabled and
 run its Firefox proof:
@@ -168,7 +168,9 @@ npm run test:easyprivacy:firefox:off
 ```
 
 Confirm that the Firefox extension zip contains `filter-data/easyprivacy.engine`,
-its metadata and capability report, and `THIRD-PARTY-NOTICES.txt`. Confirm that
-the Firefox source zip additionally contains `vendor/easyprivacy/easyprivacy.txt`,
+its metadata, and `THIRD-PARTY-NOTICES.txt`, but not the generation-time
+capability report. Confirm that the Firefox source zip additionally contains
+`vendor/easyprivacy/easyprivacy.txt`,
+`vendor/easyprivacy/easyprivacy.capabilities.json`,
 `vendor/easyprivacy/source.json`, the generator scripts, `package-lock.json`,
 and the project license.
