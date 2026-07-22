@@ -31,7 +31,7 @@ export const METADATA_PATH = resolve(
 );
 export const CAPABILITIES_PATH = resolve(
   PROJECT_ROOT,
-  "public/filter-data/easyprivacy.capabilities.json",
+  "vendor/easyprivacy/easyprivacy.capabilities.json",
 );
 
 export const ENGINE_CONFIG = Object.freeze({

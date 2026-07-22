@@ -128,6 +128,11 @@ describe("EasyPrivacy source supply chain", () => {
 
   it("keeps retained provenance at stable repository paths", () => {
     expect(SOURCE_PATH.endsWith("vendor/easyprivacy/easyprivacy.txt")).toBe(true);
+    expect(
+      CAPABILITIES_PATH.endsWith(
+        "vendor/easyprivacy/easyprivacy.capabilities.json",
+      ),
+    ).toBe(true);
     expect(SOURCE_MANIFEST_PATH.endsWith("vendor/easyprivacy/source.json")).toBe(
       true,
     );

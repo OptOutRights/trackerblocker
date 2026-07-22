@@ -57,24 +57,28 @@ assert.equal("content_scripts" in manifest, false);
 const firefoxContents = await capture("unzip", ["-Z1", archive], ROOT);
 for (const required of [
   "THIRD-PARTY-NOTICES.txt",
-  "filter-data/easyprivacy.capabilities.json",
   "filter-data/easyprivacy.engine",
   "filter-data/easyprivacy.metadata.json",
 ]) {
   assert(firefoxContents.split("\n").includes(required), `Missing Firefox package entry ${required}.`);
 }
+assert.equal(
+  firefoxContents.split("\n").includes("filter-data/easyprivacy.capabilities.json"),
+  false,
+  "The generation-time capability report must not ship in the Firefox package.",
+);
 const sourceContents = await capture("unzip", ["-Z1", sources], ROOT);
 const sourceEntries = sourceContents.split("\n").filter(Boolean);
 for (const required of [
   "LICENSE",
   "package-lock.json",
   "public/THIRD-PARTY-NOTICES.txt",
-  "public/filter-data/easyprivacy.capabilities.json",
   "public/filter-data/easyprivacy.engine",
   "public/filter-data/easyprivacy.metadata.json",
   "scripts/easyprivacy/generate.mjs",
   "scripts/easyprivacy/verify.mjs",
   "vendor/easyprivacy/easyprivacy.txt",
+  "vendor/easyprivacy/easyprivacy.capabilities.json",
   "vendor/easyprivacy/source.json",
 ]) {
   assert(sourceEntries.includes(required), `Missing source package entry ${required}.`);

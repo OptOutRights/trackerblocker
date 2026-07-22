@@ -50,7 +50,7 @@ const metadata = JSON.parse(
 const capabilities = JSON.parse(
   await readFile(
     new URL(
-      "../../public/filter-data/easyprivacy.capabilities.json",
+      "../../vendor/easyprivacy/easyprivacy.capabilities.json",
       import.meta.url,
     ),
     "utf8",
