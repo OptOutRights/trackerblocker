@@ -865,10 +865,10 @@ function clearTemporaryPauseForNavigation(
 async function initializeActionBadge(): Promise<void> {
   await Promise.all([
     safelyUpdateActionBadge(
-      () => browser.action.setBadgeBackgroundColor({ color: "#f59e0b" }),
+      () => browser.action.setBadgeBackgroundColor({ color: "#2864fc" }),
     ),
     safelyUpdateActionBadge(
-      () => browser.action.setBadgeTextColor({ color: "#111827" }),
+      () => browser.action.setBadgeTextColor({ color: "#ffffff" }),
     ),
   ]);
 
