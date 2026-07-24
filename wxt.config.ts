@@ -38,9 +38,13 @@ export default defineConfig({
     },
   },
   manifest: {
-    name: "TrackerBlocker",
+    name: "Tracker Blocker by Opt Out Rights",
     description: "Blocks and explains likely third-party trackers.",
     version: "0.0.0",
+    developer: {
+      name: "Opt Out Rights",
+    },
+    homepage_url: "https://github.com/OptOutRights/tracker-blocker",
     permissions: [
       "activeTab",
       "storage",
@@ -50,7 +54,7 @@ export default defineConfig({
     ],
     host_permissions: ["<all_urls>"],
     action: {
-      default_title: "TrackerBlocker",
+      default_title: "Tracker Blocker",
       default_icon: {
         16: "icon-16.png",
         32: "icon-32.png",
@@ -58,7 +62,7 @@ export default defineConfig({
     },
     browser_specific_settings: {
       gecko: {
-        id: "trackerblocker@example.local",
+        id: "trackerblocker@optoutrights.org",
         strict_min_version: "142.0",
         data_collection_permissions: {
           required: ["none"],
