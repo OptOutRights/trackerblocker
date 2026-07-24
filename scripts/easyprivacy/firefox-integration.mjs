@@ -38,6 +38,7 @@ const checkpoints = [];
 let fixture;
 let profile;
 let probeSequence = 0;
+let popupSequence = 0;
 
 async function main() {
   await verifyBuild();
@@ -279,7 +280,7 @@ async function runBlockedCountLifecycleCoverage(current) {
     "screen13-image": "blocked",
   });
   current.lastProbeUrl = reloadUrl;
-  assert.equal((await getCurrentSummary(current)).enforcement.blockedCount, 1);
+  await waitForBlockedCount(current, 1);
   checkpoint("reload starts a new blocked count");
   if (nativeDocumentIds) {
     const staleSession = await getStoredSessionState(current);
@@ -1081,6 +1082,23 @@ async function getCurrentSummary(current) {
   });
 }
 
+async function waitForBlockedCount(current, expectedCount) {
+  let enforcement;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    enforcement = (await getCurrentSummary(current)).enforcement;
+    if (
+      enforcement.status === "active" &&
+      enforcement.blockedCount === expectedCount
+    ) {
+      return;
+    }
+    await delay(25);
+  }
+  throw new Error(
+    `Blocked count did not reach ${expectedCount}: ${JSON.stringify(enforcement)}`,
+  );
+}
+
 async function getBadgePresentation(
   current,
   tabId = current.fixtureBrowserTabId,
@@ -1095,29 +1113,82 @@ async function getBadgePresentation(
 }
 
 async function readPopupProtection(current) {
-  return current.protocol.evaluateJson(
+  if (current.directPopupCoverage !== true) {
+    await current.protocol.evaluate(
+      current.controlTab,
+      `(async () => {
+        await browser.tabs.update(${current.fixtureBrowserTabId}, { active: true });
+        await browser.action.openPopup();
+      })()`,
+    );
+    const toolbarPopup = await waitForPopupProtection(current, true);
+    if (toolbarPopup) {
+      return toolbarPopup;
+    }
+    const userAgent = await current.protocol.evaluateJson(
+      current.controlTab,
+      "navigator.userAgent",
+    );
+    if (!/\bFirefox\/142(?:\.|$)/.test(userAgent)) {
+      throw new Error(
+        `Toolbar popup did not render on an unsupported fallback version: ${userAgent}`,
+      );
+    }
+    current.directPopupCoverage = true;
+    checkpoint("packaged popup uses direct-page fallback on this Firefox");
+  }
+
+  await current.protocol.evaluateJson(
     current.controlTab,
-    `(async () => {
-      await browser.tabs.update(${current.fixtureBrowserTabId}, { active: true });
-      await browser.action.openPopup();
-      let last = null;
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        const popup = browser.extension.getViews({ type: "popup" })[0];
-        if (popup) {
-          last = {
-            value: popup.document.querySelector(".tb-metric-value")?.textContent?.trim() ?? null,
-            label: popup.document.querySelector(".tb-metric-label")?.textContent?.trim() ?? null,
-          };
-          if (last.label && last.label !== "Checking blocked count") {
-            popup.close();
-            return last;
-          }
-        }
-        await new Promise(resolve => setTimeout(resolve, 25));
-      }
-      throw new Error("Popup did not render: " + JSON.stringify(last));
-    })()`,
+    `(await browser.tabs.update(${current.fixtureBrowserTabId}, { active: true }), true)`,
   );
+  const popupUrl = new URL("popup.html", current.addon.manifestURL);
+  popupUrl.searchParams.set("__qa", String(++popupSequence));
+  await current.protocol.navigate(current.controlTab, popupUrl.href);
+  const directPopup = await waitForPopupProtection(current, false);
+  if (directPopup) {
+    return directPopup;
+  }
+  throw new Error("Direct packaged popup did not render.");
+}
+
+async function waitForPopupProtection(current, toolbarPopup) {
+  let last = null;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      last = await current.protocol.evaluateJson(
+        current.controlTab,
+        `(() => {
+          const pageDocument = ${
+            toolbarPopup
+              ? 'browser.extension.getViews({ type: "popup" })[0]?.document'
+              : "document"
+          };
+          if (!pageDocument) return null;
+          return {
+            value: pageDocument.querySelector(".tb-metric-value")?.textContent?.trim() ?? null,
+            label: pageDocument.querySelector(".tb-metric-label")?.textContent?.trim() ?? null,
+          };
+        })()`,
+      );
+      if (last?.label && last.label !== "Checking blocked count") {
+        if (toolbarPopup) {
+          await current.protocol.evaluate(
+            current.controlTab,
+            `browser.extension.getViews({ type: "popup" })[0]?.close()`,
+          );
+        }
+        return last;
+      }
+    } catch {
+      // Older Firefox actors can switch while the toolbar popup is opening.
+    }
+    await delay(25);
+  }
+  if (!toolbarPopup) {
+    throw new Error(`Popup did not render: ${JSON.stringify(last)}`);
+  }
+  return null;
 }
 
 async function switchAwayAndBack(current) {

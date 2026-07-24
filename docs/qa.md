@@ -72,6 +72,10 @@ behavior changes.
   separately from the EasyPrivacy provenance.
 - At narrow popup widths, confirm controls remain usable without horizontal
   overflow and focus indicators remain visible.
+- On Firefox 142 specifically, click the toolbar icon in a fresh profile and
+  confirm the popup physically opens and reaches a settled protection state.
+  The automated minimum-version matrix can test the packaged popup directly
+  but cannot reliably observe this browser-chrome interaction.
 - When a stress fixture exceeds a memory bound, confirm the popup discloses the
   relevant truncation rather than presenting bounded totals as complete.
 - Before release, sample public content, commerce, login, and quiet first-party

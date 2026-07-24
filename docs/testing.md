@@ -84,6 +84,15 @@ FIREFOX_BINARY=/path/to/firefox-142/firefox npm run test:easyprivacy:firefox:per
 FIREFOX_BINARY=/path/to/firefox-142/firefox npm run test:easyprivacy:firefox:off
 ```
 
+Firefox 142 may report
+`packaged popup uses direct-page fallback on this Firefox`. Its remote
+automation does not reliably expose the toolbar popup view after
+`browser.action.openPopup()`, even though the packaged popup can be loaded and
+tested directly. The fallback is restricted to a Firefox 142 user agent; newer
+versions still require the real toolbar-popup path. Treat the fallback as
+rendering and behavior coverage, not proof that the browser toolbar opens it,
+and complete the Firefox 142 toolbar-click check in [QA](qa.md).
+
 EasyPrivacy matching is enabled when the build flag is absent. Use
 `WXT_EASYPRIVACY_MATCHING=false` only for the emergency-off build. Automatic
 EasyPrivacy `main_frame` enforcement is disabled in both modes; test top-level
