@@ -45,7 +45,6 @@ export default defineConfig({
     },
     homepage_url: "https://github.com/OptOutRights/tracker-blocker",
     permissions: [
-      "activeTab",
       "storage",
       "webNavigation",
       "webRequest",

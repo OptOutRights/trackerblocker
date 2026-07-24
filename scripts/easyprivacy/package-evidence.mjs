@@ -61,7 +61,6 @@ assert(deltaBytes > 0 && deltaBytes < 1_500_000);
 
 const manifest = JSON.parse(await readFile(path.join(output, "manifest.json"), "utf8"));
 assert.deepEqual(manifest.permissions, [
-  "activeTab",
   "storage",
   "webNavigation",
   "webRequest",
