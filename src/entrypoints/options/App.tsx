@@ -174,7 +174,10 @@ export function App() {
     <main class="min-h-screen bg-white text-zinc-950">
       <div class="settings-shell mx-auto max-w-3xl px-4 py-6">
         <header class="mb-4 flex flex-col items-start justify-between gap-4 sm:flex-row">
-          <h1 class="text-2xl font-semibold">Settings</h1>
+          <div>
+            <h1 class="text-2xl font-semibold">Tracker Blocker Settings</h1>
+            <p class="mt-1 text-sm text-zinc-600">by Opt Out Rights</p>
+          </div>
           <button
             aria-controls={RESET_CONFIRMATION_ID}
             aria-expanded={state.resetConfirmation === "open"}
@@ -406,7 +409,7 @@ export function App() {
         />
 
         <p class="border-t border-zinc-200 pt-4 text-sm text-zinc-600">
-          Settings and local controls stay on this device. TrackerBlocker does
+          Settings and local controls stay on this device. Tracker Blocker does
           not use telemetry, accounts, sync, remote classification, or runtime
           explanation fetches.
         </p>

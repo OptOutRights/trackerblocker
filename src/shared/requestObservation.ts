@@ -246,7 +246,7 @@ export interface SummaryDecisionOptions {
 const FIRST_PARTY_EXPLANATION =
   "This request appears to belong to the current site.";
 const UNKNOWN_REQUEST_EXPLANATION =
-  "This request was observed, but TrackerBlocker could not classify its site relationship.";
+  "This request was observed, but Tracker Blocker could not classify its site relationship.";
 const EMPTY_LIFECYCLE_COUNTS: RequestLifecycleCounts = {
   started: 0,
   completed: 0,

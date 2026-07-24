@@ -18,13 +18,13 @@ export function formatActionBadge(
   if (blockedRequestCount <= 0) {
     return {
       text: "",
-      title: "TrackerBlocker",
+      title: "Tracker Blocker",
     };
   }
 
   return {
     text: String(blockedRequestCount),
-    title: `TrackerBlocker - ${blockedRequestCount} ${
+    title: `Tracker Blocker — ${blockedRequestCount} ${
       blockedRequestCount === 1 ? "request" : "requests"
     } blocked`,
   };
@@ -34,13 +34,13 @@ export function formatActionBadgeState(
   state: ActionBadgeState,
 ): ActionBadgePresentation {
   if (state.status === "paused") {
-    return { text: "", title: "TrackerBlocker - protection paused" };
+    return { text: "", title: "Tracker Blocker — protection paused" };
   }
 
   if (state.status === "unavailable") {
     return {
       text: "!",
-      title: "TrackerBlocker - blocked count unavailable",
+      title: "Tracker Blocker — blocked count unavailable",
     };
   }
 

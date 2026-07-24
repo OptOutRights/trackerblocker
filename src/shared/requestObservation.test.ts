@@ -897,6 +897,8 @@ describe("request observation aggregation", () => {
         {
           displayName: "Unclassifiable request",
           relationship: "unknown",
+          explanation:
+            "This request was observed, but Tracker Blocker could not classify its site relationship.",
           actionCounts: { total: 2, blocked: 0, restricted: 0, allowed: 2 },
           requestCount: 2,
           requestTypes: ["script", "xhr"],

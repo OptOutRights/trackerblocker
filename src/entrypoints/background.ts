@@ -615,7 +615,7 @@ export default defineBackground(() => {
       hostPermissionReady = refreshHostPermission();
     });
 
-    console.info(`[TrackerBlocker] Background ready at ${startedAt}`);
+    console.info(`[Tracker Blocker] Background ready at ${startedAt}`);
   };
 
   startBackgroundRuntime({

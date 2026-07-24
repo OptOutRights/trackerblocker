@@ -157,7 +157,7 @@ function DashboardHeader({
   return (
     <header class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2.5">
       <p class="min-w-0 text-[13px] font-semibold text-zinc-900">
-        TrackerBlocker
+        Tracker Blocker
       </p>
       <span class={pauseStatusClass(isUnavailable ? "unavailable" : status)}>
         {statusLabel}
@@ -167,9 +167,9 @@ function DashboardHeader({
         <span class="truncate font-normal text-zinc-600">{activeHost}</span>
       </div>
       <button
-        aria-label="Open TrackerBlocker settings"
+        aria-label="Open Tracker Blocker settings"
         class="tb-settings-button justify-self-end"
-        title="Open settings"
+        title="Open Tracker Blocker settings"
         type="button"
         onClick={onOpenSettings}
       >

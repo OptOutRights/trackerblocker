@@ -10,23 +10,23 @@ describe("formatActionBadge", () => {
   it("shows the exact count in both the badge and title", () => {
     expect(formatActionBadge(1)).toEqual({
       text: "1",
-      title: "TrackerBlocker - 1 request blocked",
+      title: "Tracker Blocker — 1 request blocked",
     });
     expect(formatActionBadge(99)).toEqual({
       text: "99",
-      title: "TrackerBlocker - 99 requests blocked",
+      title: "Tracker Blocker — 99 requests blocked",
     });
     expect(formatActionBadge(100)).toEqual({
       text: "100",
-      title: "TrackerBlocker - 100 requests blocked",
+      title: "Tracker Blocker — 100 requests blocked",
     });
     expect(formatActionBadge(101)).toEqual({
       text: "101",
-      title: "TrackerBlocker - 101 requests blocked",
+      title: "Tracker Blocker — 101 requests blocked",
     });
     expect(formatActionBadge(12_345)).toEqual({
       text: "12345",
-      title: "TrackerBlocker - 12345 requests blocked",
+      title: "Tracker Blocker — 12345 requests blocked",
     });
   });
 });
@@ -35,15 +35,15 @@ describe("formatActionBadgeState", () => {
   it("distinguishes zero from paused and unavailable", () => {
     expect(
       formatActionBadgeState({ status: "available", blockedCount: 0 }),
-    ).toEqual({ text: "", title: "TrackerBlocker" });
+    ).toEqual({ text: "", title: "Tracker Blocker" });
     expect(
       formatActionBadgeState({ status: "paused", blockedCount: null }),
-    ).toEqual({ text: "", title: "TrackerBlocker - protection paused" });
+    ).toEqual({ text: "", title: "Tracker Blocker — protection paused" });
     expect(
       formatActionBadgeState({ status: "unavailable", blockedCount: null }),
     ).toEqual({
       text: "!",
-      title: "TrackerBlocker - blocked count unavailable",
+      title: "Tracker Blocker — blocked count unavailable",
     });
   });
 });
