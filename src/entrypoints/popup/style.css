@@ -1,5 +1,11 @@
 @import "@fontsource-variable/outfit/wght.css";
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+@source "./App.tsx";
+@source "./PopupDashboard.tsx";
+@source "./RefreshToast.tsx";
+@source "./RequestRows.tsx";
+@source "./index.html";
+@source "./main.tsx";
 
 :root {
   --tb-primary: #2864fc;
