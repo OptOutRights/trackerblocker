@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,8 +7,17 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const output = path.join(ROOT, ".output/firefox-mv3");
-const archive = path.join(ROOT, ".output/trackerblocker-0.0.0-firefox.zip");
-const sources = path.join(ROOT, ".output/trackerblocker-0.0.0-sources.zip");
+const packageJson = JSON.parse(
+  await readFile(path.join(ROOT, "package.json"), "utf8"),
+);
+assert.equal(packageJson.name, "trackerblocker");
+assert.equal(typeof packageJson.version, "string");
+const packageName = packageJson.name;
+const packageVersion = packageJson.version;
+const archiveName = `${packageName}-${packageVersion}-firefox.zip`;
+const sourceArchiveName = `${packageName}-${packageVersion}-sources.zip`;
+const archive = path.join(ROOT, ".output", archiveName);
+const sources = path.join(ROOT, ".output", sourceArchiveName);
 const maxCatalogOnlyBytes = 400_000;
 const temporary = await mkdtemp(path.join(os.tmpdir(), "trackerblocker-package-"));
 const fullComparison = path.join(temporary, "with-easyprivacy.zip");
@@ -39,6 +49,10 @@ await run("zip", ["-q", "-r", fullComparison, "."], output);
 const fullBytes = (await stat(fullComparison)).size;
 const baselineBytes = (await stat(baselineComparison)).size;
 const deltaBytes = fullBytes - baselineBytes;
+const [archiveStats, sourceArchiveStats] = await Promise.all([
+  stat(archive),
+  stat(sources),
+]);
 assert(
   baselineBytes < maxCatalogOnlyBytes,
   `The ${baselineBytes}-byte catalog-only counterfactual exceeds the ${maxCatalogOnlyBytes}-byte sanity bound and may still contain EasyPrivacy code.`,
@@ -55,6 +69,12 @@ assert.deepEqual(manifest.permissions, [
 ]);
 assert.deepEqual(manifest.host_permissions, ["<all_urls>"]);
 assert.equal("content_scripts" in manifest, false);
+assertReleaseIdentity(manifest, "Generated manifest");
+
+const packagedManifest = JSON.parse(
+  await capture("unzip", ["-p", archive, "manifest.json"], ROOT),
+);
+assertReleaseIdentity(packagedManifest, "Packaged manifest");
 
 const firefoxContents = await capture("unzip", ["-Z1", archive], ROOT);
 for (const required of [
@@ -71,6 +91,11 @@ assert.equal(
 );
 const sourceContents = await capture("unzip", ["-Z1", sources], ROOT);
 const sourceEntries = sourceContents.split("\n").filter(Boolean);
+const sourcePackageJson = JSON.parse(
+  await capture("unzip", ["-p", sources, "package.json"], ROOT),
+);
+assert.equal(sourcePackageJson.name, packageName);
+assert.equal(sourcePackageJson.version, packageVersion);
 for (const required of [
   "LICENSE",
   "package-lock.json",
@@ -113,21 +138,69 @@ for (const required of [
 const metadata = JSON.parse(
   await readFile(path.join(output, "filter-data/easyprivacy.metadata.json"), "utf8"),
 );
+const [archiveSha256, sourceArchiveSha256] = await Promise.all([
+  sha256(archive),
+  sha256(sources),
+]);
 const commit = (await capture("git", ["rev-parse", "HEAD"], ROOT)).trim();
-const trackedStatus = (
-  await capture("git", ["status", "--porcelain", "--untracked-files=no"], ROOT)
+const workingTreeStatus = (
+  await capture("git", ["status", "--porcelain"], ROOT)
 ).trim();
 process.stdout.write("\nEasyPrivacy package/source evidence\n");
 process.stdout.write(
-  `Revision: ${commit}${trackedStatus ? " with tracked working-tree changes" : ""}\n`,
+  `Revision: ${commit}${workingTreeStatus ? " with working-tree changes" : ""}\n`,
 );
-process.stdout.write(`Artifact SHA-256: ${metadata.artifactSha256}\n`);
+process.stdout.write(`Version: ${packageVersion}\n`);
+process.stdout.write(
+  `Extension ID: ${manifest.browser_specific_settings.gecko.id}\n`,
+);
+process.stdout.write(`EasyPrivacy artifact SHA-256: ${metadata.artifactSha256}\n`);
 process.stdout.write(`Catalog-only counterfactual: ${baselineBytes} bytes\n`);
 process.stdout.write(`EasyPrivacy package: ${fullBytes} bytes\n`);
 process.stdout.write(`Complete compressed EasyPrivacy delta: ${deltaBytes} bytes\n`);
-process.stdout.write(`Firefox zip: ${(await stat(archive)).size} bytes\n`);
-process.stdout.write(`Source zip: ${(await stat(sources)).size} bytes\n`);
+process.stdout.write(`Firefox archive: ${archiveName}\n`);
+process.stdout.write(`Firefox archive size: ${archiveStats.size} bytes\n`);
+process.stdout.write(`Firefox archive SHA-256: ${archiveSha256}\n`);
+process.stdout.write(`Source archive: ${sourceArchiveName}\n`);
+process.stdout.write(`Source archive size: ${sourceArchiveStats.size} bytes\n`);
+process.stdout.write(`Source archive SHA-256: ${sourceArchiveSha256}\n`);
 process.stdout.write("Manifest permissions match the reviewed minimal set; no content scripts; package/source contents and private-build exclusions inspected.\n");
+
+function assertReleaseIdentity(candidate, label) {
+  assert.equal(
+    candidate.name,
+    "Tracker Blocker by Opt Out Rights",
+    `${label} name`,
+  );
+  assert.equal(candidate.version, packageVersion, `${label} version`);
+  assert.equal(
+    candidate.developer?.name,
+    "Opt Out Rights",
+    `${label} developer`,
+  );
+  assert.equal(
+    candidate.homepage_url,
+    "https://github.com/OptOutRights/tracker-blocker",
+    `${label} homepage`,
+  );
+  assert.equal(
+    candidate.browser_specific_settings?.gecko?.id,
+    "trackerblocker@optoutrights.org",
+    `${label} Firefox extension ID`,
+  );
+  assert.equal("update_url" in candidate, false, `${label} update URL`);
+  assert.equal(
+    "update_url" in (candidate.browser_specific_settings?.gecko ?? {}),
+    false,
+    `${label} Firefox update URL`,
+  );
+}
+
+async function sha256(file) {
+  return createHash("sha256")
+    .update(await readFile(file))
+    .digest("hex");
+}
 
 function run(command, args, cwd, env = process.env) {
   return new Promise((resolve, reject) => {

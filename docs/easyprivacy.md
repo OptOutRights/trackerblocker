@@ -161,6 +161,34 @@ order:
 npm run test:easyprivacy
 ```
 
+### Package and release evidence
+
+Run the focused package evidence check with:
+
+```sh
+npm run test:easyprivacy:package
+```
+
+This command performs real Firefox builds and creates the extension and source
+archives. It verifies that:
+
+- archive names use the version from `package.json`;
+- generated and packaged manifests contain the approved version and release
+  identity;
+- no unexpected update URL is present;
+- required EasyPrivacy data, provenance, notices, and reviewer source files are
+  included;
+- generation-only and private build files are excluded; and
+- the EasyPrivacy package-size delta remains within its reviewed bounds.
+
+The report prints the Git revision, working-tree state, package version,
+extension ID, archive names, sizes, and SHA-256 hashes. The hashes identify the
+exact archives produced by that run; do not assume a later rebuild will have
+the same ZIP hash without a separate reproducibility comparison.
+
+Development runs may report working-tree changes. Final release evidence must
+be produced from the clean committed release revision.
+
 Run the Firefox 142 matrix separately using the commands in `docs/testing.md`.
 Before a public release, also sample representative content, commerce, login,
 and quiet first-party sites using the checklist in `docs/qa.md`.
