@@ -1,21 +1,35 @@
-import type { DomainOverrideAction } from "../../shared/ruleDecisions";
+import type { DomainOverrideAction } from "../../shared/requestDecisions";
 import type {
+  HostRequestDetails,
   ObservedRequestRow,
+  RequestAttemptExplanation,
   RequestRelationship,
 } from "../../shared/requestObservation";
 import type { RequestView } from "./PopupDashboard";
 
 export function RequestRows({
+  areSettingsControlsDisabled,
   expandedRowId,
+  hostDetails,
+  hostDetailsStatus,
   onSetDomainOverride,
+  onSetSiteAllow,
   onToggleRow,
   rows,
   view,
 }: {
+  areSettingsControlsDisabled: boolean;
   expandedRowId: string | null;
+  hostDetails: HostRequestDetails | null;
+  hostDetailsStatus: "idle" | "loading" | "ready" | "unavailable";
   onSetDomainOverride: (
     domain: string,
     action: DomainOverrideAction | null,
+  ) => Promise<void>;
+  onSetSiteAllow: (
+    domain: string,
+    allowed: boolean,
+    rowId: string,
   ) => Promise<void>;
   onToggleRow: (rowId: string) => void;
   rows: ObservedRequestRow[];
@@ -26,12 +40,12 @@ export function RequestRows({
       <div class="tb-empty-panel mt-3">
         <p class="text-sm font-medium text-zinc-800">
           {view === "blocked"
-            ? "No blocked sites on this page yet."
-            : "No sites observed for this tab yet."}
+            ? "No blocked hosts on this page yet."
+            : "No hosts observed for this tab yet."}
         </p>
         <p class="mt-1 text-xs leading-snug text-zinc-500">
           {view === "blocked"
-            ? "Open all sites to inspect allowed or uncataloged activity."
+            ? "Open all hosts to inspect allowed or uncataloged activity."
             : "Refresh the page to capture current requests."}
         </p>
       </div>
@@ -39,127 +53,327 @@ export function RequestRows({
   }
 
   return (
-    <div class="mt-3 max-h-[320px] overflow-y-auto">
-      <div class="grid gap-2">
-        {rows.map((row) => (
-          <RequestRow
-            isExpanded={expandedRowId === row.id}
-            key={row.id}
-            row={row}
-            onSetDomainOverride={onSetDomainOverride}
-            onToggle={() => onToggleRow(row.id)}
-          />
-        ))}
-      </div>
+    <div class="tb-request-list mt-3 min-w-0">
+      {rows.map((row) => (
+        <RequestRow
+          areSettingsControlsDisabled={areSettingsControlsDisabled}
+          isExpanded={expandedRowId === row.id}
+          hostDetails={hostDetails?.rowId === row.id ? hostDetails : null}
+          hostDetailsStatus={hostDetailsStatus}
+          key={row.id}
+          row={row}
+          onSetDomainOverride={onSetDomainOverride}
+          onSetSiteAllow={onSetSiteAllow}
+          onToggle={() => onToggleRow(row.id)}
+        />
+      ))}
     </div>
   );
 }
 
 function RequestRow({
+  areSettingsControlsDisabled,
   isExpanded,
+  hostDetails,
+  hostDetailsStatus,
   onSetDomainOverride,
+  onSetSiteAllow,
   onToggle,
   row,
 }: {
+  areSettingsControlsDisabled: boolean;
   isExpanded: boolean;
+  hostDetails: HostRequestDetails | null;
+  hostDetailsStatus: "idle" | "loading" | "ready" | "unavailable";
   onSetDomainOverride: (
     domain: string,
     action: DomainOverrideAction | null,
+  ) => Promise<void>;
+  onSetSiteAllow: (
+    domain: string,
+    allowed: boolean,
+    rowId: string,
   ) => Promise<void>;
   onToggle: () => void;
   row: ObservedRequestRow;
 }) {
   const selectedOverride = getSelectedOverride(row);
-  const canOverride = row.relationship === "third-party";
+  const canSetSiteAllow = Boolean(
+    row.host &&
+      (row.currentSiteAllow ||
+        row.actionCounts.blocked > 0 ||
+        row.actionCounts.restricted > 0),
+  );
+  const canSetGlobalOverride = row.relationship === "third-party";
+  const hasRuleControls = canSetSiteAllow || canSetGlobalOverride;
 
   return (
-    <article class={requestRowClass(row.status)}>
+    <article class={requestRowClass(row)}>
       <button
+        aria-label={`${row.displayName}; ${formatActionSummary(row).replaceAll(" · ", ", ")}`}
         aria-expanded={isExpanded}
-        class="flex w-full items-start justify-between gap-3 text-left"
+        class="tb-request-row-toggle"
         type="button"
         onClick={onToggle}
       >
-        <div class="min-w-0">
-          <p class="truncate text-sm font-medium text-zinc-950">
-            {row.displayName}
-          </p>
-          <p class="mt-1 text-xs text-zinc-500">
-            {formatRelationship(row.relationship)} -{" "}
-            {formatCategory(row.category)}
-            {row.entity ? ` by ${row.entity}` : ""} -{" "}
-            {row.requestTypes.join(", ")}
-          </p>
-        </div>
-        <div class="shrink-0 text-right">
-          <span class={statusBadgeClass(row.status)}>{row.requestCount}</span>
-          <p class="mt-1 text-xs font-medium text-zinc-500">
-            {formatStatus(row.status)}
-          </p>
-        </div>
+        <span class="tb-request-row-name" aria-hidden="true">
+          {row.displayName}
+        </span>
+        <span class="tb-request-row-summary" aria-hidden="true">
+          {formatActionSummary(row)}
+        </span>
+        <span class="tb-request-row-summary-compact" aria-hidden="true">
+          {formatCompactActionSummary(row)}
+        </span>
+        <svg
+          aria-hidden="true"
+          class="tb-request-row-chevron"
+          fill="none"
+          viewBox="0 0 20 20"
+        >
+          <path
+            d="m7.5 5 5 5-5 5"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.75"
+          />
+        </svg>
       </button>
 
       {isExpanded && (
-        <div class="mt-3 border-t border-zinc-200/80 pt-3 text-xs text-zinc-600">
-          <dl class="grid gap-2">
+        <div class="tb-request-row-details border-t border-zinc-200/80 text-xs text-zinc-600">
+          {hasRuleControls && (
+            <section
+              aria-label="Rules"
+              class="mb-3 border-b border-zinc-200 pb-3"
+            >
+              <h3 class="font-medium text-zinc-800">Rules</h3>
+
+              {canSetSiteAllow && (
+                <div class="mt-2">
+                  <p class="mb-1 font-medium text-zinc-600">On this site</p>
+                  <button
+                    aria-pressed={row.currentSiteAllow}
+                    class="w-full rounded-md border border-[#2864fc] bg-[#edf2ff] px-3 py-2 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={areSettingsControlsDisabled}
+                    type="button"
+                    onClick={() =>
+                      void onSetSiteAllow(
+                        row.displayName,
+                        !row.currentSiteAllow,
+                        row.id,
+                      )
+                    }
+                  >
+                    {row.currentSiteAllow
+                      ? "Remove allow on this site"
+                      : "Allow on this site"}
+                  </button>
+                </div>
+              )}
+
+              {canSetGlobalOverride && (
+                <div class={canSetSiteAllow ? "mt-3" : "mt-2"}>
+                  <p class="font-medium text-zinc-600">On every site</p>
+                  <p class="mt-1 leading-snug text-zinc-500">
+                    Applies to this hostname wherever it appears. Refresh to
+                    retry requests on this page.
+                  </p>
+                  <div
+                    aria-label="Rule on every site"
+                    class="mt-2 grid grid-cols-3 overflow-hidden rounded-md border border-zinc-300 bg-white"
+                    role="group"
+                  >
+                    <OverrideButton
+                      isDisabled={areSettingsControlsDisabled}
+                      isSelected={selectedOverride === "auto"}
+                      label="Auto"
+                      onSelect={() =>
+                        void onSetDomainOverride(row.displayName, null)
+                      }
+                    />
+                    <OverrideButton
+                      isDisabled={areSettingsControlsDisabled}
+                      isSelected={selectedOverride === "block"}
+                      label="Block"
+                      onSelect={() =>
+                        void onSetDomainOverride(row.displayName, "block")
+                      }
+                    />
+                    <OverrideButton
+                      isDisabled={areSettingsControlsDisabled}
+                      isSelected={selectedOverride === "allow"}
+                      label="Allow"
+                      onSelect={() =>
+                        void onSetDomainOverride(row.displayName, "allow")
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
+          <dl class="grid gap-2" aria-label="Host summary">
+            <DetailRow
+              label="Relationship"
+              value={formatRelationship(row.relationship)}
+            />
+            <DetailRow label="Category" value={formatCategory(row.category)} />
             <DetailRow
               label="Entity"
               value={row.entity ?? "Not in local catalog"}
             />
             <DetailRow label="Explanation" value={row.explanation} />
             <DetailRow
-              label="Request types"
-              value={row.requestTypes.join(", ")}
+              label="Requests"
+              value={`${row.requestCount} observed — ${formatActionSummary(row)}`}
             />
-            <DetailRow label="Lifecycle" value={formatLifecycle(row)} />
-            <DetailRow label="Visibility" value={formatVisibilityNotes(row)} />
-            <DetailRow label="Context" value={formatContextEvidence(row)} />
-            <DetailRow label="Frames" value={formatFrameContexts(row)} />
-            <DetailRow label="Path hints" value={formatPathHints(row)} />
-            <DetailRow label="Redirects" value={formatRedirects(row)} />
             <DetailRow
               label="Rule source"
-              value={formatRuleSource(row.ruleSource)}
+              value={formatRuleSources(row)}
             />
-            <DetailRow label="Catalog basis" value={formatCatalogBasis(row)} />
           </dl>
 
-          {canOverride && (
-            <div class="mt-3 grid grid-cols-3 overflow-hidden border border-zinc-200 bg-white">
-              <OverrideButton
-                isSelected={selectedOverride === "auto"}
-                label="Auto"
-                onSelect={() =>
-                  void onSetDomainOverride(row.displayName, null)
-                }
-              />
-              <OverrideButton
-                isSelected={selectedOverride === "block"}
-                label="Block"
-                onSelect={() =>
-                  void onSetDomainOverride(row.displayName, "block")
-                }
-              />
-              <OverrideButton
-                isSelected={selectedOverride === "allow"}
-                label="Allow"
-                onSelect={() =>
-                  void onSetDomainOverride(row.displayName, "allow")
-                }
+          <details class="tb-technical-details mt-3">
+            <summary>Technical details</summary>
+            <div class="pt-3">
+              <dl class="grid gap-2">
+                <DetailRow
+                  label="Request types"
+                  value={row.requestTypes.join(", ")}
+                />
+                <DetailRow label="Lifecycle" value={formatLifecycle(row)} />
+                <DetailRow
+                  label="Visibility"
+                  value={formatVisibilityNotes(row)}
+                />
+                <DetailRow label="Context" value={formatContextEvidence(row)} />
+                <DetailRow label="Frames" value={formatFrameContexts(row)} />
+                <DetailRow label="Path hints" value={formatPathHints(row)} />
+                <DetailRow label="Redirects" value={formatRedirects(row)} />
+                <DetailRow
+                  label="Catalog basis"
+                  value={formatCatalogBasis(row)}
+                />
+              </dl>
+
+              <RequestExplanations
+                details={hostDetails}
+                status={hostDetailsStatus}
+                row={row}
               />
             </div>
-          )}
+          </details>
         </div>
       )}
     </article>
   );
 }
 
+function RequestExplanations({
+  details,
+  status,
+  row,
+}: {
+  details: HostRequestDetails | null;
+  status: "idle" | "loading" | "ready" | "unavailable";
+  row: ObservedRequestRow;
+}) {
+  if (row.requestSampleCount === 0) {
+    return null;
+  }
+
+  if (!details && status === "unavailable") {
+    return (
+      <p class="mt-3 text-zinc-500">
+        Request explanations are unavailable because the page changed or the
+        background restarted. Refresh this view to capture current requests.
+      </p>
+    );
+  }
+
+  if (!details) {
+    return <p class="mt-3 text-zinc-500">Loading request explanations…</p>;
+  }
+
+  return (
+    <section class="mt-3 border-t border-zinc-200 pt-3">
+      <p class="font-medium text-zinc-700">Representative requests</p>
+      <div class="mt-2 grid gap-2">
+        {details.samples.map((sample, index) => (
+          <div
+            class={index === 0 ? "" : "border-t border-zinc-200 pt-2"}
+            key={sample.id}
+          >
+            <p class="font-medium text-zinc-800">
+              {formatAttemptDecision(sample)}
+            </p>
+            <p class="mt-0.5 break-words text-zinc-500">
+              {sample.requestType}
+              {sample.pathHint ? ` · ${sample.pathHint}` : ""}
+              {sample.sourceHost ? ` · from ${sample.sourceHost}` : ""}
+            </p>
+            {sample.matchedFilter && (
+              <p class="mt-0.5 break-all text-zinc-500">
+                Rule {sample.matchedFilter.key}: {" "}
+                {sample.matchedFilter.normalizedSummary}
+              </p>
+            )}
+            {sample.matchedException && (
+              <p class="mt-0.5 break-all text-zinc-500">
+                Exception {sample.matchedException.key}: {" "}
+                {sample.matchedException.normalizedSummary}
+              </p>
+            )}
+            {sample.catalogEvidence && (
+              <p class="mt-0.5 text-zinc-500">
+                Local catalog: {sample.catalogEvidence.explanation}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+      {details.truncated && (
+        <p class="mt-2 text-amber-800">
+          Representative details are limited; host totals remain complete.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function formatAttemptDecision(sample: RequestAttemptExplanation): string {
+  const action =
+    sample.action === "allow"
+      ? "Allowed"
+      : sample.action === "block"
+        ? "Blocked"
+        : "Restricted";
+  const reason: Record<RequestAttemptExplanation["reason"], string> = {
+    "site-paused": "site protection was paused",
+    "site-allow": "allowed on this site",
+    "global-user-block": "global user block",
+    "global-user-allow": "global user allow",
+    "easyprivacy-exception": "EasyPrivacy exception",
+    "easyprivacy-block": "EasyPrivacy block",
+    "catalog-block": "local catalog block",
+    "catalog-restrict": "local catalog restriction",
+    "catalog-allow": "local catalog allow",
+    "first-party-default": "first-party default",
+    "no-supported-match": "no supported local rule matched",
+    "main-frame-automatic-disabled": "automatic top-level blocking is disabled",
+    "settings-unavailable": "settings were unavailable",
+  };
+  return `${action} — ${reason[sample.reason]}`;
+}
+
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div class="grid grid-cols-[88px_1fr] gap-2">
+    <div class="tb-detail-row">
       <dt class="font-medium text-zinc-500">{label}</dt>
-      <dd class="text-zinc-800">{value}</dd>
+      <dd class="min-w-0 text-zinc-800">{value}</dd>
     </div>
   );
 }
@@ -177,7 +391,15 @@ function formatLifecycle(row: ObservedRequestRow): string {
 }
 
 function formatVisibilityNotes(row: ObservedRequestRow): string {
-  return row.context.visibilityNotes.map(formatVisibilityNote).join(", ");
+  return [
+    ...row.context.visibilityNotes.map(formatVisibilityNote),
+    row.decisionEvidenceTruncated
+      ? "matched rule samples are truncated"
+      : null,
+    row.redirectEvidenceTruncated ? "redirect samples are truncated" : null,
+  ]
+    .filter((note): note is string => Boolean(note))
+    .join(", ");
 }
 
 function formatContextEvidence(row: ObservedRequestRow): string {
@@ -237,7 +459,7 @@ export function formatCatalogBasis(row: ObservedRequestRow): string {
   }
 
   return [
-    `packaged ${row.catalogDefaultAction} rule`,
+    `observed catalog evidence includes a packaged ${row.catalogDefaultAction} rule`,
     row.catalogRuleIds.length
       ? `rules: ${row.catalogRuleIds.join(", ")}`
       : null,
@@ -250,10 +472,12 @@ export function formatCatalogBasis(row: ObservedRequestRow): string {
 }
 
 function OverrideButton({
+  isDisabled,
   isSelected,
   label,
   onSelect,
 }: {
+  isDisabled: boolean;
   isSelected: boolean;
   label: string;
   onSelect: () => void;
@@ -261,11 +485,12 @@ function OverrideButton({
   return (
     <button
       aria-pressed={isSelected}
-      class={`px-2 py-2 font-medium transition ${
+      class={`px-2 py-2 font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
         isSelected
-          ? "bg-[#dff5ff] text-zinc-950"
+          ? "bg-[#edf2ff] text-zinc-950"
           : "bg-white text-zinc-600 hover:bg-zinc-50"
       }`}
+      disabled={isDisabled}
       type="button"
       onClick={onSelect}
     >
@@ -277,15 +502,7 @@ function OverrideButton({
 function getSelectedOverride(
   row: ObservedRequestRow,
 ): DomainOverrideAction | "auto" {
-  if (row.ruleSource === "blocked-by-user") {
-    return "block";
-  }
-
-  if (row.ruleSource === "allowed-by-user") {
-    return "allow";
-  }
-
-  return "auto";
+  return row.currentOverride ?? "auto";
 }
 
 function formatRelationship(relationship: RequestRelationship): string {
@@ -322,17 +539,22 @@ function formatCategory(category: ObservedRequestRow["category"]): string {
   }
 }
 
-function formatRuleSource(source: ObservedRequestRow["ruleSource"]): string {
-  switch (source) {
-    case "automatic":
-      return "Automatic";
-    case "blocked-by-user":
-      return "Blocked by user";
-    case "allowed-by-user":
-      return "Allowed by user";
-    case "site-paused":
-      return "Allowed because site is paused";
-  }
+export function formatRuleSources(row: ObservedRequestRow): string {
+  const labels: Array<[keyof ObservedRequestRow["sourceCounts"], string]> = [
+    ["site-pause", "site pause"],
+    ["site-allow", "site allow"],
+    ["user-block", "user block"],
+    ["user-allow", "user allow"],
+    ["settings-unavailable", "settings unavailable"],
+    ["easyprivacy", "EasyPrivacy"],
+    ["catalog", "catalog"],
+    ["default", "default allow"],
+  ];
+  const observed = labels
+    .filter(([source]) => row.sourceCounts[source] > 0)
+    .map(([source, label]) => `${label}: ${row.sourceCounts[source]}`);
+
+  return observed.length ? observed.join(", ") : "No decision source recorded";
 }
 
 function formatVisibilityNote(
@@ -354,52 +576,58 @@ function formatVisibilityNote(
     case "headers-not-inspected":
       return "headers are not inspected by default";
     case "evidence-truncated":
-      return "evidence samples are truncated";
+      return "context or active-request evidence is truncated";
     case "non-web-or-unclassifiable":
       return "non-web or unclassifiable";
   }
 }
 
-function formatStatus(status: ObservedRequestRow["status"]): string {
-  switch (status) {
-    case "blocked":
-      return "blocked";
-    case "allowed":
-      return "allowed";
-    case "restricted":
-      return "restricted";
-    case "allowed-paused":
-      return "paused";
-  }
+export function formatActionSummary(row: ObservedRequestRow): string {
+  return [
+    row.actionCounts.blocked > 0
+      ? `${row.actionCounts.blocked} blocked`
+      : null,
+    row.actionCounts.restricted > 0
+      ? `${row.actionCounts.restricted} restricted`
+      : null,
+    row.actionCounts.allowed > 0
+      ? `${row.actionCounts.allowed} allowed`
+      : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
 }
 
-function requestRowClass(status: ObservedRequestRow["status"]): string {
+export function formatCompactActionSummary(row: ObservedRequestRow): string {
+  return [
+    row.actionCounts.blocked > 0
+      ? `${row.actionCounts.blocked}B`
+      : null,
+    row.actionCounts.restricted > 0
+      ? `${row.actionCounts.restricted}R`
+      : null,
+    row.actionCounts.allowed > 0
+      ? `${row.actionCounts.allowed}A`
+      : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
+}
+
+function requestRowClass(row: ObservedRequestRow): string {
   const base = "tb-request-row";
 
-  switch (status) {
-    case "blocked":
-      return `${base} is-blocked`;
-    case "restricted":
-      return `${base} is-restricted`;
-    case "allowed":
-      return `${base} is-allowed`;
-    case "allowed-paused":
-      return `${base} is-paused`;
+  if (row.isMixed) {
+    return `${base} is-mixed`;
   }
-}
 
-function statusBadgeClass(status: ObservedRequestRow["status"]): string {
-  const base =
-    "inline-flex min-w-8 justify-center border px-2 py-1 text-xs font-semibold leading-none";
-
-  switch (status) {
-    case "blocked":
-      return `${base} border-[#5db7dd] bg-[#dff5ff] text-zinc-950`;
-    case "restricted":
-      return `${base} border-[#d6c3a4] bg-[#fff8eb] text-[#6b4d21]`;
-    case "allowed":
-      return `${base} border-zinc-200 bg-white text-zinc-700`;
-    case "allowed-paused":
-      return `${base} border-[#9fcbd6] bg-[#e8f8fb] text-zinc-800`;
+  if (row.actionCounts.blocked > 0) {
+    return `${base} is-blocked`;
   }
+
+  if (row.actionCounts.restricted > 0) {
+    return `${base} is-restricted`;
+  }
+
+  return `${base} is-allowed`;
 }

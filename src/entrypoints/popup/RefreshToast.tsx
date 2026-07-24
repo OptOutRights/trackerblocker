@@ -51,7 +51,7 @@ export function RefreshToast({
           </button>
           <button
             aria-label="Dismiss refresh notice"
-            class="rounded-md px-1.5 py-1 font-semibold text-red-700 transition hover:bg-red-100"
+            class="rounded-md px-1.5 py-1 font-medium text-red-700 transition hover:bg-red-100"
             type="button"
             onClick={onDismiss}
           >

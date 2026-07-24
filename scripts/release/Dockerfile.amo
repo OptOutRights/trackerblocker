@@ -1,0 +1,38 @@
+FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
+
+ARG NODE_VERSION=24.14.0
+ARG NPM_VERSION=11.9.0
+ARG TARGETARCH
+
+RUN apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    unzip \
+    xz-utils \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+  case "${TARGETARCH}" in \
+    arm64) node_arch="arm64" ;; \
+    amd64) node_arch="x64" ;; \
+    *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+  esac; \
+  node_archive="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz"; \
+  curl --fail --location --remote-name \
+    "https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}"; \
+  curl --fail --location --remote-name \
+    "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"; \
+  grep " ${node_archive}$" SHASUMS256.txt | sha256sum --check --strict; \
+  tar --extract --xz --file "${node_archive}" \
+    --directory /usr/local --strip-components 1; \
+  rm "${node_archive}" SHASUMS256.txt; \
+  npm install --global "npm@${NPM_VERSION}"; \
+  test "$(node --version)" = "v${NODE_VERSION}"; \
+  test "$(npm --version)" = "${NPM_VERSION}"; \
+  npm cache clean --force
+
+WORKDIR /work
+
+CMD ["bash"]

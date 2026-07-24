@@ -1,20 +1,49 @@
 import { describe, expect, it } from "vitest";
 
-import { ActionBadgeUpdateQueue, formatActionBadge } from "./actionBadge";
+import {
+  ActionBadgeUpdateQueue,
+  formatActionBadge,
+  formatActionBadgeState,
+} from "./actionBadge";
 
 describe("formatActionBadge", () => {
-  it("caps visible text while preserving the exact count in the title", () => {
+  it("shows the exact count in both the badge and title", () => {
+    expect(formatActionBadge(1)).toEqual({
+      text: "1",
+      title: "Tracker Blocker — 1 request blocked",
+    });
     expect(formatActionBadge(99)).toEqual({
       text: "99",
-      title: "TrackerBlocker - 99 sites blocked",
+      title: "Tracker Blocker — 99 requests blocked",
     });
     expect(formatActionBadge(100)).toEqual({
-      text: "99+",
-      title: "TrackerBlocker - 100 sites blocked",
+      text: "100",
+      title: "Tracker Blocker — 100 requests blocked",
     });
     expect(formatActionBadge(101)).toEqual({
-      text: "99+",
-      title: "TrackerBlocker - 101 sites blocked",
+      text: "101",
+      title: "Tracker Blocker — 101 requests blocked",
+    });
+    expect(formatActionBadge(12_345)).toEqual({
+      text: "12345",
+      title: "Tracker Blocker — 12345 requests blocked",
+    });
+  });
+});
+
+describe("formatActionBadgeState", () => {
+  it("distinguishes zero from paused and unavailable", () => {
+    expect(
+      formatActionBadgeState({ status: "available", blockedCount: 0 }),
+    ).toEqual({ text: "", title: "Tracker Blocker" });
+    expect(
+      formatActionBadgeState({ status: "paused", blockedCount: null }),
+    ).toEqual({ text: "", title: "Tracker Blocker — protection paused" });
+    expect(
+      formatActionBadgeState({ status: "unavailable", blockedCount: null }),
+    ).toEqual({
+      text: "!",
+      title: "Tracker Blocker — blocked count unavailable",
     });
   });
 });
@@ -24,7 +53,7 @@ describe("ActionBadgeUpdateQueue", () => {
     const queue = new ActionBadgeUpdateQueue();
     const applied: string[] = [];
     let releaseFirst: (() => void) | undefined;
-    const first = queue.update(1, 1, async (badge) => {
+    const first = queue.update(1, { status: "available", blockedCount: 1 }, async (badge) => {
       applied.push(badge.text);
       await new Promise<void>((resolve) => {
         releaseFirst = resolve;
@@ -32,7 +61,7 @@ describe("ActionBadgeUpdateQueue", () => {
     });
 
     await Promise.resolve();
-    const second = queue.update(1, 2, async (badge) => {
+    const second = queue.update(1, { status: "available", blockedCount: 2 }, async (badge) => {
       applied.push(badge.text);
     });
     await Promise.resolve();
@@ -40,7 +69,7 @@ describe("ActionBadgeUpdateQueue", () => {
     expect(applied).toEqual(["1"]);
     releaseFirst?.();
     await Promise.all([first, second]);
-    await queue.update(1, 2, async (badge) => {
+    await queue.update(1, { status: "available", blockedCount: 2 }, async (badge) => {
       applied.push(badge.text);
     });
 
@@ -52,12 +81,12 @@ describe("ActionBadgeUpdateQueue", () => {
     let attempts = 0;
 
     await expect(
-      queue.update(1, 3, async () => {
+      queue.update(1, { status: "available", blockedCount: 3 }, async () => {
         attempts += 1;
         throw new Error("action unavailable");
       }),
     ).rejects.toThrow("action unavailable");
-    await queue.update(1, 3, async () => {
+    await queue.update(1, { status: "available", blockedCount: 3 }, async () => {
       attempts += 1;
     });
 
@@ -72,7 +101,7 @@ describe("ActionBadgeUpdateQueue", () => {
     const activeStarted = new Promise<void>((resolve) => {
       markActiveStarted = resolve;
     });
-    const active = queue.update(1, 1, async (badge) => {
+    const active = queue.update(1, { status: "available", blockedCount: 1 }, async (badge) => {
       markActiveStarted?.();
       await new Promise<void>((resolve) => {
         releaseActive = resolve;
@@ -81,11 +110,11 @@ describe("ActionBadgeUpdateQueue", () => {
     });
 
     await activeStarted;
-    const stale = queue.update(1, 2, async (badge) => {
+    const stale = queue.update(1, { status: "available", blockedCount: 2 }, async (badge) => {
       applied.push(`stale:${badge.text}`);
     });
     queue.remove(1);
-    const current = queue.update(1, 3, async (badge) => {
+    const current = queue.update(1, { status: "available", blockedCount: 3 }, async (badge) => {
       applied.push(`new:${badge.text}`);
     });
 

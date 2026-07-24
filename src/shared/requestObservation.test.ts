@@ -1,16 +1,82 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_ACTIVE_REQUESTS_GLOBAL,
+  MAX_ACTIVE_REQUESTS_PER_TAB,
+  MAX_HOST_ROWS_PER_TAB,
   createTabObservationState,
+  enforceGlobalActiveRequestLimit,
+  getActiveRequestAttempt,
+  getActiveRequestDecision,
+  formatPrivacySafePathHint,
   mapRequestType,
   recordObservedRequest,
   recordRequestCompleted,
   recordRequestFailed,
   recordRequestRedirect,
+  recordUnobservedRequestAttempt,
   resetTabObservationState,
+  summarizeHostRequestDetails,
   summarizeTabObservation,
 } from "./requestObservation";
+import type {
+  RequestAction,
+  RequestDecision,
+  RequestDecisionSource,
+} from "./requestDecisions";
 import type { TrackerCatalogEntry } from "./trackerCatalog";
+import type { FilterRuleEvidence } from "./filterEngine";
+
+function ruleEvidence(key: string): FilterRuleEvidence {
+  return {
+    key,
+    engineId: key.split(":").at(-1) ?? key,
+    normalizedSummary: "||mixed.test/collect^",
+    requestTypes: ["xhr"],
+    partyScope: "third-party",
+    sourceConstraint: "none",
+  };
+}
+
+function requestDecision(
+  requestId: string,
+  tabId: number,
+  action: RequestAction,
+  source: RequestDecisionSource,
+  evidence: Partial<
+    Pick<RequestDecision, "matchedFilter" | "matchedException">
+  > = {},
+): RequestDecision {
+  return {
+    requestId,
+    tabId,
+    action,
+    source,
+    reason:
+      source === "easyprivacy"
+        ? action === "allow"
+          ? "easyprivacy-exception"
+          : "easyprivacy-block"
+        : source === "user-block"
+          ? "global-user-block"
+          : source === "site-pause"
+            ? "site-paused"
+            : "no-supported-match",
+    easyPrivacyEvaluation:
+      source === "easyprivacy"
+        ? action === "allow"
+          ? "exception"
+          : "block"
+        : "not-evaluated",
+    relationship: "third-party",
+    requestHost: "mixed.test",
+    matchedFilter: null,
+    matchedException: null,
+    catalogMatch: null,
+    headerRestriction: null,
+    ...evidence,
+  };
+}
 
 describe("mapRequestType", () => {
   it("maps WebExtension request types to popup categories", () => {
@@ -54,12 +120,8 @@ describe("request observation aggregation", () => {
     });
 
     expect(summarizeTabObservation(state)).toMatchObject({
-      thirdPartyCount: 2,
-      unknownCount: 2,
-      firstPartyCount: 0,
-      blockedCount: 0,
-      allowedCount: 2,
-      totalRequests: 2,
+      requestCounts: { total: 2, blocked: 0, restricted: 0, allowed: 2 },
+      hostCounts: { thirdParty: 2, unknown: 2, firstParty: 0 },
       rows: [
         {
           host: "cdn.tracker.test",
@@ -71,8 +133,8 @@ describe("request observation aggregation", () => {
           category: "unknown",
           entity: null,
           catalogDefaultAction: null,
-          ruleSource: "automatic",
-          status: "allowed",
+          actionCounts: { total: 1, blocked: 0, restricted: 0, allowed: 1 },
+          sourceCounts: { default: 1 },
           firstSeen: 100,
           lastSeen: 100,
           lifecycle: {
@@ -101,8 +163,8 @@ describe("request observation aggregation", () => {
           category: "unknown",
           entity: null,
           catalogDefaultAction: null,
-          ruleSource: "automatic",
-          status: "allowed",
+          actionCounts: { total: 1, blocked: 0, restricted: 0, allowed: 1 },
+          sourceCounts: { default: 1 },
         },
       ],
     });
@@ -120,7 +182,7 @@ describe("request observation aggregation", () => {
     });
 
     expect(summarizeTabObservation(state)).toMatchObject({
-      thirdPartyCount: 1,
+      hostCounts: { thirdParty: 1, blocked: 1 },
       rows: [
         {
           host: "www.google-analytics.com",
@@ -132,8 +194,8 @@ describe("request observation aggregation", () => {
           catalogDefaultAction: "block",
           explanation:
             "This domain is commonly used to measure visits, page views, and user interactions.",
-          ruleSource: "automatic",
-          status: "blocked",
+          actionCounts: { total: 1, blocked: 1, restricted: 0, allowed: 0 },
+          sourceCounts: { catalog: 1 },
         },
       ],
     });
@@ -151,9 +213,8 @@ describe("request observation aggregation", () => {
     });
 
     expect(summarizeTabObservation(state)).toMatchObject({
-      blockedCount: 0,
-      restrictedCount: 1,
-      allowedCount: 0,
+      requestCounts: { total: 1, blocked: 0, restricted: 1, allowed: 0 },
+      hostCounts: { blocked: 0, restricted: 1, allowed: 0 },
       rows: [
         {
           displayName: "o123.ingest.sentry.io",
@@ -163,7 +224,7 @@ describe("request observation aggregation", () => {
           catalogSource: null,
           catalogConfidence: null,
           catalogBreakageRisk: "low",
-          status: "restricted",
+          actionCounts: { total: 1, blocked: 0, restricted: 1, allowed: 0 },
         },
       ],
     });
@@ -190,13 +251,13 @@ describe("request observation aggregation", () => {
         },
       }),
     ).toMatchObject({
-      blockedCount: 0,
-      allowedCount: 1,
+      requestCounts: { total: 1, blocked: 0, restricted: 0, allowed: 1 },
       rows: [
         {
           displayName: "www.google-analytics.com",
-          ruleSource: "allowed-by-user",
-          status: "allowed",
+          actionCounts: { total: 1, blocked: 0, restricted: 0, allowed: 1 },
+          sourceCounts: { "user-allow": 1 },
+          currentOverride: "allow",
         },
       ],
     });
@@ -214,24 +275,19 @@ describe("request observation aggregation", () => {
       sitePaused: true,
     });
 
-    expect(
-      summarizeTabObservation(state, {
-        sitePaused: true,
-      }),
-    ).toMatchObject({
-      blockedCount: 0,
-      allowedCount: 1,
+    expect(summarizeTabObservation(state)).toMatchObject({
+      requestCounts: { total: 1, blocked: 0, restricted: 0, allowed: 1 },
       rows: [
         {
           displayName: "www.google-analytics.com",
-          ruleSource: "site-paused",
-          status: "allowed-paused",
+          actionCounts: { total: 1, blocked: 0, restricted: 0, allowed: 1 },
+          sourceCounts: { "site-pause": 1 },
         },
       ],
     });
   });
 
-  it("recomputes summary decisions with current settings", () => {
+  it("keeps observed decisions immutable while exposing the current override", () => {
     const state = createTabObservationState(1, "https://example.com");
 
     recordObservedRequest(state, {
@@ -249,13 +305,41 @@ describe("request observation aggregation", () => {
         },
       }),
     ).toMatchObject({
-      blockedCount: 0,
-      allowedCount: 1,
+      requestCounts: { total: 1, blocked: 1, restricted: 0, allowed: 0 },
       rows: [
         {
           displayName: "www.google-analytics.com",
-          ruleSource: "allowed-by-user",
-          status: "allowed",
+          actionCounts: { total: 1, blocked: 1, restricted: 0, allowed: 0 },
+          sourceCounts: { catalog: 1 },
+          currentOverride: "allow",
+        },
+      ],
+    });
+  });
+
+  it("overlays only the exact current-site allow without rewriting history", () => {
+    const state = createTabObservationState(1, "https://publisher.test/page");
+    recordObservedRequest(state, {
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://www.google-analytics.com/analytics.js",
+      requestType: "script",
+      timestamp: 100,
+    });
+
+    expect(
+      summarizeTabObservation(state, {
+        siteAllows: {
+          "publisher.test": { "www.google-analytics.com": true },
+          "other.test": { "unrelated.test": true },
+        },
+      }),
+    ).toMatchObject({
+      requestCounts: { blocked: 1, allowed: 0 },
+      rows: [
+        {
+          currentSiteAllow: true,
+          actionCounts: { blocked: 1, allowed: 0 },
         },
       ],
     });
@@ -273,7 +357,7 @@ describe("request observation aggregation", () => {
     });
 
     expect(summarizeTabObservation(state)).toMatchObject({
-      allowedCount: 1,
+      requestCounts: { total: 1, blocked: 0, restricted: 0, allowed: 1 },
       rows: [
         {
           displayName: "cdnjs.cloudflare.com",
@@ -283,7 +367,7 @@ describe("request observation aggregation", () => {
           catalogDefaultAction: "allow",
           explanation:
             "This domain is commonly used to load shared JavaScript or CSS libraries from a CDN.",
-          status: "allowed",
+          actionCounts: { total: 1, blocked: 0, restricted: 0, allowed: 1 },
         },
       ],
     });
@@ -331,10 +415,8 @@ describe("request observation aggregation", () => {
     });
 
     expect(summarizeTabObservation(state)).toMatchObject({
-      thirdPartyCount: 0,
-      unknownCount: 0,
-      firstPartyCount: 1,
-      allowedCount: 1,
+      hostCounts: { thirdParty: 0, unknown: 0, firstParty: 1 },
+      requestCounts: { total: 1, blocked: 0, restricted: 0, allowed: 1 },
       rows: [
         {
           host: "cdn.example.co.uk",
@@ -361,8 +443,7 @@ describe("request observation aggregation", () => {
     });
 
     expect(summarizeTabObservation(state)).toMatchObject({
-      thirdPartyCount: 1,
-      firstPartyCount: 0,
+      hostCounts: { thirdParty: 1, firstParty: 0 },
       rows: [
         {
           host: "frame.tracker.test",
@@ -410,7 +491,7 @@ describe("request observation aggregation", () => {
     });
 
     expect(summarizeTabObservation(state)).toMatchObject({
-      thirdPartyCount: 2,
+      hostCounts: { thirdParty: 2 },
       rows: [
         {
           displayName: "cdn.example-payments.test",
@@ -458,7 +539,7 @@ describe("request observation aggregation", () => {
     });
 
     expect(summarizeTabObservation(state)).toMatchObject({
-      thirdPartyCount: 1,
+      hostCounts: { thirdParty: 1 },
       rows: [
         {
           host: "events.tracker.test",
@@ -505,8 +586,8 @@ describe("request observation aggregation", () => {
     });
 
     expect(summarizeTabObservation(state)).toMatchObject({
-      thirdPartyCount: 1,
-      totalRequests: 2,
+      hostCounts: { thirdParty: 1 },
+      requestCounts: { total: 2, blocked: 0, restricted: 0, allowed: 2 },
       rows: [
         {
           displayName: "analytics.tracker.test",
@@ -682,7 +763,9 @@ describe("request observation aggregation", () => {
     expect(summarizeTabObservation(state).rows[0]).toMatchObject({
       catalogDefaultAction: "block",
       catalogRuleIds: ["collect-endpoint"],
-      status: "blocked",
+      actionCounts: { total: 3, blocked: 1, restricted: 0, allowed: 2 },
+      sourceCounts: { catalog: 3 },
+      isMixed: true,
       lifecycle: {
         started: 3,
         blocked: 1,
@@ -732,6 +815,34 @@ describe("request observation aggregation", () => {
     expect(JSON.stringify(row)).not.toContain("user-123");
   });
 
+  it("bounds redirect evidence and marks the truncation", () => {
+    const state = createTabObservationState(1, "https://example.com");
+
+    recordObservedRequest(state, {
+      requestId: "redirecting-request",
+      tabId: 1,
+      frameId: 0,
+      requestUrl: "https://redirect.test/start",
+      requestType: "xmlhttprequest",
+      timestamp: 100,
+    });
+
+    for (let index = 0; index < 10; index += 1) {
+      recordRequestRedirect(state, {
+        requestId: "redirecting-request",
+        fromUrl: `https://redirect-${index}.test/start`,
+        redirectUrl: `https://redirect-${index + 1}.test/next`,
+        statusCode: 302,
+        timestamp: 101 + index,
+      });
+    }
+
+    const row = summarizeTabObservation(state).rows[0];
+    expect(row.redirectHops).toHaveLength(8);
+    expect(row.redirectEvidenceTruncated).toBe(true);
+    expect(row.lifecycle.redirected).toBe(10);
+  });
+
   it("caps explanatory context while keeping exact request totals", () => {
     const state = createTabObservationState(1, "https://example.com");
 
@@ -752,7 +863,7 @@ describe("request observation aggregation", () => {
     const summary = summarizeTabObservation(state);
     const row = summary.rows[0];
 
-    expect(summary.totalRequests).toBe(20);
+    expect(summary.requestCounts.total).toBe(20);
     expect(row.requestCount).toBe(20);
     expect(row.context.frameIds).toHaveLength(16);
     expect(row.context.frameContexts).toHaveLength(16);
@@ -780,14 +891,15 @@ describe("request observation aggregation", () => {
     });
 
     expect(summarizeTabObservation(state)).toMatchObject({
-      unknownCount: 1,
-      blockedCount: 0,
-      allowedCount: 1,
+      hostCounts: { unknown: 1, blocked: 0, allowed: 1 },
+      requestCounts: { total: 2, blocked: 0, restricted: 0, allowed: 2 },
       rows: [
         {
           displayName: "Unclassifiable request",
           relationship: "unknown",
-          status: "allowed",
+          explanation:
+            "This request was observed, but Tracker Blocker could not classify its site relationship.",
+          actionCounts: { total: 2, blocked: 0, restricted: 0, allowed: 2 },
           requestCount: 2,
           requestTypes: ["script", "xhr"],
         },
@@ -807,16 +919,296 @@ describe("request observation aggregation", () => {
     });
 
     expect(summarizeTabObservation(state)).toMatchObject({
-      unknownCount: 1,
-      allowedCount: 1,
+      hostCounts: { unknown: 1, allowed: 1 },
+      requestCounts: { total: 1, blocked: 0, restricted: 0, allowed: 1 },
       rows: [
         {
           displayName: "moz-extension:extension-id",
           relationship: "unknown",
-          status: "allowed",
+          actionCounts: { total: 1, blocked: 0, restricted: 0, allowed: 1 },
         },
       ],
     });
+  });
+
+  it("reports mixed EasyPrivacy decisions and bounded match evidence truthfully", () => {
+    const state = createTabObservationState(1, "https://publisher.test");
+
+    for (let index = 0; index < 9; index += 1) {
+      recordObservedRequest(
+        state,
+        {
+          requestId: `blocked-${index}`,
+          tabId: 1,
+          frameId: 0,
+          requestUrl: `https://mixed.test/collect/${index}`,
+          requestType: "xmlhttprequest",
+          timestamp: 100 + index,
+        },
+        {
+          decision: requestDecision(
+            `blocked-${index}`,
+            1,
+            "block",
+            "easyprivacy",
+            { matchedFilter: ruleEvidence(`easyprivacy:${index}`) },
+          ),
+        },
+      );
+    }
+
+    recordObservedRequest(
+      state,
+      {
+        requestId: "excepted",
+        tabId: 1,
+        frameId: 0,
+        requestUrl: "https://mixed.test/asset.js",
+        requestType: "script",
+        timestamp: 120,
+      },
+      {
+        decision: requestDecision("excepted", 1, "allow", "easyprivacy", {
+          matchedFilter: ruleEvidence("easyprivacy:block"),
+          matchedException: ruleEvidence("easyprivacy:exception"),
+        }),
+      },
+    );
+
+    const summary = summarizeTabObservation(state);
+    expect(summary.requestCounts).toEqual({
+      total: 10,
+      blocked: 9,
+      restricted: 0,
+      allowed: 1,
+    });
+    expect(summary.hostCounts).toMatchObject({
+      blocked: 1,
+      allowed: 1,
+      mixed: 1,
+    });
+    expect(summary.rows[0]).toMatchObject({
+      actionCounts: { total: 10, blocked: 9, restricted: 0, allowed: 1 },
+      sourceCounts: { easyprivacy: 10 },
+      isMixed: true,
+      matchedExceptionKeys: ["easyprivacy:exception"],
+      decisionEvidenceTruncated: true,
+    });
+    expect(summary.rows[0].matchedFilterKeys).toHaveLength(8);
+  });
+
+  it("correlates redirect attempts by request id and reuses only the latest decision", () => {
+    const state = createTabObservationState(1, "https://publisher.test");
+    const first = requestDecision("redirect-id", 1, "allow", "default");
+    const second = requestDecision("redirect-id", 1, "block", "user-block");
+
+    recordObservedRequest(
+      state,
+      {
+        requestId: "redirect-id",
+        tabId: 1,
+        frameId: 0,
+        requestUrl: "https://first.test/start",
+        requestType: "xmlhttprequest",
+        timestamp: 100,
+      },
+      { decision: first },
+    );
+    recordRequestRedirect(state, {
+      requestId: "redirect-id",
+      fromUrl: "https://first.test/start?secret=1",
+      redirectUrl: "https://second.test/end?secret=2",
+      statusCode: 302,
+      timestamp: 110,
+    });
+    recordObservedRequest(
+      state,
+      {
+        requestId: "redirect-id",
+        tabId: 1,
+        frameId: 0,
+        requestUrl: "https://second.test/end",
+        requestType: "xmlhttprequest",
+        timestamp: 120,
+      },
+      { decision: second },
+    );
+
+    expect(getActiveRequestAttempt(state, "redirect-id")).toMatchObject({
+      attemptIndex: 1,
+      decision: second,
+    });
+    expect(getActiveRequestDecision(state, "redirect-id")).toBe(second);
+    expect(summarizeTabObservation(state).requestCounts).toMatchObject({
+      total: 2,
+      blocked: 1,
+      allowed: 1,
+    });
+
+    recordRequestCompleted(state, { requestId: "redirect-id", timestamp: 130 });
+    expect(getActiveRequestDecision(state, "redirect-id")).toBeNull();
+  });
+
+  it("bounds host rows while preserving exact request totals", () => {
+    const state = createTabObservationState(1, "https://publisher.test");
+
+    for (let index = 0; index <= MAX_HOST_ROWS_PER_TAB; index += 1) {
+      recordObservedRequest(state, {
+        requestId: `host-${index}`,
+        tabId: 1,
+        frameId: 0,
+        requestUrl: `https://host-${index}.tracker.test/pixel`,
+        requestType: "image",
+        timestamp: index,
+      });
+    }
+
+    const summary = summarizeTabObservation(state);
+    expect(summary.rows).toHaveLength(MAX_HOST_ROWS_PER_TAB);
+    expect(summary.requestCounts.total).toBe(MAX_HOST_ROWS_PER_TAB + 1);
+    expect(summary.hostCounts.lowerBound).toBe(true);
+    expect(summary.hostRowsTruncated).toBe(true);
+    expect(summary.omittedRequestCount).toBe(1);
+  });
+
+  it("bounds active attempts per tab, globally, and by age", () => {
+    const states = Array.from({ length: 9 }, (_, tabId) =>
+      createTabObservationState(tabId, "https://publisher.test"),
+    );
+
+    for (const state of states) {
+      for (let index = 0; index < MAX_ACTIVE_REQUESTS_PER_TAB; index += 1) {
+        const id = `${state.tabId}-${index}`;
+        recordUnobservedRequestAttempt(
+          state,
+          id,
+          requestDecision(id, state.tabId, "allow", "default"),
+          index,
+        );
+      }
+    }
+
+    recordUnobservedRequestAttempt(
+      states[0],
+      "per-tab-overflow",
+      requestDecision("per-tab-overflow", 0, "allow", "default"),
+      MAX_ACTIVE_REQUESTS_PER_TAB + 1,
+    );
+    expect(states[0].activeRequests.size).toBe(MAX_ACTIVE_REQUESTS_PER_TAB);
+    expect(states[0].activeRequestEvidenceTruncated).toBe(true);
+
+    enforceGlobalActiveRequestLimit(states);
+    expect(
+      states.reduce((total, state) => total + state.activeRequests.size, 0),
+    ).toBe(MAX_ACTIVE_REQUESTS_GLOBAL);
+    expect(states.some((state) => state.activeRequestEvidenceTruncated)).toBe(
+      true,
+    );
+
+    const state = createTabObservationState(99, "https://publisher.test");
+    recordUnobservedRequestAttempt(
+      state,
+      "stale",
+      requestDecision("stale", 99, "allow", "default"),
+      0,
+    );
+    recordObservedRequest(state, {
+      requestId: "fresh",
+      tabId: 99,
+      frameId: 0,
+      requestUrl: "https://fresh.test/pixel",
+      requestType: "image",
+      timestamp: 10 * 60 * 1_000 + 1,
+    });
+    expect(getActiveRequestDecision(state, "stale")).toBeNull();
+    expect(state.activeRequestEvidenceTruncated).toBe(true);
+  });
+
+  it("keeps bounded, privacy-safe causal samples and rejects stale detail reads", () => {
+    const state = createTabObservationState(1, "https://publisher.test/article");
+
+    const requestTypes = [
+      "xmlhttprequest",
+      "image",
+      "script",
+      "font",
+      "media",
+      "websocket",
+      "stylesheet",
+    ];
+    for (let index = 0; index < requestTypes.length; index += 1) {
+      recordObservedRequest(
+        state,
+        {
+          requestId: `ordinary-${index}`,
+          tabId: 1,
+          frameId: 0,
+          documentUrl: "https://publisher.test/article",
+          requestUrl: `https://mixed.test/collect/${index}?email=person@example.test`,
+          requestType: requestTypes[index],
+          timestamp: 100 + index,
+        },
+        {
+          decision: requestDecision(
+            `ordinary-${index}`,
+            1,
+            "allow",
+            "default",
+          ),
+        },
+      );
+    }
+
+    const excepted = recordObservedRequest(
+      state,
+      {
+        requestId: "excepted",
+        tabId: 1,
+        frameId: 0,
+        documentUrl: "https://publisher.test/article",
+        requestUrl:
+          "https://mixed.test/users/person%40example.test/0123456789/asset.js?token=secret",
+        requestType: "script",
+        timestamp: 200,
+      },
+      {
+        decision: requestDecision("excepted", 1, "allow", "easyprivacy", {
+          matchedFilter: ruleEvidence("easyprivacy:block"),
+          matchedException: ruleEvidence("easyprivacy:exception"),
+        }),
+      },
+    );
+
+    const rowId = excepted.row?.id ?? "";
+    const details = summarizeHostRequestDetails(state, state.generation, rowId);
+    expect(details).toMatchObject({
+      rowId,
+      truncated: true,
+    });
+    expect(details?.samples).toHaveLength(6);
+    expect(
+      details?.samples.find((sample) => sample.source === "easyprivacy"),
+    ).toMatchObject({
+      source: "easyprivacy",
+      reason: "easyprivacy-exception",
+      pathHint: "/users/…/…/asset.js",
+      sourceHost: "publisher.test",
+      matchedException: { key: "easyprivacy:exception" },
+    });
+    expect(JSON.stringify(details)).not.toContain("person@example.test");
+    expect(JSON.stringify(details)).not.toContain("token=secret");
+    expect(
+      summarizeHostRequestDetails(state, state.generation + 1, rowId),
+    ).toBeNull();
+  });
+
+  it("returns only scrubbed URL paths as request hints", () => {
+    expect(
+      formatPrivacySafePathHint(
+        "https://tracker.test/a/550e8400-e29b-41d4-a716-446655440000/file.js?secret=value",
+      ),
+    ).toBe("/a/…/….js");
+    expect(formatPrivacySafePathHint("not a url")).toBeNull();
   });
 
   it("resets observations for a new top-level page", () => {
@@ -835,9 +1227,14 @@ describe("request observation aggregation", () => {
     expect(summarizeTabObservation(state)).toMatchObject({
       siteUrl: "https://next.example",
       siteHost: "next.example",
-      totalRequests: 0,
+      requestCounts: { total: 0, blocked: 0, restricted: 0, allowed: 0 },
       rows: [],
     });
+    expect(state.generation).toBe(1);
+    expect(state.activeRequests.size).toBe(0);
+
+    resetTabObservationState(state, "https://next.example");
+    expect(state.generation).toBe(2);
   });
 
   it("returns an empty summary for a fresh tab state", () => {
@@ -846,11 +1243,14 @@ describe("request observation aggregation", () => {
     ).toMatchObject({
       tabId: 42,
       siteHost: "example.com",
-      thirdPartyCount: 0,
-      unknownCount: 0,
-      firstPartyCount: 0,
-      blockedCount: 0,
-      allowedCount: 0,
+      hostCounts: {
+        thirdParty: 0,
+        unknown: 0,
+        firstParty: 0,
+        blocked: 0,
+        allowed: 0,
+      },
+      requestCounts: { total: 0, blocked: 0, restricted: 0, allowed: 0 },
       rows: [],
     });
   });

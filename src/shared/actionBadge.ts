@@ -3,52 +3,76 @@ export interface ActionBadgePresentation {
   title: string;
 }
 
+export type ActionBadgeState =
+  | { status: "available"; blockedCount: number }
+  | { status: "paused"; blockedCount: null }
+  | { status: "unavailable"; blockedCount: null };
+
 export type ApplyActionBadge = (
   presentation: ActionBadgePresentation,
 ) => Promise<void>;
 
 export function formatActionBadge(
-  blockedSiteCount: number,
+  blockedRequestCount: number,
 ): ActionBadgePresentation {
-  if (blockedSiteCount <= 0) {
+  if (blockedRequestCount <= 0) {
     return {
       text: "",
-      title: "TrackerBlocker",
+      title: "Tracker Blocker",
     };
   }
 
   return {
-    text: blockedSiteCount > 99 ? "99+" : String(blockedSiteCount),
-    title: `TrackerBlocker - ${blockedSiteCount} ${
-      blockedSiteCount === 1 ? "site" : "sites"
+    text: String(blockedRequestCount),
+    title: `Tracker Blocker — ${blockedRequestCount} ${
+      blockedRequestCount === 1 ? "request" : "requests"
     } blocked`,
   };
 }
 
+export function formatActionBadgeState(
+  state: ActionBadgeState,
+): ActionBadgePresentation {
+  if (state.status === "paused") {
+    return { text: "", title: "Tracker Blocker — protection paused" };
+  }
+
+  if (state.status === "unavailable") {
+    return {
+      text: "!",
+      title: "Tracker Blocker — blocked count unavailable",
+    };
+  }
+
+  return formatActionBadge(state.blockedCount);
+}
+
 export class ActionBadgeUpdateQueue {
-  private readonly appliedCounts = new Map<number, number>();
+  private readonly appliedPresentations = new Map<number, string>();
   private readonly queues = new Map<number, Promise<void>>();
   private readonly tabTokens = new Map<number, object>();
 
   update(
     tabId: number,
-    blockedSiteCount: number,
+    state: ActionBadgeState,
     apply: ApplyActionBadge,
   ): Promise<void> {
+    const presentation = formatActionBadgeState(state);
+    const presentationKey = `${presentation.text}\u0000${presentation.title}`;
     const token = this.getTabToken(tabId);
     const previous = this.queues.get(tabId) ?? Promise.resolve();
     const next = previous.catch(() => undefined).then(async () => {
       if (
         this.tabTokens.get(tabId) !== token ||
-        this.appliedCounts.get(tabId) === blockedSiteCount
+        this.appliedPresentations.get(tabId) === presentationKey
       ) {
         return;
       }
 
-      await apply(formatActionBadge(blockedSiteCount));
+      await apply(presentation);
 
       if (this.tabTokens.get(tabId) === token) {
-        this.appliedCounts.set(tabId, blockedSiteCount);
+        this.appliedPresentations.set(tabId, presentationKey);
       }
     });
 
@@ -62,7 +86,7 @@ export class ActionBadgeUpdateQueue {
   }
 
   remove(tabId: number): void {
-    this.appliedCounts.delete(tabId);
+    this.appliedPresentations.delete(tabId);
     this.tabTokens.delete(tabId);
   }
 

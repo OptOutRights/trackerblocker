@@ -1,0 +1,2 @@
+vendor/easyprivacy/easyprivacy.txt text eol=lf -whitespace
+public/filter-data/*.engine binary

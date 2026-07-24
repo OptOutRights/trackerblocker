@@ -1,20 +1,25 @@
+import { formatUrlHost } from "./domains";
 import {
-  classifyRequestSiteRelationship,
-  formatUrlHost,
-} from "./domains";
-import {
-  lookupTrackerCatalogEntry,
   UNKNOWN_THIRD_PARTY_EXPLANATION,
   type CatalogCategory,
   type CatalogDefaultAction,
   type TrackerCatalogEntry,
+  type TrackerCatalogMatch,
 } from "./trackerCatalog";
 import {
-  decideRule,
+  decideRequest,
+  normalizeRequestContext,
   type DomainOverrideAction,
-  type RuleDecisionSource,
-  type RuleDecisionStatus,
-} from "./ruleDecisions";
+  type EasyPrivacyEvaluation,
+  type RequestAction,
+  type RequestDecision,
+  type RequestDecisionReason,
+  type RequestDecisionSource,
+  type RequestRelationship,
+} from "./requestDecisions";
+import type { FilterRuleEvidence } from "./filterEngine";
+
+export type { RequestRelationship } from "./requestDecisions";
 
 export type RequestTypeCategory =
   | "script"
@@ -31,7 +36,6 @@ export type RequestTypeCategory =
   | "prefetch"
   | "other";
 
-export type RequestRelationship = "third-party" | "unknown" | "first-party";
 export type RequestLifecycleStatus =
   | "started"
   | "completed"
@@ -56,6 +60,15 @@ export interface RequestLifecycleCounts {
   failed: number;
   redirected: number;
 }
+
+export interface RequestActionCounts {
+  total: number;
+  blocked: number;
+  restricted: number;
+  allowed: number;
+}
+
+export type RequestSourceCounts = Record<RequestDecisionSource, number>;
 
 export interface RequestContextEvidence {
   frameIds: number[];
@@ -112,9 +125,18 @@ export interface ObservedRequestRow {
   catalogBreakageRisk: string | null;
   catalogRuleIds: string[];
   catalogNotes: string | null;
-  status: RuleDecisionStatus;
-  ruleSource: RuleDecisionSource;
   requestCount: number;
+  actionCounts: RequestActionCounts;
+  sourceCounts: RequestSourceCounts;
+  isMixed: boolean;
+  matchedFilterKeys: string[];
+  matchedExceptionKeys: string[];
+  decisionEvidenceTruncated: boolean;
+  requestSampleCount: number;
+  requestSamplesTruncated: boolean;
+  redirectEvidenceTruncated: boolean;
+  currentOverride: DomainOverrideAction | null;
+  currentSiteAllow: boolean;
   requestTypes: RequestTypeCategory[];
   firstSeen: number;
   lastSeen: number;
@@ -125,54 +147,118 @@ export interface ObservedRequestRow {
 
 export interface TabRequestSummary {
   tabId: number;
+  generation: number;
   siteUrl: string | null;
   siteHost: string | null;
-  totalRequests: number;
-  thirdPartyCount: number;
-  unknownCount: number;
-  firstPartyCount: number;
-  blockedCount: number;
-  restrictedCount: number;
-  allowedCount: number;
+  requestCounts: RequestActionCounts;
+  hostCounts: {
+    observed: number;
+    thirdParty: number;
+    unknown: number;
+    firstParty: number;
+    blocked: number;
+    restricted: number;
+    allowed: number;
+    mixed: number;
+    lowerBound: boolean;
+  };
+  hostRowsTruncated: boolean;
+  omittedRequestCount: number;
+  activeRequestEvidenceTruncated: boolean;
   rows: ObservedRequestRow[];
 }
 
 export interface TabObservationState {
   tabId: number;
   pageUrl: string | null;
+  generation: number;
   rows: Map<string, ObservedRequestRow>;
-  requestRows: Map<string, RequestRowReference>;
+  requestCounts: RequestActionCounts;
+  omittedRequestCount: number;
+  hostRowsTruncated: boolean;
+  activeRequestEvidenceTruncated: boolean;
+  activeRequests: Map<string, ActiveRequestAttempt>;
+  requestSamples: Map<string, RequestAttemptExplanation[]>;
+  nextRequestSampleId: number;
 }
 
-interface RequestRowReference {
+export interface ActiveRequestAttempt {
+  requestId: string;
+  tabId: number;
+  attemptIndex: number;
+  rowId: string | null;
+  sampleId: string | null;
+  decision: RequestDecision;
+  startedAt: number;
+}
+
+export interface RequestAttemptExplanation {
+  id: string;
+  attemptIndex: number;
+  action: RequestAction;
+  source: RequestDecisionSource;
+  reason: RequestDecisionReason;
+  easyPrivacyEvaluation: EasyPrivacyEvaluation;
+  relationship: RequestRelationship;
+  requestType: RequestTypeCategory;
+  sourceHost: string | null;
+  pathHint: string | null;
+  matchedFilter: FilterRuleEvidence | null;
+  matchedException: FilterRuleEvidence | null;
+  catalogEvidence: {
+    entryId: string;
+    ruleId: string | null;
+    action: CatalogDefaultAction;
+    explanation: string;
+  } | null;
+  startedAt: number;
+  lastUpdatedAt: number;
+  lifecycleStatus: RequestLifecycleStatus;
+  redirectCount: number;
+}
+
+export interface HostRequestDetails {
+  tabId: number;
+  generation: number;
   rowId: string;
-  wasBlocked: boolean;
+  host: string | null;
+  displayName: string;
+  samples: RequestAttemptExplanation[];
+  truncated: boolean;
 }
 
 export interface RecordRequestOptions {
   catalog?: readonly TrackerCatalogEntry[];
+  decision?: RequestDecision;
 }
 
 export interface RecordedRequest {
-  row: ObservedRequestRow;
+  row: ObservedRequestRow | null;
   shouldBlock: boolean;
 }
 
 export interface SummaryDecisionOptions {
-  sitePaused?: boolean;
   domainOverrides?: Record<string, DomainOverrideAction>;
+  siteAllows?: Record<string, Record<string, true>>;
+  siteHost?: string | null;
 }
 
 const FIRST_PARTY_EXPLANATION =
   "This request appears to belong to the current site.";
 const UNKNOWN_REQUEST_EXPLANATION =
-  "This request was observed, but TrackerBlocker could not classify its site relationship.";
+  "This request was observed, but Tracker Blocker could not classify its site relationship.";
 const EMPTY_LIFECYCLE_COUNTS: RequestLifecycleCounts = {
   started: 0,
   completed: 0,
   blocked: 0,
   failed: 0,
   redirected: 0,
+};
+const EMPTY_ACTION_COUNTS: RequestActionCounts = {
+  total: 0,
+  blocked: 0,
+  restricted: 0,
+  allowed: 0,
 };
 const RELATIONSHIP_ORDER: Record<RequestRelationship, number> = {
   "third-party": 0,
@@ -185,7 +271,52 @@ const CATALOG_ACTION_PRIORITY: Record<CatalogDefaultAction, number> = {
   block: 2,
 };
 const EMPTY_WEB_AUTHORITY_PATTERN = /^(?:https?|wss?):\/\/[/?#]/i;
+const SAFE_PATH_SEGMENTS = new Set([
+  "a",
+  "api",
+  "asset",
+  "assets",
+  "beacon",
+  "collect",
+  "collection",
+  "conversion",
+  "embed",
+  "event",
+  "events",
+  "g",
+  "pixel",
+  "script",
+  "track",
+  "tracking",
+  "telemetry",
+  "user",
+  "users",
+  "v1",
+  "v2",
+  "v3",
+]);
+const SAFE_RESOURCE_BASENAMES = new Set([
+  "analytics",
+  "asset",
+  "beacon",
+  "collect",
+  "embed",
+  "event",
+  "pixel",
+  "script",
+  "telemetry",
+  "track",
+]);
 const MAX_REQUEST_CONTEXT_VALUES = 16;
+export const MAX_ACTIVE_REQUESTS_PER_TAB = 512;
+export const MAX_ACTIVE_REQUESTS_GLOBAL = 4_096;
+export const MAX_ACTIVE_REQUEST_AGE_MS = 10 * 60 * 1_000;
+export const MAX_HOST_ROWS_PER_TAB = 256;
+export const MAX_MATCHED_FILTER_IDS = 8;
+export const MAX_MATCHED_EXCEPTION_IDS = 8;
+export const MAX_CATALOG_RULE_IDS = 16;
+export const MAX_REDIRECT_HOPS = 8;
+export const MAX_REQUEST_SAMPLES_PER_HOST = 6;
 
 export function createTabObservationState(
   tabId: number,
@@ -194,8 +325,15 @@ export function createTabObservationState(
   return {
     tabId,
     pageUrl: pageUrl ?? null,
+    generation: 0,
     rows: new Map(),
-    requestRows: new Map(),
+    requestCounts: { ...EMPTY_ACTION_COUNTS },
+    omittedRequestCount: 0,
+    hostRowsTruncated: false,
+    activeRequestEvidenceTruncated: false,
+    activeRequests: new Map(),
+    requestSamples: new Map(),
+    nextRequestSampleId: 0,
   };
 }
 
@@ -203,9 +341,16 @@ export function resetTabObservationState(
   state: TabObservationState,
   pageUrl?: string | null,
 ): void {
+  state.generation += 1;
   state.pageUrl = pageUrl ?? null;
   state.rows.clear();
-  state.requestRows.clear();
+  state.requestCounts = { ...EMPTY_ACTION_COUNTS };
+  state.omittedRequestCount = 0;
+  state.hostRowsTruncated = false;
+  state.activeRequestEvidenceTruncated = false;
+  state.activeRequests.clear();
+  state.requestSamples.clear();
+  state.nextRequestSampleId = 0;
 }
 
 export function mapRequestType(
@@ -251,11 +396,16 @@ export function recordObservedRequest(
   options: RecordRequestOptions = {},
 ): RecordedRequest {
   const pageUrl = state.pageUrl ?? evidence.pageUrl;
-  const classification = classifyRequestSiteRelationship({
+  const requestContext = normalizeRequestContext({
+    requestId: evidence.requestId,
+    tabId: evidence.tabId,
     pageUrl,
+    documentUrl: evidence.documentUrl,
+    originUrl: evidence.originUrl,
+    initiator: evidence.initiator,
     requestUrl: evidence.requestUrl,
+    requestType: evidence.requestType,
   });
-
   const requestType = mapRequestType(evidence.requestType);
   const rowSeed: {
     relationship: RequestRelationship;
@@ -263,46 +413,63 @@ export function recordObservedRequest(
     host: string | null;
     siteDomain: string | null;
     displayName: string;
-  } =
-    classification.status === "third-party" ||
-    classification.status === "same-site"
-      ? {
-          relationship:
-            classification.status === "third-party"
-              ? "third-party"
-              : "first-party",
-          key: classification.requestHost,
-          host: classification.requestHost,
-          siteDomain: classification.requestSite,
-          displayName: classification.requestHost,
-        }
-      : {
-          relationship: "unknown",
-          key: getUnknownRequestKey(evidence.requestUrl),
-          host: null,
-          siteDomain: null,
-          displayName: getUnknownRequestDisplayName(evidence.requestUrl),
-        };
+  } = requestContext.requestHost
+    ? {
+        relationship: requestContext.relationship,
+        key: requestContext.requestHost,
+        host: requestContext.requestHost,
+        siteDomain: requestContext.requestSite,
+        displayName: requestContext.requestHost,
+      }
+    : {
+        relationship: "unknown",
+        key: getUnknownRequestKey(evidence.requestUrl),
+        host: null,
+        siteDomain: null,
+        displayName: getUnknownRequestDisplayName(evidence.requestUrl),
+      };
 
   const id = `${rowSeed.relationship}:${rowSeed.key}`;
   const existing = state.rows.get(id);
-  const catalogFields = getCatalogFields(
-    rowSeed,
-    evidence.requestUrl,
-    options.catalog,
-  );
-  const decision = decideRule({
-    relationship: rowSeed.relationship,
-    catalogDefaultAction: catalogFields.catalogDefaultAction,
-    domainOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
-    sitePaused: evidence.sitePaused,
-  });
+  const requestDecision =
+    options.decision ??
+    decideRequest({
+      context: requestContext,
+      sitePaused: evidence.sitePaused,
+      domainOverrides: evidence.domainOverrides,
+      catalog: options.catalog,
+    });
+  const shouldBlock = requestDecision.action === "block";
+  const actionUpdate = createActionCounts(requestDecision.action);
+  state.requestCounts = mergeActionCounts(state.requestCounts, actionUpdate);
+  pruneStaleActiveRequests(state, evidence.timestamp);
+
+  if (!existing && state.rows.size >= MAX_HOST_ROWS_PER_TAB) {
+    state.hostRowsTruncated = true;
+    state.omittedRequestCount += 1;
+    rememberActiveRequest(
+      state,
+      evidence.requestId,
+      null,
+      requestDecision,
+      evidence.timestamp,
+    );
+    return { row: null, shouldBlock };
+  }
+
+  const catalogFields = getCatalogFields(rowSeed, requestDecision.catalogMatch);
   const contextUpdate = buildRequestContextEvidence(
     evidence,
     rowSeed.relationship,
     requestType,
   );
-  const lifecycleUpdate = createStartedLifecycle(decision.shouldBlock);
+  const lifecycleUpdate = createStartedLifecycle(shouldBlock);
+  const filterKeys = requestDecision.matchedFilter
+    ? [requestDecision.matchedFilter.key]
+    : [];
+  const exceptionKeys = requestDecision.matchedException
+    ? [requestDecision.matchedException.key]
+    : [];
 
   if (!existing) {
     const row: ObservedRequestRow = {
@@ -312,9 +479,18 @@ export function recordObservedRequest(
       displayName: rowSeed.displayName,
       relationship: rowSeed.relationship,
       ...catalogFields,
-      status: decision.status,
-      ruleSource: decision.source,
       requestCount: 1,
+      actionCounts: actionUpdate,
+      sourceCounts: createSourceCounts(requestDecision.source),
+      isMixed: false,
+      matchedFilterKeys: filterKeys,
+      matchedExceptionKeys: exceptionKeys,
+      decisionEvidenceTruncated: false,
+      requestSampleCount: 0,
+      requestSamplesTruncated: false,
+      redirectEvidenceTruncated: false,
+      currentOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
+      currentSiteAllow: false,
       requestTypes: [requestType],
       firstSeen: evidence.timestamp,
       lastSeen: evidence.timestamp,
@@ -324,21 +500,44 @@ export function recordObservedRequest(
     };
 
     state.rows.set(id, row);
-    rememberRequestRow(state, evidence.requestId, id, decision.shouldBlock);
-    return { row, shouldBlock: decision.shouldBlock };
+    rememberActiveRequest(
+      state,
+      evidence.requestId,
+      id,
+      requestDecision,
+      evidence.timestamp,
+      createRequestSampleInput(evidence, requestContext, requestType),
+    );
+    return { row, shouldBlock };
   }
 
   existing.requestCount += 1;
+  existing.actionCounts = mergeActionCounts(
+    existing.actionCounts,
+    actionUpdate,
+  );
+  existing.sourceCounts = mergeSourceCounts(
+    existing.sourceCounts,
+    requestDecision.source,
+  );
+  existing.isMixed = hasMixedActions(existing.actionCounts);
   existing.lastSeen = Math.max(existing.lastSeen, evidence.timestamp);
   mergeCatalogFields(existing, catalogFields);
-  const aggregateDecision = decideRule({
-    relationship: rowSeed.relationship,
-    catalogDefaultAction: existing.catalogDefaultAction,
-    domainOverride: evidence.domainOverrides?.[rowSeed.key] ?? null,
-    sitePaused: evidence.sitePaused,
-  });
-  existing.status = aggregateDecision.status;
-  existing.ruleSource = aggregateDecision.source;
+  existing.currentOverride = evidence.domainOverrides?.[rowSeed.key] ?? null;
+  const mergedFilters = mergeBoundedStrings(
+    existing.matchedFilterKeys,
+    filterKeys,
+    MAX_MATCHED_FILTER_IDS,
+  );
+  const mergedExceptions = mergeBoundedStrings(
+    existing.matchedExceptionKeys,
+    exceptionKeys,
+    MAX_MATCHED_EXCEPTION_IDS,
+  );
+  existing.matchedFilterKeys = mergedFilters.values;
+  existing.matchedExceptionKeys = mergedExceptions.values;
+  existing.decisionEvidenceTruncated ||=
+    mergedFilters.truncated || mergedExceptions.truncated;
   existing.lifecycle = mergeLifecycleCounts(
     existing.lifecycle,
     lifecycleUpdate,
@@ -352,8 +551,25 @@ export function recordObservedRequest(
     existing.requestTypes = [...existing.requestTypes, requestType].sort();
   }
 
-  rememberRequestRow(state, evidence.requestId, id, decision.shouldBlock);
-  return { row: existing, shouldBlock: decision.shouldBlock };
+  rememberActiveRequest(
+    state,
+    evidence.requestId,
+    id,
+    requestDecision,
+    evidence.timestamp,
+    createRequestSampleInput(evidence, requestContext, requestType),
+  );
+  return { row: existing, shouldBlock };
+}
+
+export function recordUnobservedRequestAttempt(
+  state: TabObservationState,
+  requestId: string | null | undefined,
+  decision: RequestDecision,
+  timestamp: number,
+): void {
+  pruneStaleActiveRequests(state, timestamp);
+  rememberActiveRequest(state, requestId, null, decision, timestamp);
 }
 
 export interface RequestRedirectEvidence {
@@ -383,13 +599,20 @@ export function recordRequestRedirect(
   row.lifecycle = mergeLifecycleCounts(row.lifecycle, {
     redirected: 1,
   });
-  row.redirectHops = appendRedirectHop(row.redirectHops, {
+  const redirectUpdate = appendRedirectHop(row.redirectHops, {
     fromHost: formatUrlHost(evidence.fromUrl),
     toHost: formatUrlHost(evidence.redirectUrl),
     statusCode:
       typeof evidence.statusCode === "number" ? evidence.statusCode : null,
     timestamp: evidence.timestamp,
   });
+  row.redirectHops = redirectUpdate.values;
+  row.redirectEvidenceTruncated ||= redirectUpdate.truncated;
+  updateAttemptSample(state, evidence.requestId, evidence.timestamp, (sample) => ({
+    ...sample,
+    lifecycleStatus: "redirected",
+    redirectCount: sample.redirectCount + 1,
+  }));
 
   return row;
 }
@@ -413,23 +636,33 @@ function recordLifecycleTerminalState(
   evidence: RequestCompletionEvidence,
   lifecycleStatus: Extract<RequestLifecycleStatus, "completed" | "failed">,
 ): ObservedRequestRow | null {
-  const reference = getRequestRowReference(state, evidence.requestId);
-  const row = reference ? state.rows.get(reference.rowId) ?? null : null;
+  const attempt = getActiveRequestAttempt(state, evidence.requestId);
 
-  if (!row || !reference) {
+  if (evidence.requestId) {
+    state.activeRequests.delete(evidence.requestId);
+  }
+
+  const row = attempt?.rowId
+    ? state.rows.get(attempt.rowId) ?? null
+    : null;
+
+  if (!row || !attempt) {
     return null;
   }
 
   row.lastSeen = Math.max(row.lastSeen, evidence.timestamp);
-  if (!(lifecycleStatus === "failed" && reference.wasBlocked)) {
+  if (!(lifecycleStatus === "failed" && attempt.decision.action === "block")) {
     row.lifecycle = mergeLifecycleCounts(row.lifecycle, {
       [lifecycleStatus]: 1,
     });
   }
-
-  if (evidence.requestId) {
-    state.requestRows.delete(evidence.requestId);
-  }
+  updateRequestSample(state, attempt, evidence.timestamp, (sample) => ({
+    ...sample,
+    lifecycleStatus:
+      lifecycleStatus === "failed" && attempt.decision.action === "block"
+        ? "blocked"
+        : lifecycleStatus,
+  }));
 
   return row;
 }
@@ -447,22 +680,239 @@ export function mergeLifecycleCounts(
   };
 }
 
-function rememberRequestRow(
+function rememberActiveRequest(
   state: TabObservationState,
   requestId: string | null | undefined,
-  rowId: string,
-  wasBlocked: boolean,
+  rowId: string | null,
+  decision: RequestDecision,
+  startedAt: number,
+  sampleInput?: RequestSampleInput,
 ): void {
-  if (requestId) {
-    state.requestRows.set(requestId, { rowId, wasBlocked });
+  const existing = requestId ? state.activeRequests.get(requestId) : undefined;
+
+  if (
+    requestId &&
+    !existing &&
+    state.activeRequests.size >= MAX_ACTIVE_REQUESTS_PER_TAB
+  ) {
+    evictOldestActiveRequest(state);
+  }
+
+  const attemptIndex = existing ? existing.attemptIndex + 1 : 0;
+  const sampleId = rowId && sampleInput
+    ? rememberRequestSample(
+        state,
+        rowId,
+        decision,
+        attemptIndex,
+        startedAt,
+        sampleInput,
+      )
+    : null;
+
+  if (!requestId) {
+    return;
+  }
+
+  state.activeRequests.set(requestId, {
+    requestId,
+    tabId: state.tabId,
+    attemptIndex,
+    rowId,
+    sampleId,
+    decision,
+    startedAt,
+  });
+}
+
+interface RequestSampleInput {
+  requestType: RequestTypeCategory;
+  sourceHost: string | null;
+  pathHint: string | null;
+}
+
+function createRequestSampleInput(
+  evidence: RequestEvidence,
+  context: ReturnType<typeof normalizeRequestContext>,
+  requestType: RequestTypeCategory,
+): RequestSampleInput {
+  return {
+    requestType,
+    sourceHost: formatUrlHost(context.sourceUrl),
+    pathHint: formatPrivacySafePathHint(evidence.requestUrl),
+  };
+}
+
+function rememberRequestSample(
+  state: TabObservationState,
+  rowId: string,
+  decision: RequestDecision,
+  attemptIndex: number,
+  startedAt: number,
+  input: RequestSampleInput,
+): string | null {
+  const row = state.rows.get(rowId);
+
+  if (!row) {
+    return null;
+  }
+
+  const sample: RequestAttemptExplanation = {
+    id: `sample-${state.nextRequestSampleId++}`,
+    attemptIndex,
+    action: decision.action,
+    source: decision.source,
+    reason: decision.reason,
+    easyPrivacyEvaluation: decision.easyPrivacyEvaluation,
+    relationship: decision.relationship,
+    requestType: input.requestType,
+    sourceHost: input.sourceHost,
+    pathHint: input.pathHint,
+    matchedFilter: decision.matchedFilter,
+    matchedException: decision.matchedException,
+    catalogEvidence: decision.catalogMatch
+      ? {
+          entryId: decision.catalogMatch.entry.id,
+          ruleId: decision.catalogMatch.matchedRule?.id ?? null,
+          action: decision.catalogMatch.action,
+          explanation:
+            decision.catalogMatch.matchedRule?.explanation ??
+            decision.catalogMatch.entry.explanation,
+        }
+      : null,
+    startedAt,
+    lastUpdatedAt: startedAt,
+    lifecycleStatus: decision.action === "block" ? "blocked" : "started",
+    redirectCount: 0,
+  };
+  const current = state.requestSamples.get(rowId) ?? [];
+
+  if (current.length < MAX_REQUEST_SAMPLES_PER_HOST) {
+    state.requestSamples.set(rowId, [...current, sample]);
+    row.requestSampleCount += 1;
+    return sample.id;
+  }
+
+  row.requestSamplesTruncated = true;
+  const replacementIndex = chooseRequestSampleReplacement(current, sample);
+
+  if (replacementIndex < 0) {
+    return null;
+  }
+
+  const next = [...current];
+  next[replacementIndex] = sample;
+  state.requestSamples.set(rowId, next);
+  return sample.id;
+}
+
+function chooseRequestSampleReplacement(
+  current: readonly RequestAttemptExplanation[],
+  incoming: RequestAttemptExplanation,
+): number {
+  const duplicateIndex = current.findIndex(
+    (sample) => formatSampleSignature(sample) === formatSampleSignature(incoming),
+  );
+
+  if (duplicateIndex >= 0) {
+    return duplicateIndex;
+  }
+
+  const ranked = current
+    .map((sample, index) => ({
+      index,
+      priority: getRequestSamplePriority(sample),
+      startedAt: sample.startedAt,
+    }))
+    .sort(
+      (left, right) =>
+        left.priority - right.priority || left.startedAt - right.startedAt,
+    );
+  const lowest = ranked[0];
+
+  return lowest && getRequestSamplePriority(incoming) > lowest.priority
+    ? lowest.index
+    : -1;
+}
+
+function getRequestSamplePriority(sample: RequestAttemptExplanation): number {
+  if (sample.matchedException) {
+    return 5;
+  }
+
+  if (sample.action === "block") {
+    return 4;
+  }
+
+  if (sample.action === "restrict") {
+    return 3;
+  }
+
+  return sample.source === "default" ? 1 : 2;
+}
+
+function formatSampleSignature(sample: RequestAttemptExplanation): string {
+  return [
+    sample.action,
+    sample.source,
+    sample.reason,
+    sample.requestType,
+    sample.pathHint ?? "",
+    sample.matchedFilter?.key ?? "",
+    sample.matchedException?.key ?? "",
+  ].join("|");
+}
+
+function updateAttemptSample(
+  state: TabObservationState,
+  requestId: string | null | undefined,
+  timestamp: number,
+  update: (sample: RequestAttemptExplanation) => RequestAttemptExplanation,
+): void {
+  const attempt = getActiveRequestAttempt(state, requestId);
+
+  if (attempt) {
+    updateRequestSample(state, attempt, timestamp, update);
   }
 }
 
-function getRequestRowReference(
+function updateRequestSample(
+  state: TabObservationState,
+  attempt: ActiveRequestAttempt,
+  timestamp: number,
+  update: (sample: RequestAttemptExplanation) => RequestAttemptExplanation,
+): void {
+  if (!attempt.rowId || !attempt.sampleId) {
+    return;
+  }
+
+  const samples = state.requestSamples.get(attempt.rowId);
+  const index = samples?.findIndex((sample) => sample.id === attempt.sampleId) ?? -1;
+
+  if (!samples || index < 0) {
+    return;
+  }
+
+  const next = [...samples];
+  next[index] = {
+    ...update(samples[index]),
+    lastUpdatedAt: timestamp,
+  };
+  state.requestSamples.set(attempt.rowId, next);
+}
+
+export function getActiveRequestAttempt(
   state: TabObservationState,
   requestId: string | null | undefined,
-): RequestRowReference | null {
-  return requestId ? state.requestRows.get(requestId) ?? null : null;
+): ActiveRequestAttempt | null {
+  return requestId ? state.activeRequests.get(requestId) ?? null : null;
+}
+
+export function getActiveRequestDecision(
+  state: TabObservationState | undefined,
+  requestId: string | null | undefined,
+): RequestDecision | null {
+  return state ? getActiveRequestAttempt(state, requestId)?.decision ?? null : null;
 }
 
 function getRowForRequestId(
@@ -473,18 +923,92 @@ function getRowForRequestId(
     return null;
   }
 
-  const reference = state.requestRows.get(requestId);
+  const attempt = state.activeRequests.get(requestId);
 
-  return reference ? state.rows.get(reference.rowId) ?? null : null;
+  return attempt?.rowId ? state.rows.get(attempt.rowId) ?? null : null;
+}
+
+export function enforceGlobalActiveRequestLimit(
+  states: Iterable<TabObservationState>,
+): void {
+  const stateList = [...states];
+  const total = stateList.reduce(
+    (count, state) => count + state.activeRequests.size,
+    0,
+  );
+
+  if (total <= MAX_ACTIVE_REQUESTS_GLOBAL) {
+    return;
+  }
+
+  const active = stateList.flatMap((state) =>
+    [...state.activeRequests.values()].map((attempt) => ({ state, attempt })),
+  );
+
+  active
+    .sort((left, right) => left.attempt.startedAt - right.attempt.startedAt)
+    .slice(0, active.length - MAX_ACTIVE_REQUESTS_GLOBAL)
+    .forEach(({ state, attempt }) => {
+      evictActiveRequest(state, attempt.requestId);
+    });
+}
+
+function pruneStaleActiveRequests(
+  state: TabObservationState,
+  now: number,
+): void {
+  for (const attempt of state.activeRequests.values()) {
+    if (now - attempt.startedAt > MAX_ACTIVE_REQUEST_AGE_MS) {
+      evictActiveRequest(state, attempt.requestId);
+    }
+  }
+}
+
+function evictOldestActiveRequest(state: TabObservationState): void {
+  const oldest = [...state.activeRequests.values()].sort(
+    (left, right) => left.startedAt - right.startedAt,
+  )[0];
+
+  if (oldest) {
+    evictActiveRequest(state, oldest.requestId);
+  }
+}
+
+function evictActiveRequest(
+  state: TabObservationState,
+  requestId: string,
+): void {
+  const attempt = state.activeRequests.get(requestId);
+
+  if (!attempt) {
+    return;
+  }
+
+  state.activeRequests.delete(requestId);
+  state.activeRequestEvidenceTruncated = true;
+
+  if (attempt.rowId) {
+    const row = state.rows.get(attempt.rowId);
+
+    if (row && !row.context.visibilityNotes.includes("evidence-truncated")) {
+      row.context.visibilityNotes = [
+        ...row.context.visibilityNotes,
+        "evidence-truncated",
+      ].sort() as VisibilityNote[];
+    }
+  }
 }
 
 function appendRedirectHop(
   current: readonly RequestRedirectHop[],
   hop: RequestRedirectHop,
-): RequestRedirectHop[] {
+): { values: RequestRedirectHop[]; truncated: boolean } {
   const next = [...current, hop];
 
-  return next.slice(-8);
+  return {
+    values: next.slice(-MAX_REDIRECT_HOPS),
+    truncated: next.length > MAX_REDIRECT_HOPS,
+  };
 }
 
 export function summarizeTabObservation(
@@ -492,25 +1016,65 @@ export function summarizeTabObservation(
   decisionOptions: SummaryDecisionOptions = {},
 ): TabRequestSummary {
   const rows = [...state.rows.values()]
-    .map((row) => applyRowDecision(row, decisionOptions))
+    .map((row) =>
+      applyRowDecision(row, {
+        ...decisionOptions,
+        siteHost: decisionOptions.siteHost ?? formatUrlHost(state.pageUrl),
+      }),
+    )
     .sort(compareObservedRows);
 
   return {
     tabId: state.tabId,
+    generation: state.generation,
     siteUrl: state.pageUrl,
     siteHost: formatUrlHost(state.pageUrl),
-    totalRequests: rows.reduce((sum, row) => sum + row.requestCount, 0),
-    thirdPartyCount: rows.filter((row) => row.relationship === "third-party")
-      .length,
-    unknownCount: rows.filter(isUnknownRow).length,
-    firstPartyCount: rows.filter((row) => row.relationship === "first-party")
-      .length,
-    blockedCount: rows.filter((row) => row.status === "blocked").length,
-    restrictedCount: rows.filter((row) => row.status === "restricted").length,
-    allowedCount: rows.filter(
-      (row) => row.status === "allowed" || row.status === "allowed-paused",
-    ).length,
+    requestCounts: { ...state.requestCounts },
+    hostCounts: {
+      observed: rows.length,
+      thirdParty: rows.filter((row) => row.relationship === "third-party")
+        .length,
+      unknown: rows.filter(isUnknownRow).length,
+      firstParty: rows.filter((row) => row.relationship === "first-party")
+        .length,
+      blocked: rows.filter((row) => row.actionCounts.blocked > 0).length,
+      restricted: rows.filter((row) => row.actionCounts.restricted > 0).length,
+      allowed: rows.filter((row) => row.actionCounts.allowed > 0).length,
+      mixed: rows.filter((row) => row.isMixed).length,
+      lowerBound: state.hostRowsTruncated,
+    },
+    hostRowsTruncated: state.hostRowsTruncated,
+    omittedRequestCount: state.omittedRequestCount,
+    activeRequestEvidenceTruncated: state.activeRequestEvidenceTruncated,
     rows,
+  };
+}
+
+export function summarizeHostRequestDetails(
+  state: TabObservationState,
+  generation: number,
+  rowId: string,
+): HostRequestDetails | null {
+  if (generation !== state.generation) {
+    return null;
+  }
+
+  const row = state.rows.get(rowId);
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    tabId: state.tabId,
+    generation: state.generation,
+    rowId,
+    host: row.host,
+    displayName: row.displayName,
+    samples: [...(state.requestSamples.get(rowId) ?? [])]
+      .sort((left, right) => right.startedAt - left.startedAt)
+      .map((sample) => ({ ...sample })),
+    truncated: row.requestSamplesTruncated,
   };
 }
 
@@ -518,18 +1082,26 @@ function applyRowDecision(
   row: ObservedRequestRow,
   decisionOptions: SummaryDecisionOptions,
 ): ObservedRequestRow {
-  const decision = decideRule({
-    relationship: row.relationship,
-    catalogDefaultAction: row.catalogDefaultAction,
-    domainOverride: getDomainOverride(row, decisionOptions.domainOverrides),
-    sitePaused: decisionOptions.sitePaused,
-  });
-
   return {
     ...row,
-    status: decision.status,
-    ruleSource: decision.source,
+    currentOverride: getDomainOverride(
+      row,
+      decisionOptions.domainOverrides,
+    ),
+    currentSiteAllow: getSiteAllow(row, decisionOptions),
   };
+}
+
+function getSiteAllow(
+  row: ObservedRequestRow,
+  decisionOptions: SummaryDecisionOptions,
+): boolean {
+  return Boolean(
+    decisionOptions.siteHost &&
+      row.host &&
+      decisionOptions.siteAllows?.[decisionOptions.siteHost]?.[row.host] ===
+        true,
+  );
 }
 
 export function isUnknownRow(row: ObservedRequestRow): boolean {
@@ -557,8 +1129,7 @@ function getCatalogFields(
     relationship: RequestRelationship;
     displayName: string;
   },
-  requestUrl?: string | null,
-  catalog?: readonly TrackerCatalogEntry[],
+  catalogMatch: TrackerCatalogMatch | null,
 ): CatalogFields {
   if (rowSeed.relationship === "first-party") {
     return {
@@ -587,12 +1158,6 @@ function getCatalogFields(
       catalogNotes: null,
     };
   }
-
-  const catalogMatch = lookupTrackerCatalogEntry(
-    rowSeed.displayName,
-    catalog,
-    requestUrl,
-  );
 
   return {
     category: catalogMatch?.entry.category ?? "unknown",
@@ -628,10 +1193,13 @@ function mergeCatalogFields(
       row.catalogRuleIds.length === 0 &&
       update.catalogRuleIds.length > 0);
 
-  row.catalogRuleIds = mergeSortedStrings(
+  const mergedRuleIds = mergeBoundedStrings(
     row.catalogRuleIds,
     update.catalogRuleIds,
+    MAX_CATALOG_RULE_IDS,
   );
+  row.catalogRuleIds = mergedRuleIds.values;
+  row.decisionEvidenceTruncated ||= mergedRuleIds.truncated;
 
   if (!shouldUseUpdate) {
     return;
@@ -836,6 +1404,128 @@ function collectPathHints(requestUrl?: string | null): string[] {
   } catch {
     return [];
   }
+}
+
+export function formatPrivacySafePathHint(
+  requestUrl?: string | null,
+): string | null {
+  if (!requestUrl) {
+    return null;
+  }
+
+  try {
+    const pathname = new URL(requestUrl).pathname;
+    const segments = pathname
+      .split("/")
+      .filter(Boolean)
+      .slice(0, 4)
+      .map(sanitizePathSegment);
+
+    if (segments.length === 0) {
+      return "/";
+    }
+
+    const hint = `/${segments.join("/")}`;
+    return hint.length <= 96 ? hint : `${hint.slice(0, 95)}…`;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizePathSegment(segment: string): string {
+  const normalized = segment.toLowerCase();
+  const looksSensitive =
+    /%40|@/.test(normalized) ||
+    /\b\d{5,}\b/.test(normalized) ||
+    /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(normalized) ||
+    /^[a-z0-9_-]{20,}$/i.test(normalized);
+
+  if (looksSensitive) {
+    return "…";
+  }
+
+  if (SAFE_PATH_SEGMENTS.has(normalized)) {
+    return normalized;
+  }
+
+  const resourceMatch = /^([a-z0-9_-]+)\.(js|css|gif|png|svg|webp|woff2?)$/i.exec(
+    normalized,
+  );
+  if (resourceMatch) {
+    return SAFE_RESOURCE_BASENAMES.has(resourceMatch[1])
+      ? normalized
+      : `….${resourceMatch[2]}`;
+  }
+
+  return "…";
+}
+
+function createActionCounts(action: RequestAction): RequestActionCounts {
+  return {
+    total: 1,
+    blocked: action === "block" ? 1 : 0,
+    restricted: action === "restrict" ? 1 : 0,
+    allowed: action === "allow" ? 1 : 0,
+  };
+}
+
+function mergeActionCounts(
+  current: RequestActionCounts,
+  update: RequestActionCounts,
+): RequestActionCounts {
+  return {
+    total: current.total + update.total,
+    blocked: current.blocked + update.blocked,
+    restricted: current.restricted + update.restricted,
+    allowed: current.allowed + update.allowed,
+  };
+}
+
+function createSourceCounts(
+  source: RequestDecisionSource,
+): RequestSourceCounts {
+  return mergeSourceCounts(
+    {
+      "site-pause": 0,
+      "site-allow": 0,
+      "user-block": 0,
+      "user-allow": 0,
+      "settings-unavailable": 0,
+      easyprivacy: 0,
+      catalog: 0,
+      default: 0,
+    },
+    source,
+  );
+}
+
+function mergeSourceCounts(
+  current: RequestSourceCounts,
+  source: RequestDecisionSource,
+): RequestSourceCounts {
+  return {
+    ...current,
+    [source]: current[source] + 1,
+  };
+}
+
+function hasMixedActions(counts: RequestActionCounts): boolean {
+  return [counts.blocked, counts.restricted, counts.allowed].filter(
+    (count) => count > 0,
+  ).length > 1;
+}
+
+function mergeBoundedStrings<T extends string>(
+  current: readonly T[],
+  update: readonly T[],
+  limit: number,
+): { values: T[]; truncated: boolean } {
+  const merged = mergeSortedStrings(current, update);
+
+  return {
+    values: merged.slice(0, limit),
+    truncated: merged.length > limit,
+  };
 }
 
 function mergeSortedStrings<T extends string>(

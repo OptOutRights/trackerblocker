@@ -1,53 +1,24 @@
-import { classifyRequestSiteRelationship } from "./domains";
-import { decideRule, type DomainOverrideAction } from "./ruleDecisions";
-import {
-  lookupTrackerCatalogEntry,
-  type TrackerCatalogEntry,
-} from "./trackerCatalog";
+import type { RequestHeaderRestriction } from "./requestDecisions";
 
-export interface HeaderRestrictionInput {
-  pageUrl?: string | null;
-  requestUrl?: string | null;
-  sitePaused: boolean;
-  domainOverrides?: Record<string, DomainOverrideAction>;
-  catalog?: readonly TrackerCatalogEntry[];
-}
-
-export function decideHeaderRestriction(input: HeaderRestrictionInput) {
-  const classification = classifyRequestSiteRelationship({
-    pageUrl: input.pageUrl,
-    requestUrl: input.requestUrl,
-  });
-
-  if (classification.status !== "third-party") {
-    return decideRule({
-      relationship:
-        classification.status === "same-site" ? "first-party" : "unknown",
-      sitePaused: input.sitePaused,
-    });
+export function applyRequestHeaderRestriction<T extends { name: string }>(
+  requestHeaders: T[],
+  restriction: RequestHeaderRestriction | null,
+): T[] {
+  if (!restriction) {
+    return requestHeaders;
   }
 
-  const catalogMatch = lookupTrackerCatalogEntry(
-    classification.requestHost,
-    input.catalog,
-    input.requestUrl,
-  );
+  const names: ReadonlySet<string> = new Set(restriction.removeHeaders);
 
-  return decideRule({
-    relationship: "third-party",
-    catalogDefaultAction: catalogMatch?.action ?? null,
-    domainOverride:
-      input.domainOverrides?.[classification.requestHost] ?? null,
-    sitePaused: input.sitePaused,
-  });
+  return requestHeaders.filter(
+    (header) => !names.has(header.name.toLowerCase()),
+  );
 }
 
 export function stripTrackingRequestHeaders<T extends { name: string }>(
   requestHeaders: T[],
 ): T[] {
-  return requestHeaders.filter((header) => {
-    const name = header.name.toLowerCase();
-
-    return name !== "cookie" && name !== "referer";
+  return applyRequestHeaderRestriction(requestHeaders, {
+    removeHeaders: ["cookie", "referer"],
   });
 }

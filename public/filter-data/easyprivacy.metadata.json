@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "sourceUrl": "https://easylist.to/easylist/easyprivacy.txt",
+  "retrievedAt": "2026-07-17T18:09:03.652Z",
+  "upstreamVersion": "202607171801",
+  "upstreamLastModified": "17 Jul 2026 18:01 UTC",
+  "upstreamCommit": "14423bbe5de88bca811ae5cb4ee63d8d1cf955c4",
+  "sourceSha256": "98af0e26de6d5144c44923faf9a0ddbd40089d449f314905e594764f679d341e",
+  "sourceBytes": 1489269,
+  "sourceLines": 56327,
+  "generator": "scripts/easyprivacy/generate.mjs",
+  "generatorVersion": 1,
+  "ghosteryPackageVersion": "2.18.1",
+  "enabledCapabilities": [
+    "network-block",
+    "network-exception"
+  ],
+  "engineConfiguration": {
+    "debug": false,
+    "enableCompression": true,
+    "enableHtmlFiltering": false,
+    "enableInMemoryCache": true,
+    "enableMutationObserver": false,
+    "enableOptimizations": true,
+    "enablePushInjectionsOnNavigationEvents": false,
+    "guessRequestTypeFromUrl": false,
+    "integrityCheck": true,
+    "loadCSPFilters": false,
+    "loadCosmeticFilters": false,
+    "loadExceptionFilters": true,
+    "loadExtendedSelectors": false,
+    "loadGenericCosmeticsFilters": false,
+    "loadNetworkFilters": true,
+    "loadPreprocessors": false
+  },
+  "artifactSha256": "2c72268af8588d05e4c981f9e9262f9039f72c68a3e691cbf5a5eb802d19d163",
+  "artifactBytes": 1655845,
+  "capabilityReportSha256": "41f469ed09352ed9cf53545efddcebe43746d45d92d1127f833ff66100deefa3",
+  "deterministicSerialization": true,
+  "deserializeSerializeRoundTrip": true,
+  "ruleCounts": {
+    "totalNetworkRules": 55521,
+    "packagedNetworkRules": 55496,
+    "excludedNetworkRules": 25,
+    "cosmeticRulesExcluded": 35,
+    "preprocessors": 0,
+    "unsupported": 3
+  }
+}
