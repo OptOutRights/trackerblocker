@@ -1,5 +1,5 @@
-TrackerBlocker third-party notices
-==================================
+Tracker Blocker by Opt Out Rights third-party notices
+=====================================================
 
 EasyPrivacy
 -----------
@@ -12,8 +12,8 @@ Corresponding source in the source distribution: vendor/easyprivacy/easyprivacy.
 License: GNU General Public License version 3 or later, or Creative Commons
 Attribution-ShareAlike version 3.0 or later, as described by the upstream
 licence page at https://easylist.to/pages/licence.html
-License selected by TrackerBlocker: GNU General Public License version 3 or
-later, matching TrackerBlocker's GPLv3 license. The complete selected license
+License selected by Tracker Blocker: GNU General Public License version 3 or
+later, matching Tracker Blocker's GPLv3 license. The complete selected license
 text is distributed as LICENSE in the source archive and is also available at
 https://www.gnu.org/licenses/gpl-3.0.txt.
 
@@ -36,14 +36,14 @@ License: Mozilla Public License version 2.0. The complete license text is at
 https://www.mozilla.org/MPL/2.0/ and is included in each npm package.
 
 The npm packages contain their MPL-2.0 license files. Their exact package
-versions and registry integrity hashes are pinned in TrackerBlocker's
+versions and registry integrity hashes are pinned in Tracker Blocker's
 package-lock.json. The version-specific source tags above identify the
 corresponding source for the bundled executable code.
 
-TrackerBlocker does not modify or remotely update these works at runtime. The
+Tracker Blocker does not modify or remotely update these works at runtime. The
 EasyPrivacy source, generated network-rule engine, generation scripts,
 capability report, checksums, and dependency versions are distributed together
-through TrackerBlocker's open-source repository and Firefox source archive.
+through Tracker Blocker's open-source repository and Firefox source archive.
 
 Outfit
 ------

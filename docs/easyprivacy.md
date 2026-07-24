@@ -1,9 +1,9 @@
 # EasyPrivacy
 
-TrackerBlocker versions the exact EasyPrivacy source used to produce its
-packaged network-rule engine. Normal installation, builds, tests, verification,
-and extension runtime are offline with respect to EasyPrivacy. Only the
-explicit maintainer update command contacts the upstream list.
+Tracker Blocker by Opt Out Rights versions the exact EasyPrivacy source used to
+produce its packaged network-rule engine. Normal installation, builds, tests,
+verification, and extension runtime are offline with respect to EasyPrivacy.
+Only the explicit maintainer update command contacts the upstream list.
 
 The first integration is supported-only: ordinary network blocks and network
 exceptions are packaged. Redirects, response or header modification, CSP,

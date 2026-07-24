@@ -1,7 +1,8 @@
-# TrackerBlocker
+# Tracker Blocker by Opt Out Rights
 
-A Firefox-first extension that blocks and explains likely third-party trackers
-using local rules and packaged data. It requires Firefox 142 or later.
+Tracker Blocker is a Firefox-first extension that blocks and explains likely
+third-party trackers using local rules and packaged data. It requires Firefox
+142 or later.
 
 ## Development
 
@@ -54,4 +55,4 @@ update, verification, package, and rollback instructions.
 
 ## Maintainer
 
-Maintained by [Opt Out Rights Foundation](https://optoutrights.org).
+Maintained by [Opt Out Rights](https://optoutrights.org).
