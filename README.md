@@ -56,3 +56,12 @@ update, verification, package, and rollback instructions.
 ## Maintainer
 
 Maintained by [Opt Out Rights](https://optoutrights.org).
+
+## License
+
+Copyright (C) 2026 Opt Out Rights.
+
+Tracker Blocker is free software licensed under the
+[GNU General Public License version 3 or later](LICENSE). Third-party code,
+data, and fonts retain their upstream licenses and are documented in the
+[third-party notices](public/THIRD-PARTY-NOTICES.txt).

@@ -138,26 +138,60 @@ describe("EasyPrivacy source supply chain", () => {
     );
   });
 
-  it("keeps shipped notices aligned with locked Ghostery packages", async () => {
+  it("keeps shipped notices aligned with every locked production package", async () => {
     const [notice, packageLockText] = await Promise.all([
       readFile(`${PROJECT_ROOT}/public/THIRD-PARTY-NOTICES.txt`, "utf8"),
       readFile(`${PROJECT_ROOT}/package-lock.json`, "utf8"),
     ]);
     const packageLock = JSON.parse(packageLockText);
 
-    for (const name of [
-      "@ghostery/adblocker",
-      "@ghostery/adblocker-content",
-      "@ghostery/adblocker-extended-selectors",
-      "@ghostery/url-parser",
-    ]) {
-      const version = packageLock.packages[`node_modules/${name}`]?.version;
+    const productionPackages = Object.entries(packageLock.packages).filter(
+      ([packagePath, details]) =>
+        packagePath.startsWith("node_modules/") && details.dev !== true,
+    );
+    const productionPackageByName = new Map(
+      productionPackages.map(([packagePath, details]) => [
+        packagePath.slice(packagePath.lastIndexOf("node_modules/") + 13),
+        details,
+      ]),
+    );
 
-      expect(version).toBeTypeOf("string");
-      expect(notice).toContain(`${name} ${version}`);
+    expect(productionPackages.length).toBeGreaterThan(0);
+    for (const [packagePath, details] of productionPackages) {
+      const name = packagePath.slice(
+        packagePath.lastIndexOf("node_modules/") + 13,
+      );
+
+      expect(details.version).toBeTypeOf("string");
+      expect(details.integrity).toMatch(/^sha512-/);
+      expect(notice).toContain(`Package: ${name}@${details.version}`);
+      expect(notice).toContain(`Integrity: ${details.integrity}`);
     }
 
     expect(notice).toContain("GNU General Public License version 3 or later");
     expect(notice).toContain("Mozilla Public License version 2.0");
+    expect(notice).toContain(
+      "The name(s) of the Copyright Holder(s) or the Author(s) of the Font Software",
+    );
+    expect(notice).toContain("Work: Parser code based on Parsel");
+    expect(notice).toContain("Copyright (c) 2020 Lea Verou");
+    const extendedSelectors = productionPackageByName.get(
+      "@ghostery/adblocker-extended-selectors",
+    );
+    expect(extendedSelectors?.version).toBeTypeOf("string");
+    expect(notice).toContain(
+      `Embedded through: @ghostery/adblocker-extended-selectors@${extendedSelectors.version}`,
+    );
+    expect(notice).toContain("Work: Public Suffix List");
+    expect(notice).toContain(
+      "Upstream source: https://publicsuffix.org/list/public_suffix_list.dat",
+    );
+    const tldts = productionPackageByName.get("tldts");
+    const tldtsExperimental = productionPackageByName.get("tldts-experimental");
+    expect(tldts?.version).toBeTypeOf("string");
+    expect(tldtsExperimental?.version).toBeTypeOf("string");
+    expect(notice).toContain(
+      `Embedded through: tldts@${tldts.version} and tldts-experimental@${tldtsExperimental.version}`,
+    );
   });
 });
