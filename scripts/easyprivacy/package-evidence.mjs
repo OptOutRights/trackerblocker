@@ -123,6 +123,9 @@ for (const required of [
   "public/filter-data/easyprivacy.metadata.json",
   "scripts/easyprivacy/generate.mjs",
   "scripts/easyprivacy/verify.mjs",
+  "scripts/release/Dockerfile.amo",
+  "scripts/release/run-amo-container.mjs",
+  "scripts/release/verify-amo-reproducibility.mjs",
   "vendor/easyprivacy/easyprivacy.txt",
   "vendor/easyprivacy/easyprivacy.capabilities.json",
   "vendor/easyprivacy/source.json",
@@ -130,12 +133,16 @@ for (const required of [
   assert(sourceEntries.includes(required), `Missing source package entry ${required}.`);
 }
 for (const forbidden of [
+  "AGENTS.md",
   "GOAL.md",
   ".env",
   ".git/",
   ".output/",
   ".wxt/",
   "node_modules/",
+  "docs/release-identity.md",
+  "docs/release-path.md",
+  "docs/roadmap.md",
 ]) {
   assert.equal(
     sourceEntries.some((entry) => entry === forbidden || entry.startsWith(forbidden)),

@@ -29,6 +29,14 @@ function extensionDevServerCors(): Plugin {
 export default defineConfig({
   srcDir: "src",
   manifestVersion: 3,
+  zip: {
+    excludeSources: [
+      "AGENTS.md",
+      "docs/release-identity.md",
+      "docs/release-path.md",
+      "docs/roadmap.md",
+    ],
+  },
   dev: {
     server: {
       host: "127.0.0.1",
