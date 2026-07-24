@@ -23,7 +23,8 @@ const EXPECTED_HOST_PERMISSION =
   process.env.EASYPRIVACY_EXPECT_HOST_PERMISSION !== "false";
 const NETWORK_ONLY = process.env.EASYPRIVACY_NETWORK_ONLY === "true";
 const OPTIONS_ONLY = process.env.EASYPRIVACY_OPTIONS_ONLY === "true";
-const EXTENSION_ID = "trackerblocker@example.local";
+const EXTENSION_NAME = "Tracker Blocker by Opt Out Rights";
+const EXTENSION_ID = "trackerblocker@optoutrights.org";
 const HEALTH = "trackerblocker.healthCheck";
 const RESET = "trackerblocker.resetSettings";
 const UPDATE_PAUSE = "trackerblocker.updateSitePause";
@@ -126,6 +127,16 @@ async function startSession() {
   const optionsUrl = new URL("options.html", addon.manifestURL).href;
   await protocol.navigate(controlTab, optionsUrl);
   const health = await waitForBackground(protocol, controlTab);
+  const runtimeManifest = await protocol.evaluateJson(
+    controlTab,
+    "browser.runtime.getManifest()",
+  );
+  assert.equal(addon.name, EXTENSION_NAME);
+  assert.equal(runtimeManifest.name, EXTENSION_NAME);
+  assert.equal(
+    runtimeManifest.browser_specific_settings?.gecko?.id,
+    EXTENSION_ID,
+  );
   assert.equal(health.easyPrivacy.matchingEnabled, EXPECTED_MATCHING);
   assert.equal(health.easyPrivacy.engineHealth, EXPECTED_ENGINE_HEALTH);
   assert.equal(
@@ -161,7 +172,7 @@ async function runBlockedCountLifecycleCoverage(current) {
   assert.deepEqual(summary.enforcement, { status: "active", blockedCount: 1 });
   assert.deepEqual(await getBadgePresentation(current), {
     text: "1",
-    title: "TrackerBlocker - 1 request blocked",
+    title: "Tracker Blocker — 1 request blocked",
   });
   assert.deepEqual(await readPopupProtection(current), {
     value: "1",
@@ -184,7 +195,7 @@ async function runBlockedCountLifecycleCoverage(current) {
     });
     assert.deepEqual(await getBadgePresentation(current), {
       text: "1",
-      title: "TrackerBlocker - 1 request blocked",
+      title: "Tracker Blocker — 1 request blocked",
     });
     checkpoint("native document id restores the count after MV3 termination");
   } else {
@@ -210,14 +221,20 @@ async function runBlockedCountLifecycleCoverage(current) {
   summary = await getCurrentSummary(current);
   if (nativeDocumentIds) {
     assert.deepEqual(summary.enforcement, { status: "active", blockedCount: 2 });
-    assert.equal((await getBadgePresentation(current)).text, "2");
+    assert.deepEqual(await getBadgePresentation(current), {
+      text: "2",
+      title: "Tracker Blocker — 2 requests blocked",
+    });
     checkpoint("cold EasyPrivacy-only request increments the restored count");
   } else {
     assert.deepEqual(summary.enforcement, {
       status: "unavailable",
       blockedCount: null,
     });
-    assert.equal((await getBadgePresentation(current)).text, "!");
+    assert.deepEqual(await getBadgePresentation(current), {
+      text: "!",
+      title: "Tracker Blocker — blocked count unavailable",
+    });
     checkpoint("cold blocking continues while the count remains unavailable");
   }
 
@@ -247,7 +264,10 @@ async function runBlockedCountLifecycleCoverage(current) {
   );
   summary = await getCurrentSummary(current);
   assert.deepEqual(summary.enforcement, { status: "active", blockedCount: 0 });
-  assert.equal((await getBadgePresentation(current)).text, "");
+  assert.deepEqual(await getBadgePresentation(current), {
+    text: "",
+    title: "Tracker Blocker",
+  });
   checkpoint("full navigation resets blocked count");
 
   assert.deepEqual(await runProbe(current, publisherUrl), {
@@ -290,7 +310,7 @@ async function runBlockedCountLifecycleCoverage(current) {
   assert.deepEqual(summary.enforcement, { status: "paused", blockedCount: null });
   assert.deepEqual(await getBadgePresentation(current), {
     text: "",
-    title: "TrackerBlocker - protection paused",
+    title: "Tracker Blocker — protection paused",
   });
   const pausedSession = await getStoredSessionState(current);
   assert.equal(
@@ -605,7 +625,7 @@ async function runDegradedCoverage(current) {
   });
   assert.deepEqual(await getBadgePresentation(current), {
     text: "!",
-    title: "TrackerBlocker - blocked count unavailable",
+    title: "Tracker Blocker — blocked count unavailable",
   });
   assert.deepEqual(await readPopupProtection(current), {
     value: "—",
@@ -909,6 +929,8 @@ async function runOptionsCoverage(current) {
   await current.protocol.navigate(current.controlTab, `${optionsUrl}?seeded-rules`);
   const populatedPage = await waitForOptionsPage(current, {
     include: [
+      "Tracker Blocker Settings",
+      "by Opt Out Rights",
       "Create rules from the toolbar popup. Review or remove saved rules here.",
       "publisher.test",
       "screen13.com",
@@ -921,6 +943,7 @@ async function runOptionsCoverage(current) {
       "No hostname overrides.",
     ],
   });
+  assert.equal(populatedPage.documentTitle, "Tracker Blocker settings");
   assert.equal(populatedPage.busy, "false");
   assert.equal(
     populatedPage.buttons.find(({ text }) => text === "Resume")?.ariaLabel,
@@ -1320,6 +1343,7 @@ function readOptionsPage(current, tab, frameId) {
           activeElementText: "",
           busy: null,
           buttons: [],
+          documentTitle: "",
           hostnames: [],
           scrollWidth: 0,
           viewportWidth: 0,
@@ -1335,6 +1359,7 @@ function readOptionsPage(current, tab, frameId) {
           disabled: button.disabled,
           text: button.textContent?.trim() ?? "",
         })),
+        documentTitle: pageDocument.title,
         hostnames: [...pageDocument.querySelectorAll(".settings-hostname")].map(element => {
           const style = pageDocument.defaultView.getComputedStyle(element);
           return {
@@ -1549,6 +1574,7 @@ async function verifyBuild() {
   const manifest = JSON.parse(
     await readFile(path.join(EXTENSION_SOURCE, "manifest.json"), "utf8"),
   );
+  assert.equal(manifest.name, EXTENSION_NAME);
   assert.equal(manifest.browser_specific_settings?.gecko?.id, EXTENSION_ID);
 }
 
