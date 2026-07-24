@@ -17,7 +17,7 @@ The unit suite covers domain classification, packaged catalog and filter-engine
 validation, rule precedence, immutable request evidence, redirect and page
 generation handling, storage schemas and migrations, startup races, bounded
 memory, enforcement-ledger concurrency and failure behavior, message contracts,
-and UI state shaping.
+settings-page loading and mutation transitions, and other UI state shaping.
 
 ## EasyPrivacy Supply Chain
 
@@ -60,6 +60,20 @@ npm run test:easyprivacy
 Individual `test:easyprivacy:*` scripts cover the production corpus, ordinary
 and degraded Firefox behavior, missing permissions, emergency-off behavior,
 performance, offline boundaries, and package/source contents.
+
+The ordinary Firefox integration also opens the packaged Settings page. It
+checks seeded rule presentation and removal, reset confirmation and
+cancellation, successful reset completion, target-specific action labels,
+focus visibility, and long-hostname layout in a 320-pixel-wide Firefox
+viewport.
+Initial-load and mutation failures remain reducer-level tests because injecting
+those failures into packaged Firefox would require production-only test hooks.
+
+To iterate on only that packaged Settings coverage, use:
+
+```sh
+EASYPRIVACY_OPTIONS_ONLY=true npm run test:easyprivacy:firefox
+```
 
 Run the local Firefox matrix against the declared minimum version separately:
 

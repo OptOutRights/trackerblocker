@@ -44,7 +44,32 @@ behavior changes.
   and an explicitly matched first-party subresource follows the filter result.
 - Confirm an automatic EasyPrivacy `main_frame` match is not canceled, while an
   explicit user Block override can cancel a top-level hostname.
-- Confirm settings removal and reset work from the options page.
+- Open Settings and confirm the heading and introduction appear immediately,
+  “Loading saved rules…” appears before the first response, and no empty-rule
+  claims appear until settings load successfully.
+- When the initial settings request fails, confirm the page shows an alert,
+  keeps the rule sections hidden, and “Retry loading” recovers after storage is
+  available again. A diagnostics failure alone must not hide usable settings.
+- Seed each saved-rule type and confirm Resume, Remove, and Restore automatic
+  retain their complete target hostname, have target-specific accessible names,
+  and disable together while any mutation is pending.
+- When a settings mutation fails, confirm the last-known-good rules remain
+  visible, the failure is announced, and retrying the same action remains
+  possible.
+- Confirm “Reset saved rules…” is disabled when no saved rules exist. With a
+  saved rule, open its inline confirmation and verify that all three saved-rule
+  types are named and tab-scoped “pause once” state is explicitly excluded.
+- Cancel reset and confirm the saved rule remains both in storage and on the
+  page. Reopen, confirm reset, and verify the confirmation closes, completion
+  is announced, and all three empty messages appear.
+- Navigate Settings using only the keyboard. Confirm retry, reset, confirmation,
+  cancellation, and row controls follow a useful order and have a visible focus
+  indicator; the reset trigger must expose its expanded state.
+- At normal width and in a roughly 320-pixel-wide Firefox Add-ons Manager or
+  browser window, confirm long domains, punycode values, and IP literals wrap
+  completely without hiding or overlapping their action buttons.
+- Expand System diagnostics and confirm the installed extension version appears
+  separately from the EasyPrivacy provenance.
 - At narrow popup widths, confirm controls remain usable without horizontal
   overflow and focus indicators remain visible.
 - When a stress fixture exceeds a memory bound, confirm the popup discloses the

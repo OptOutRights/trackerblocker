@@ -22,6 +22,7 @@ const EXPECTED_MATCHING =
 const EXPECTED_HOST_PERMISSION =
   process.env.EASYPRIVACY_EXPECT_HOST_PERMISSION !== "false";
 const NETWORK_ONLY = process.env.EASYPRIVACY_NETWORK_ONLY === "true";
+const OPTIONS_ONLY = process.env.EASYPRIVACY_OPTIONS_ONLY === "true";
 const EXTENSION_ID = "trackerblocker@example.local";
 const HEALTH = "trackerblocker.healthCheck";
 const RESET = "trackerblocker.resetSettings";
@@ -44,6 +45,11 @@ async function main() {
   let session;
   try {
     session = await startSession();
+    if (OPTIONS_ONLY) {
+      await runOptionsCoverage(session);
+      report();
+      return;
+    }
     if (!EXPECTED_MATCHING) {
       await runDisabledCoverage(session);
       report();
@@ -881,6 +887,7 @@ async function runDurablePauseRestartCoverage(current) {
 }
 
 async function runOptionsCoverage(current) {
+  await sendMessage(current, { type: RESET });
   await sendMessage(current, {
     type: UPDATE_PAUSE,
     site: "publisher.test",
@@ -895,28 +902,152 @@ async function runOptionsCoverage(current) {
   });
   await sendMessage(current, {
     type: SET_OVERRIDE,
-    domain: "screen13.com",
+    domain: "override.test",
     action: "allow",
   });
   const optionsUrl = new URL("options.html", current.addon.manifestURL).href;
-  await current.protocol.navigate(current.controlTab, optionsUrl);
-  for (const label of ["Resume", "Remove", "Auto"]) {
+  await current.protocol.navigate(current.controlTab, `${optionsUrl}?seeded-rules`);
+  const populatedPage = await waitForOptionsPage(current, {
+    include: [
+      "Create rules from the toolbar popup. Review or remove saved rules here.",
+      "publisher.test",
+      "screen13.com",
+      "override.test",
+      "Extension version",
+    ],
+    exclude: [
+      "No always-paused sites.",
+      "No site-specific hostname allows.",
+      "No hostname overrides.",
+    ],
+  });
+  assert.equal(populatedPage.busy, "false");
+  assert.equal(
+    populatedPage.buttons.find(({ text }) => text === "Resume")?.ariaLabel,
+    "Resume protection on publisher.test",
+  );
+  assert.equal(
+    populatedPage.buttons.find(({ text }) => text === "Remove")?.ariaLabel,
+    "Remove allow for screen13.com on publisher.test",
+  );
+  assert.equal(
+    populatedPage.buttons.find(({ text }) => text === "Restore automatic")
+      ?.ariaLabel,
+    "Use automatic handling for override.test",
+  );
+  checkpoint("options render seeded rules with target-specific action labels");
+  for (const label of ["Resume", "Remove", "Restore automatic"]) {
     await clickButton(current, label);
   }
   let settings = await sendMessage(current, { type: GET_SETTINGS });
   assert.deepEqual(settings.pausedSites, {});
   assert.deepEqual(settings.siteAllows, {});
   assert.deepEqual(settings.domainOverrides, {});
+  checkpoint("options remove all three saved-rule types");
+
+  const longHostname =
+    "a-very-long-hostname-segment-for-settings.example.another-long-segment.test";
   await sendMessage(current, {
     type: SET_OVERRIDE,
-    domain: "screen13.com",
+    domain: longHostname,
     action: "block",
   });
-  await current.protocol.navigate(current.controlTab, optionsUrl);
-  await clickButton(current, "Reset settings");
+  await current.protocol.navigate(current.controlTab, `${optionsUrl}?reset-rule`);
+  await waitForOptionsPage(current, {
+    include: [longHostname, "Reset saved rules…"],
+  });
+  checkpoint("options render a complete long hostname");
+
+  const narrowFrameId = "trackerblocker-options-narrow-frame";
+  await current.protocol.evaluateJson(
+    current.controlTab,
+    `(() => {
+      const frame = document.createElement("iframe");
+      frame.id = ${JSON.stringify(narrowFrameId)};
+      frame.src = ${JSON.stringify(`${optionsUrl}?narrow`)};
+      frame.title = "Narrow settings test viewport";
+      frame.style.border = "0";
+      frame.style.display = "block";
+      frame.style.height = "700px";
+      frame.style.width = "320px";
+      document.body.append(frame);
+      return true;
+    })()`,
+  );
+  const narrowPage = await waitForOptionsPage(
+    current,
+    { include: [longHostname] },
+    current.controlTab,
+    narrowFrameId,
+  );
+  assert(narrowPage.viewportWidth <= 320);
+  assert(narrowPage.scrollWidth <= narrowPage.viewportWidth);
+  assert.equal(narrowPage.hostnames[0]?.text, longHostname);
+  assert.equal(narrowPage.hostnames[0]?.overflowWrap, "anywhere");
+  checkpoint("options remain readable at 320 pixels");
+  await current.protocol.evaluateJson(
+    current.controlTab,
+    `(() => {
+      document.getElementById(${JSON.stringify(narrowFrameId)})?.remove();
+      return true;
+    })()`,
+  );
+  const focusResults = await inspectOptionsButtonFocus(
+    current,
+    current.controlTab,
+  );
+  assert(focusResults.length >= 2);
+  assert(focusResults.every(({ focused }) => focused));
+  assert(
+    focusResults.every(({ hasVisibleFocusRule }) => hasVisibleFocusRule),
+    `Expected packaged options focus styles: ${JSON.stringify(focusResults)}`,
+  );
+  checkpoint("options mutation controls accept visible focus");
+
+  await clickButton(current, "Reset saved rules…");
+  await waitForOptionsPage(current, {
+    include: [
+      "Reset all saved rules?",
+      "Always-paused sites.",
+      "Site-specific hostname allows.",
+      "Global hostname overrides.",
+      "Tab-scoped “pause once” state is not part of saved rules and is unaffected.",
+    ],
+  });
+  await clickButton(current, "Cancel");
+  await waitForOptionsPage(current, {
+    include: [longHostname],
+    exclude: ["Reset all saved rules?"],
+  });
   settings = await sendMessage(current, { type: GET_SETTINGS });
+  assert.deepEqual(settings.domainOverrides, {
+    [longHostname]: "block",
+  });
+  checkpoint("options reset confirmation cancels without changing storage");
+
+  await clickButton(current, "Reset saved rules…");
+  await clickButton(current, "Reset saved rules");
+  const resetPage = await waitForOptionsPage(current, {
+    activeElementText: "Saved rules were reset.",
+    include: [
+      "Saved rules were reset.",
+      "No always-paused sites.",
+      "No site-specific hostname allows.",
+      "No hostname overrides.",
+    ],
+    exclude: ["Reset all saved rules?", longHostname],
+  });
+  settings = await sendMessage(current, { type: GET_SETTINGS });
+  assert.deepEqual(settings.pausedSites, {});
+  assert.deepEqual(settings.siteAllows, {});
   assert.deepEqual(settings.domainOverrides, {});
-  checkpoint("options removals and full settings reset recover cleanly");
+  assert.equal(
+    resetPage.buttons.find(({ text }) => text === "Reset saved rules…")
+      ?.disabled,
+    true,
+  );
+  assert.equal(resetPage.activeElementText, "Saved rules were reset.");
+  checkpoint("options confirmed reset clears rules and reports completion");
 }
 
 async function getCurrentSummary(current) {
@@ -1139,6 +1270,123 @@ async function clickButton(current, label) {
     await delay(25);
   }
   throw new Error(`Options button ${label} was unavailable.`);
+}
+
+async function waitForOptionsPage(
+  current,
+  { activeElementText = null, include = [], exclude = [] },
+  tab = current.controlTab,
+  frameId = null,
+) {
+  let state;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      state = await readOptionsPage(current, tab, frameId);
+      if (
+        include.every((text) => state.allText.includes(text)) &&
+        exclude.every((text) => !state.allText.includes(text)) &&
+        (activeElementText === null ||
+          state.activeElementText === activeElementText)
+      ) {
+        return state;
+      }
+    } catch {
+      // The options document may still be replacing its frame actor.
+    }
+    await delay(25);
+  }
+  throw new Error(
+    `Options page did not reach the expected state: ${JSON.stringify({
+      include,
+      exclude,
+      activeElementText,
+      state,
+    })}`,
+  );
+}
+
+function readOptionsPage(current, tab, frameId) {
+  return current.protocol.evaluateJson(
+    tab,
+    `(() => {
+      const pageDocument = ${
+        frameId
+          ? `document.getElementById(${JSON.stringify(frameId)})?.contentDocument`
+          : "document"
+      };
+      if (!pageDocument?.body || !pageDocument.defaultView) {
+        return {
+          allText: "",
+          activeElementText: "",
+          busy: null,
+          buttons: [],
+          hostnames: [],
+          scrollWidth: 0,
+          viewportWidth: 0,
+        };
+      }
+      const management = pageDocument.querySelector('[aria-label="Saved rules management"]');
+      return {
+        allText: pageDocument.body.textContent ?? "",
+        activeElementText: pageDocument.activeElement?.textContent?.trim() ?? "",
+        busy: management?.getAttribute("aria-busy") ?? null,
+        buttons: [...pageDocument.querySelectorAll("button")].map(button => ({
+          ariaLabel: button.getAttribute("aria-label"),
+          disabled: button.disabled,
+          text: button.textContent?.trim() ?? "",
+        })),
+        hostnames: [...pageDocument.querySelectorAll(".settings-hostname")].map(element => {
+          const style = pageDocument.defaultView.getComputedStyle(element);
+          return {
+            overflowWrap: style.overflowWrap,
+            text: element.textContent?.trim() ?? "",
+          };
+        }),
+        scrollWidth: pageDocument.documentElement.scrollWidth,
+        viewportWidth: pageDocument.documentElement.clientWidth,
+      };
+    })()`,
+  );
+}
+
+function inspectOptionsButtonFocus(current, tab, frameId = null) {
+  return current.protocol.evaluateJson(
+    tab,
+    `(() => {
+      const pageDocument = ${
+        frameId
+          ? `document.getElementById(${JSON.stringify(frameId)})?.contentDocument`
+          : "document"
+      };
+      if (!pageDocument?.defaultView) return [];
+      pageDocument.defaultView.focus();
+      const hasVisibleFocusRule = [...pageDocument.styleSheets].some(sheet => {
+        function findRule(rules) {
+          return [...rules].some(rule => {
+            if (
+              rule.selectorText === "button:focus" &&
+              rule.style?.outlineStyle === "solid" &&
+              Number.parseFloat(rule.style.outlineWidth) > 0
+            ) {
+              return true;
+            }
+            return rule.cssRules ? findRule(rule.cssRules) : false;
+          });
+        }
+        return findRule(sheet.cssRules);
+      });
+      return [...pageDocument.querySelectorAll("button")]
+      .filter(button => !button.disabled)
+      .map(button => {
+        button.focus();
+        return {
+          focused: pageDocument.activeElement === button,
+          hasVisibleFocusRule,
+          text: button.textContent?.trim() ?? "",
+        };
+      });
+    })()`,
+  );
 }
 
 class FirefoxProtocol {
