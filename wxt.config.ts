@@ -40,7 +40,6 @@ export default defineConfig({
   manifest: {
     name: "Tracker Blocker by Opt Out Rights",
     description: "Blocks and explains likely third-party trackers.",
-    version: "0.0.0",
     developer: {
       name: "Opt Out Rights",
     },

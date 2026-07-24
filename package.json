@@ -1,6 +1,6 @@
 {
   "name": "trackerblocker",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A Firefox-first WebExtension that blocks and explains likely third-party trackers.",
   "type": "module",
   "private": true,
